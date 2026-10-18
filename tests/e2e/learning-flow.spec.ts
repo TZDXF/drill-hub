@@ -179,7 +179,7 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
       response.request().method() === 'PUT' &&
       response.url().endsWith(`/attempts/${attemptId}/answers/${before.items[0]!.id}`),
   );
-  await page.getByLabel('SQLite', { exact: true }).check();
+  await page.getByLabel('A. SQLite', { exact: true }).check();
   await expect(page.getByText('有修改等待保存', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/\d+ 项待保存/)).toHaveCount(0);
   const saved = await savedResponse;
@@ -194,14 +194,14 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await openQuestionNav(page);
   await questionNav.getByRole('button', { name: '第 1 题，已作答', exact: true }).click();
   await page.reload();
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
   await expect(page.locator('.save-state')).toHaveCount(0);
   await openQuestionNav(page);
   await expect(questionNav.getByRole('button').first()).toHaveClass(/answered/);
   await closeQuestionNav(page);
   await page.getByRole('button', { name: '下一题' }).click();
-  await page.getByLabel('原子性', { exact: true }).check();
-  await page.getByLabel('一致性', { exact: true }).check();
+  await page.getByLabel('A. 原子性', { exact: true }).check();
+  await page.getByLabel('C. 随机性', { exact: true }).check();
   await page.getByRole('button', { name: '下一题' }).click();
   await page.getByLabel('错误', { exact: true }).check();
   await page.getByRole('button', { name: '下一题' }).click();
@@ -217,7 +217,7 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
       await page.request.get(`/api/v1/attempts/${attemptId}/report`)
     ).json()) as ApiResponse<AttemptReport>
   ).data;
-  expect(pending.awardedScore).toBe('30.00');
+  expect(pending.awardedScore).toBe('20.00');
   expect(pending.pendingMaxScore).toBe('10.00');
   expect(pending.isFinal).toBe(false);
 
@@ -264,12 +264,13 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await expect(reportItems).toHaveCount(1);
   await expect(reportItems.getByRole('heading', { name: '请选择关系型数据库' })).toBeVisible();
   await expect(reportItems.locator('.review-choices .answer-option__text')).toHaveText([
-    'SQLite',
-    '文本文件',
+    'A. SQLite',
+    'B. 文本文件',
   ]);
-  await expect(reportItems.getByLabel('SQLite', { exact: true })).toBeChecked();
-  await expect(reportItems.getByLabel('SQLite', { exact: true })).toBeDisabled();
-  await expect(reportItems.getByLabel('文本文件', { exact: true })).not.toBeChecked();
+  await expect(reportItems.getByLabel('A. SQLite', { exact: true })).toBeChecked();
+  await expect(reportItems.getByLabel('A. SQLite', { exact: true })).toBeDisabled();
+  await expect(reportItems.getByLabel('B. 文本文件', { exact: true })).not.toBeChecked();
+  await expect(reportItems.getByText('回答正确', { exact: true })).toHaveCount(0);
   await openQuestionNav(page);
   await expect(questionNav.locator('.question-nav-grid').getByRole('button')).toHaveCount(
     questions.length,
@@ -280,6 +281,9 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await expect(
     questionNav.getByRole('button', { name: '第 1 题，回答正确', exact: true }),
   ).toHaveClass(/correct/);
+  await expect(
+    questionNav.getByRole('button', { name: '第 2 题，回答错误', exact: true }),
+  ).toHaveClass(/wrong/);
   await expect(
     questionNav.getByRole('button', { name: '第 3 题，回答错误', exact: true }),
   ).toHaveClass(/wrong/);
@@ -292,13 +296,20 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await pagination.getByRole('button', { name: '下一题' }).click();
   await expect(reportItems.getByRole('heading', { name: '请选择事务性质' })).toBeVisible();
   await expect(reportItems.locator('.review-choices .answer-option__text')).toHaveText([
-    '原子性',
-    '一致性',
-    '随机性',
+    'A. 原子性',
+    'B. 一致性',
+    'C. 随机性',
   ]);
-  await expect(reportItems.getByLabel('原子性', { exact: true })).toBeChecked();
-  await expect(reportItems.getByLabel('一致性', { exact: true })).toBeChecked();
-  await expect(reportItems.getByLabel('随机性', { exact: true })).not.toBeChecked();
+  await expect(reportItems.getByLabel('A. 原子性', { exact: true })).toBeChecked();
+  const missedOption = reportItems.locator('.answer-option', { hasText: 'B. 一致性' });
+  const wrongOption = reportItems.locator('.answer-option', { hasText: 'C. 随机性' });
+  await expect(missedOption.getByRole('checkbox')).not.toBeChecked();
+  await expect(missedOption).toHaveClass(/missed/);
+  await expect(missedOption.getByText('漏选', { exact: true })).toBeVisible();
+  await expect(wrongOption.getByRole('checkbox')).toBeChecked();
+  await expect(wrongOption).toHaveClass(/wrong/);
+  await expect(wrongOption.getByText('错选', { exact: true })).toBeVisible();
+  await expect(reportItems.getByText('回答错误', { exact: true })).toHaveCount(0);
   await pagination.getByRole('button', { name: '上一题' }).click();
   await expect(reportItems.getByRole('heading', { name: '请选择关系型数据库' })).toBeVisible();
   await openQuestionNav(page);
@@ -411,7 +422,7 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
       await page.request.get(`/api/v1/attempts/${attemptId}/report`)
     ).json()) as ApiResponse<AttemptReport>
   ).data;
-  expect(final.awardedScore).toBe('35.00');
+  expect(final.awardedScore).toBe('25.00');
   expect(final.isFinal).toBe(true);
   expect(final.attempt.items[4]!.grade!.criterionResults[0]).toMatchObject({
     criterionId: 'properties',
@@ -447,7 +458,7 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await page.getByRole('button', { name: '确认交卷', exact: true }).click();
   await expect(summary).toBeVisible();
   await pagination.getByRole('button', { name: '查看题目' }).click();
-  await expect(page.locator('.report-item').getByText('回答正确', { exact: true })).toBeVisible();
+  await expect(page.locator('.report-item').getByText('回答正确', { exact: true })).toHaveCount(0);
   await openQuestionNav(page);
   await expect(
     questionNav.getByRole('button', { name: '第 1 题，回答正确', exact: true }),

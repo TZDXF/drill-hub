@@ -86,7 +86,7 @@ test('Agent 临时答题链接可在未登录浏览器中直接作答和查看�
         response.request().method() === 'PUT' &&
         response.url().includes('/public/answer/attempt/items/'),
     );
-    await answerPage.getByLabel('文本文件', { exact: true }).check();
+    await answerPage.getByLabel('B. 文本文件', { exact: true }).check();
     await saved;
 
     // Ongoing link attempts must lead to a read-only report, never the personal answer page.

@@ -160,7 +160,7 @@ test('题目标记独立于答案，题号同步标记并可取消', async ({ pa
   );
   await page.getByRole('button', { name: '上一题', exact: true }).click();
   await expect(page.getByRole('button', { name: '取消标记', exact: true })).toBeVisible();
-  await page.getByLabel('SQLite', { exact: true }).check();
+  await page.getByLabel('A. SQLite', { exact: true }).check();
   nav = await openQuestionNav(page);
   await expect(
     nav.getByRole('button', { name: '第 1 题，已作答，已标记', exact: true }),
@@ -227,7 +227,7 @@ test('移动端输入框和题干均可原生滑动切题，保存答案且忽�
   await swipe(stem, -120, 0, false, true);
   await expect(stem).toHaveText('第一题：请选择数据库');
   await expect(page.getByRole('radio', { checked: true })).toHaveCount(0);
-  await page.getByLabel('SQLite', { exact: true }).check();
+  await page.getByLabel('A. SQLite', { exact: true }).check();
   await swipe(stem, -110);
   await expect(stem).toHaveText('第二题：填写数据库名称');
   const input = page.getByLabel('第 1 空');
@@ -271,7 +271,7 @@ test('移动端输入框和题干均可原生滑动切题，保存答案且忽�
   await swipe(stem, 110);
   await expect(input).toHaveValue('SQLite');
   await swipe(stem, 110);
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
   const attemptId = new URL(page.url()).pathname.split('/').at(-1)!;
   const result = (await (await page.request.get(`/api/v1/attempts/${attemptId}`)).json())
     .data as AttemptView;
@@ -349,8 +349,8 @@ test('移动端选项区域原生滑动和鼠标拖动均可切题，不误选�
   await swipe(stem, 120);
   await expect(stem).toHaveText('第一题：请选择数据库');
   await expect(page.getByRole('radio', { checked: true })).toHaveCount(0);
-  await page.getByLabel('SQLite', { exact: true }).click();
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
+  await page.getByLabel('A. SQLite', { exact: true }).click();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
   const box = (await page.locator('.answer-option').last().boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2);
   await page.mouse.down();
@@ -358,8 +358,8 @@ test('移动端选项区域原生滑动和鼠标拖动均可切题，不误选�
   await page.mouse.up();
   await expect(stem).toHaveText('第二题：填写数据库名称');
   await swipe(stem, 120);
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
-  await expect(page.getByLabel('文本', { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('B. 文本', { exact: true })).not.toBeChecked();
   // 作答卡片外的空白区域也支持切题，不再只有题干的一小块区域可用。
   await expect(page.locator('.question-card')).not.toHaveClass(/question-card--moving/);
   const content = page.locator('.attempt-content');
@@ -454,7 +454,7 @@ test('移动端半拖可见真实相邻题内容，整条轨道跟手滑动并�
   expect(bounces).toHaveLength(2);
   expect(bounces.every((motion) => motion.duration > 0 && motion.finished)).toBe(true);
   expect(bounces.every((motion) => motion.to === 0)).toBe(true);
-  await page.getByLabel('SQLite', { exact: true }).click();
+  await page.getByLabel('A. SQLite', { exact: true }).click();
   // 拖动到一半时，下一题的题干和输入框已进入屏幕，而非空白或截图占位。
   const cardWidth = (await card.boundingBox())!.width;
   await drag(-cardWidth / 2);
@@ -491,9 +491,12 @@ test('移动端半拖可见真实相邻题内容，整条轨道跟手滑动并�
   const previousPreview = page
     .locator('.question-preview')
     .filter({ hasText: '第一题：请选择数据库' });
-  await expect(previousPreview.locator('.answer-option__text')).toHaveText(['SQLite', '文本']);
+  await expect(previousPreview.locator('.answer-option__text')).toHaveText([
+    'A. SQLite',
+    'B. 文本',
+  ]);
   await expect(previousPreview.locator('.answer-option.selected .answer-option__text')).toHaveText(
-    'SQLite',
+    'A. SQLite',
   );
   const previousBounds = (await previousPreview.boundingBox())!;
   expect(previousBounds.x + previousBounds.width).toBeGreaterThan(50);
@@ -505,8 +508,8 @@ test('移动端半拖可见真实相邻题内容，整条轨道跟手滑动并�
   expect(backward[0]!.to).toBeGreaterThan(200);
   await expect(page.locator('.question-preview')).toHaveCount(0);
   expect(backward.every((motion) => motion.finished)).toBe(true);
-  await page.getByLabel('SQLite', { exact: true }).click();
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
+  await page.getByLabel('A. SQLite', { exact: true }).click();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
 });
 
 test('移动端减少动态效果设置下可切题且不播放切题动画', async ({ page }, testInfo) => {

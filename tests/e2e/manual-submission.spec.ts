@@ -78,9 +78,9 @@ test('练习题保存答案后需手动交卷，页面不再提供自动提交�
   const saved = page.waitForResponse(
     (response) => response.request().method() === 'PUT' && response.url().includes('/answers/'),
   );
-  await page.getByLabel('SQLite', { exact: true }).check();
+  await page.getByLabel('A. SQLite', { exact: true }).check();
   await saved;
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: '提交本题', exact: true })).toHaveCount(0);
 
   const attempt = (await (await page.request.get(`/api/v1/attempts/${attemptId}`)).json())

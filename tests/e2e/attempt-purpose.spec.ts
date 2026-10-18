@@ -134,11 +134,11 @@ test('测试作答可继续答题、交卷并评分，但不增加学习统计�
   await expect(
     page.getByText('测试作答：可正常答题、交卷与评分，不计入学习统计、错题及计划进度。'),
   ).toBeVisible();
-  await page.getByLabel('普通文本文件', { exact: true }).check();
+  await page.getByLabel('B. 普通文本文件', { exact: true }).check();
   await page.getByRole('link', { name: '作答详情', exact: true }).click();
   await page.getByRole('link', { name: '继续作答', exact: true }).click();
-  await expect(page.getByLabel('普通文本文件', { exact: true })).toBeChecked();
-  await expect(page.getByLabel('SQLite', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('B. 普通文本文件', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('A. SQLite', { exact: true })).toBeEnabled();
   await submit(page);
   const report = await readReport(attempt.id);
   expect(report).toMatchObject({
@@ -364,7 +364,7 @@ for (const fromDetail of [false, true]) {
   test(`错题${fromDetail ? '详情' : '列表'}可选择测试用途重练`, async ({ page }) => {
     const { start, questionId } = await seed(page);
     await start();
-    await page.getByLabel('普通文本文件', { exact: true }).check();
+    await page.getByLabel('B. 普通文本文件', { exact: true }).check();
     await submit(page);
     await page.goto(fromDetail ? `/wrong-questions/${questionId}` : '/wrong-questions');
     await page.getByLabel('作答用途', { exact: true }).click();
@@ -389,6 +389,6 @@ for (const fromDetail of [false, true]) {
     const attempt = ((await response.json()) as ApiResponse<AttemptView>).data;
     expect(attempt.purpose).toBe('test');
     await expect(page.getByRole('heading', { name: '用途回归：选择数据库' })).toBeVisible();
-    await expect(page.getByLabel('SQLite', { exact: true })).toBeEnabled();
+    await expect(page.getByLabel('A. SQLite', { exact: true })).toBeEnabled();
   });
 }

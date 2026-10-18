@@ -9,7 +9,7 @@ import {
   wrongPracticeRequest,
   type WrongQuestionDetailView,
 } from '../types';
-import { errorMessage, formatDate } from '../utils';
+import { errorMessage, formatDate, formatOptionLabel } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
@@ -158,10 +158,10 @@ onMounted(load);
           style="margin-top: 16px"
         >
           <span
-            v-for="option in detail.question.definition.options"
+            v-for="(option, index) in detail.question.definition.options"
             :key="option.id"
             class="badge"
-            >{{ option.text }}</span
+            >{{ formatOptionLabel(index, option.text) }}</span
           >
         </div>
       </section>

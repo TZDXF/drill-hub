@@ -1677,6 +1677,38 @@ a.list-card:hover {
   border-color: var(--danger);
   background: var(--danger-soft);
 }
+.review-choices .answer-option.missed,
+.review-choices .answer-option.missed:hover {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+.review-choices .choice-label {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.review-choices .answer-option__text {
+  overflow-wrap: anywhere;
+}
+.answer-option__status {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+.wrong .answer-option__status {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.missed .answer-option__status {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
 .review-choices .answer-option.correct .choice-box[data-state='checked'] {
   border-color: var(--green);
   background: var(--green);

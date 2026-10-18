@@ -48,7 +48,12 @@ withDefaults(
           <small>/ {{ formatScore(item.maxScore) }}</small></strong
         >
       </div>
-      <p v-if="item.grade.feedback" class="feedback-text">{{ item.grade.feedback }}</p>
+      <p
+        v-if="item.grade.feedback && !['回答正确', '回答错误'].includes(item.grade.feedback)"
+        class="feedback-text"
+      >
+        {{ item.grade.feedback }}
+      </p>
       <div v-if="item.grade.criterionResults.length" class="criterion-list">
         <article
           v-for="criterion in item.grade.criterionResults"

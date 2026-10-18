@@ -14,7 +14,7 @@ import { planNavigationQuery, planReturnLocation } from '../planNavigation';
 import { captureAnswerLinkToken } from '../publicAccess';
 import { questionIndexFromQuery } from '../questionNavigation';
 import { asAttemptView, emptyAnswer, questionTypeLabels } from '../types';
-import { clone, errorMessage, isApiError } from '../utils';
+import { clone, errorMessage, isApiError, formatOptionLabel } from '../utils';
 import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
@@ -789,7 +789,7 @@ function confirmLeave() {
                 @update:model-value="setSingleValue(slide.item, $event)"
               >
                 <label
-                  v-for="option in slide.item.options"
+                  v-for="(option, index) in slide.item.options"
                   :key="option.id"
                   :for="`choice-${slide.item.id}-${option.id}`"
                   class="answer-option"
@@ -805,7 +805,9 @@ function confirmLeave() {
                   >
                     <RadioGroupIndicator><span class="choice-radio-dot" /></RadioGroupIndicator>
                   </RadioGroupItem>
-                  <span class="answer-option__text">{{ option.text }}</span>
+                  <span class="answer-option__text">{{
+                    formatOptionLabel(index, option.text)
+                  }}</span>
                 </label>
               </RadioGroupRoot>
               <div
@@ -815,7 +817,7 @@ function confirmLeave() {
                 aria-label="请选择所有正确答案"
               >
                 <AppCheckbox
-                  v-for="option in slide.item.options"
+                  v-for="(option, index) in slide.item.options"
                   :key="option.id"
                   class="answer-option"
                   :class="{
@@ -826,7 +828,9 @@ function confirmLeave() {
                   :disabled="isLocked(slide.item) || submitting"
                   @update:model-value="setMultiple(slide.item, option.id)"
                 >
-                  <span class="answer-option__text">{{ option.text }}</span>
+                  <span class="answer-option__text">{{
+                    formatOptionLabel(index, option.text)
+                  }}</span>
                 </AppCheckbox>
               </div>
               <RadioGroupRoot

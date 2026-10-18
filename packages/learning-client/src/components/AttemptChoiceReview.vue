@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui';
 import type { AttemptItemView } from '@drill-hub/contracts';
+import { formatOptionLabel } from '../utils';
 import AppCheckbox from './AppCheckbox.vue';
 
 const props = defineProps<{ item: AttemptItemView }>();
@@ -45,6 +46,7 @@ function optionClasses(optionId: string) {
     selected: isSelected(optionId),
     correct,
     wrong: isSelected(optionId) && !correct && correctOptionIds.value.size > 0,
+    missed: props.item.type === 'multiple_choice' && correct && !isSelected(optionId),
   };
 }
 </script>
@@ -60,7 +62,7 @@ function optionClasses(optionId: string) {
     :aria-label="item.type === 'true_false' ? '判断题选项' : '单选题选项'"
   >
     <label
-      v-for="option in singleChoiceOptions"
+      v-for="(option, index) in singleChoiceOptions"
       :key="option.id"
       :for="`review-choice-${item.id}-${option.id}`"
       class="answer-option"
@@ -73,7 +75,9 @@ function optionClasses(optionId: string) {
       >
         <RadioGroupIndicator><span class="choice-radio-dot" /></RadioGroupIndicator>
       </RadioGroupItem>
-      <span class="answer-option__text">{{ option.text }}</span>
+      <span class="answer-option__text">{{
+        item.type === 'single_choice' ? formatOptionLabel(index, option.text) : option.text
+      }}</span>
     </label>
   </RadioGroupRoot>
   <div
@@ -83,7 +87,7 @@ function optionClasses(optionId: string) {
     aria-label="多选题选项"
   >
     <AppCheckbox
-      v-for="option in item.options"
+      v-for="(option, index) in item.options"
       :id="`review-choice-${item.id}-${option.id}`"
       :key="option.id"
       class="answer-option"
@@ -91,7 +95,17 @@ function optionClasses(optionId: string) {
       :model-value="isSelected(option.id)"
       disabled
     >
-      <span class="answer-option__text">{{ option.text }}</span>
+      <span class="answer-option__text">{{ formatOptionLabel(index, option.text) }}</span>
+      <span
+        v-if="isSelected(option.id) && !correctOptionIds.has(option.id) && correctOptionIds.size"
+        class="answer-option__status"
+        >错选</span
+      >
+      <span
+        v-else-if="correctOptionIds.has(option.id) && !isSelected(option.id)"
+        class="answer-option__status"
+        >漏选</span
+      >
     </AppCheckbox>
   </div>
 </template>

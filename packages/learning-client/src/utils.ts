@@ -36,6 +36,21 @@ export function formatDuration(seconds: number | null | undefined): string {
   return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
 }
 
+export function optionPrefix(index: number): string {
+  let value = index + 1;
+  let prefix = '';
+  while (value > 0) {
+    value -= 1;
+    prefix = String.fromCharCode(65 + (value % 26)) + prefix;
+    value = Math.floor(value / 26);
+  }
+  return `${prefix}.`;
+}
+
+export function formatOptionLabel(index: number, text: string): string {
+  return `${optionPrefix(index)} ${text}`;
+}
+
 export function formatScore(value: string | null | undefined): string {
   if (value === null || value === undefined) return '待评分';
   const number = Number(value);

@@ -85,38 +85,46 @@ for (const kind of ['practice', 'exam'] as const) {
 
     await page.goto(`/assessments/${assessment.id}`);
     await page.getByRole('button', { name: '开始或继续' }).click();
-    await page.getByLabel('SQLite', { exact: true }).check();
-    const firstRadio = await page.getByLabel('SQLite', { exact: true }).elementHandle();
+    await page.getByLabel('A. SQLite', { exact: true }).check();
+    const firstRadio = await page.getByLabel('A. SQLite', { exact: true }).elementHandle();
     expect(firstRadio).not.toBeNull();
     await page.getByRole('button', { name: '下一题', exact: true }).click();
     await expect(page.getByRole('heading', { name: '请选择事务性质' })).toBeVisible();
     // 相同的选项 ID 不应跨题复用控件或延续旧选中态的 CSS 过渡。
     expect(await firstRadio!.evaluate((element) => element.isConnected)).toBe(false);
-    await expect(page.locator('.answer-option__text')).toHaveText(['随机性', '原子性', '无序性']);
+    await expect(page.locator('.answer-option__text')).toHaveText([
+      'A. 随机性',
+      'B. 原子性',
+      'C. 无序性',
+    ]);
     await expect(page.getByRole('radio', { checked: true })).toHaveCount(0);
-    await page.getByLabel('原子性', { exact: true }).check();
-    const secondRadio = await page.getByLabel('原子性', { exact: true }).elementHandle();
+    await page.getByLabel('B. 原子性', { exact: true }).check();
+    const secondRadio = await page.getByLabel('B. 原子性', { exact: true }).elementHandle();
     expect(secondRadio).not.toBeNull();
 
     const questionNav = await openQuestionNav(page);
     await questionNav.getByRole('button', { name: '第 1 题，已作答', exact: true }).click();
     await expect(page.getByRole('heading', { name: '请选择关系型数据库' })).toBeVisible();
     expect(await secondRadio!.evaluate((element) => element.isConnected)).toBe(false);
-    await expect(page.locator('.answer-option__text')).toHaveText(['SQLite', '文本文件']);
-    await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
-    await expect(page.getByLabel('文本文件', { exact: true })).not.toBeChecked();
+    await expect(page.locator('.answer-option__text')).toHaveText(['A. SQLite', 'B. 文本文件']);
+    await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('B. 文本文件', { exact: true })).not.toBeChecked();
 
     await page.getByRole('button', { name: '下一题', exact: true }).click();
-    await expect(page.locator('.answer-option__text')).toHaveText(['随机性', '原子性', '无序性']);
-    await expect(page.getByLabel('原子性', { exact: true })).toBeChecked();
-    await expect(page.getByLabel('随机性', { exact: true })).not.toBeChecked();
+    await expect(page.locator('.answer-option__text')).toHaveText([
+      'A. 随机性',
+      'B. 原子性',
+      'C. 无序性',
+    ]);
+    await expect(page.getByLabel('B. 原子性', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('A. 随机性', { exact: true })).not.toBeChecked();
     await expect(page).toHaveURL(/\?question=2$/);
     await page.reload();
     await expect(page.getByRole('heading', { name: '请选择事务性质' })).toBeVisible();
-    await expect(page.getByLabel('原子性', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('B. 原子性', { exact: true })).toBeChecked();
     await openQuestionNav(page);
     await questionNav.getByRole('button', { name: '第 1 题，已作答', exact: true }).click();
-    await expect(page.getByLabel('SQLite', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('A. SQLite', { exact: true })).toBeChecked();
     await expect(page.getByRole('radio', { checked: true })).toHaveCount(1);
     await firstRadio!.dispose();
     await secondRadio!.dispose();
