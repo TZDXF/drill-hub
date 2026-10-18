@@ -1,0 +1,26 @@
+{
+  "name": "@drill-hub/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "tauri": "tauri",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build"
+  },
+  "dependencies": {
+    "@drill-hub/contracts": "workspace:*",
+    "@drill-hub/learning-client": "workspace:*",
+    "@tauri-apps/api": "2.12.4",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.13"
+  }
+}

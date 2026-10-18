@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Drill Hub">
+  <defs>
+    <linearGradient id="background" x1="148" y1="96" x2="876" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17514C" />
+      <stop offset="1" stop-color="#092A2D" />
+    </linearGradient>
+    <linearGradient id="pages" x1="220" y1="350" x2="804" y2="750" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFDF5" />
+      <stop offset="1" stop-color="#EDE1C8" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#background)" />
+  <rect x="42" y="42" width="940" height="940" rx="186" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="12" />
+
+  <path d="M500 452C414 372 286 338 160 380V722C286 680 414 716 500 794Z" fill="#00191C" opacity="0.28" transform="translate(0 18)" />
+  <path d="M500 452C586 372 714 338 840 380V722C714 680 586 716 500 794Z" fill="#00191C" opacity="0.28" transform="translate(0 18)" />
+
+  <path d="M500 430C416 350 286 316 160 358V700C286 658 416 694 500 772Z" fill="url(#pages)" />
+  <path d="M500 430C584 350 714 316 840 358V700C714 658 584 694 500 772Z" fill="url(#pages)" />
+
+  <path d="M198 398C300 372 398 398 462 454" fill="none" stroke="#D7C7A8" stroke-width="10" stroke-linecap="round" />
+  <path d="M826 398C724 372 626 398 562 454" fill="none" stroke="#D7C7A8" stroke-width="10" stroke-linecap="round" />
+
+  <path
+    d="M270 465H342C414 465 452 525 452 585C452 651 412 690 340 690H270ZM324 516V639H340C374 639 398 620 398 585C398 544 378 516 342 516Z"
+    fill="#0B3434"
+    fill-rule="evenodd"
+  />
+  <path d="M574 465H626V550H702V465H754V690H702V596H626V690H574Z" fill="#0B3434" />
+
+  <path d="M500 432V772" fill="none" stroke="#E1AD46" stroke-width="16" stroke-linecap="round" />
+  <circle cx="500" cy="398" r="15" fill="#E1AD46" />
+</svg>

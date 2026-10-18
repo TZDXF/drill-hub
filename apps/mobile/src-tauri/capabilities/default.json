@@ -1,0 +1,7 @@
+{
+  "identifier": "default",
+  "description": "The bundled Android webview is granted no native plugin permissions.",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": []
+}

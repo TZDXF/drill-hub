@@ -1,0 +1,630 @@
+import type {
+  Answer,
+  Attempt,
+  AttemptItemSnapshot,
+  DiscoveredProviderModel,
+  GradeResult,
+  GradingJob,
+  GradingProfile,
+  ProviderModel,
+  QuestionDefinition,
+} from '@drill-hub/contracts';
+import type { AppContext, GradingService } from '../../core/context.js';
+import { AppError } from '../../core/errors.js';
+import { baseRecord, now } from '../../core/ids.js';
+import type { Database } from '../../db/database.js';
+import type { ModelConnectionRecord, ModelConnectionVersionRecord } from '../../db/records.js';
+import { refreshAttempt } from '../learning/helpers.js';
+import {
+  callChatCompletions,
+  listChatCompletionsModels,
+  ProviderError,
+  PROMPT_VERSION,
+  testChatCompletionsConnection,
+} from './chat-completions.js';
+import {
+  gradeBlankRubric,
+  gradeRubric,
+  gradeRule,
+  isBlankAnswer,
+  validateAnswer,
+  validateQuestion,
+  validateRubricScore,
+  zeroCriterionEvaluations,
+} from './engine.js';
+
+export interface GradingServiceOptions {
+  fetchImpl?: typeof fetch;
+  pollIntervalMs?: number;
+  retryBaseDelayMs?: number;
+  leaseMs?: number;
+  maxJobsPerRun?: number;
+}
+
+interface ClaimedJob {
+  job: GradingJob;
+  leaseRevision: number;
+  item: AttemptItemSnapshot;
+  baseGradeVersion: number;
+  maxRetries: number;
+}
+
+interface ResolvedConfig {
+  profile: GradingProfile;
+  providerModel: ProviderModel;
+  connection: ModelConnectionRecord;
+  version: ModelConnectionVersionRecord;
+}
+
+const CONFIG_ERROR_CODES = new Set([
+  'DEFAULT_PROFILE_NOT_CONFIGURED',
+  'GRADING_PROFILE_NOT_FOUND',
+  'PROVIDER_MODEL_NOT_FOUND',
+  'MODEL_CONNECTION_NOT_FOUND',
+  'CONNECTION_VERSION_NOT_FOUND',
+  'PROVIDER_DISABLED',
+  'MODEL_DISABLED',
+  'STALE_MODEL_VERIFICATION',
+  'UNSUPPORTED_PROMPT_VERSION',
+  'SECRET_UNAVAILABLE',
+]);
+
+function decryptApiKey(ctx: AppContext, envelope: string): string {
+  return envelope ? ctx.vault.decrypt(envelope) : '';
+}
+function configError(code: string): never {
+  throw new ProviderError(code, false);
+}
+
+function safeExecutionError(error: unknown): {
+  code: string;
+  retryable: boolean;
+  blockedConfig: boolean;
+} {
+  if (error instanceof ProviderError) {
+    return {
+      code: error.code,
+      retryable: error.retryable,
+      blockedConfig: CONFIG_ERROR_CODES.has(error.code),
+    };
+  }
+  if (error instanceof AppError) {
+    return {
+      code: error.code,
+      retryable: error.code !== 'SECRET_UNAVAILABLE',
+      blockedConfig: CONFIG_ERROR_CODES.has(error.code),
+    };
+  }
+  return { code: 'MODEL_OUTPUT_INVALID', retryable: true, blockedConfig: false };
+}
+
+function activeJob(job: GradingJob): boolean {
+  return (
+    job.status === 'queued' ||
+    job.status === 'running' ||
+    job.status === 'retry_wait' ||
+    job.status === 'blocked_config' ||
+    job.status === 'blocked_budget'
+  );
+}
+
+function syntheticTestDefinition(): QuestionDefinition {
+  return {
+    type: 'short_answer',
+    stem: ' synthetic rubric capability check: judge whether the answer states all-or-nothing transaction behavior.',
+    gradingMode: 'model_rubric',
+    referenceAnswer: 'All operations succeed together or roll back together.',
+    rubric: {
+      version: 1,
+      criteria: [
+        {
+          id: 'atomicity',
+          description:
+            'The answer explicitly states that operations succeed together or roll back together.',
+          weight: 1,
+          levels: [
+            { id: 'not_met', creditBps: 0, description: 'The statement is absent.' },
+            { id: 'met', creditBps: 10000, description: 'The statement is present.' },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+const syntheticTestAnswer: Answer = {
+  text: 'All operations succeed together or roll back together.',
+};
+
+export class GradingServiceImpl implements GradingService {
+  private timer: ReturnType<typeof setInterval> | undefined;
+  private activeRun: Promise<void> | undefined;
+  private started = false;
+  private readonly pollIntervalMs: number;
+  private readonly retryBaseDelayMs: number;
+  private readonly leaseMs: number;
+  private readonly maxJobsPerRun: number;
+
+  constructor(
+    private readonly ctx: AppContext,
+    private readonly options: GradingServiceOptions = {},
+  ) {
+    this.pollIntervalMs = options.pollIntervalMs ?? 500;
+    this.retryBaseDelayMs = options.retryBaseDelayMs ?? 1_000;
+    this.leaseMs = options.leaseMs ?? 180_000;
+    this.maxJobsPerRun = options.maxJobsPerRun ?? 25;
+  }
+
+  async gradeLockedItem(db: Database, attempt: Attempt, item: AttemptItemSnapshot): Promise<void> {
+    if (attempt.voidedAt !== null) throw new AppError(409, 'ATTEMPT_VOIDED', '作答已作废');
+    const definition = item.definition;
+    validateQuestion(definition);
+    if (definition.gradingMode !== 'rule') validateRubricScore(definition, item.maxScore);
+    if (item.answer !== null) validateAnswer(definition, item.answer);
+    item.generation += 1;
+    if (definition.gradingMode === 'rule') {
+      item.grade = gradeRule(definition, item.answer, item.maxScore);
+      item.gradingStatus = 'completed';
+      return;
+    }
+    if (isBlankAnswer(definition, item.answer)) {
+      item.grade = gradeBlankRubric(definition, item.answer, item.maxScore);
+      item.gradingStatus = 'completed';
+      return;
+    }
+    item.gradingStatus = 'pending';
+    if (definition.gradingMode === 'external_rubric') return;
+
+    const settings = await db.get('settings', 'global');
+    const profile = settings?.defaultGradingProfileId
+      ? await db.get('gradingProfiles', settings.defaultGradingProfileId)
+      : undefined;
+    const timestamp = now();
+    await db.insert('gradingJobs', {
+      ...baseRecord(),
+      ownerId: attempt.ownerId,
+      attemptId: attempt.id,
+      itemId: item.id,
+      generation: item.generation,
+      profileId: profile?.id ?? null,
+      status: profile ? 'queued' : 'blocked_config',
+      attemptCount: 0,
+      nextRunAt: timestamp,
+      leaseExpiresAt: null,
+      lastErrorCode: profile ? null : 'DEFAULT_PROFILE_NOT_CONFIGURED',
+    });
+  }
+
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+    void this.runOnce().catch(() => undefined);
+    this.timer = setInterval(() => {
+      void this.runOnce().catch(() => undefined);
+    }, this.pollIntervalMs);
+    this.timer.unref();
+  }
+
+  stop(): void {
+    this.started = false;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+  }
+
+  runOnce(): Promise<void> {
+    if (this.activeRun) return this.activeRun;
+    const run = this.drainQueue();
+    this.activeRun = run;
+    void run
+      .finally(() => {
+        if (this.activeRun === run) this.activeRun = undefined;
+      })
+      .catch(() => undefined);
+    return run;
+  }
+
+  private async drainQueue(): Promise<void> {
+    await this.recoverExpiredLeases();
+    for (let count = 0; count < this.maxJobsPerRun; count += 1) {
+      const claimed = await this.claimNextJob();
+      if (!claimed) return;
+      await this.executeClaimedJob(claimed);
+    }
+  }
+
+  private async cancelVoidedJob(
+    tx: Database,
+    job: GradingJob,
+    attempt: Attempt | undefined,
+  ): Promise<boolean> {
+    if (!attempt || attempt.voidedAt === null) return false;
+    await tx.update('gradingJobs', job.id, job.revision, {
+      status: 'cancelled',
+      leaseExpiresAt: null,
+      lastErrorCode: 'ATTEMPT_VOIDED',
+    });
+    return true;
+  }
+
+  private async recoverExpiredLeases(): Promise<void> {
+    const active = (await this.ctx.db.list('gradingJobs')).filter(activeJob);
+    for (const candidate of active) {
+      await this.ctx.db.transaction(async (tx) => {
+        const job = await tx.get('gradingJobs', candidate.id);
+        if (!job || !activeJob(job) || job.revision !== candidate.revision) return;
+        const attempt = await tx.get('attempts', job.attemptId);
+        // Do not refresh a voided attempt: that would rebuild personal projections.
+        if (await this.cancelVoidedJob(tx, job, attempt)) return;
+        if (
+          job.status !== 'running' ||
+          !job.leaseExpiresAt ||
+          Date.parse(job.leaseExpiresAt) > Date.now()
+        )
+          return;
+        await tx.update('gradingJobs', job.id, job.revision, {
+          status: 'queued',
+          nextRunAt: now(),
+          leaseExpiresAt: null,
+          lastErrorCode: 'WORKER_LEASE_EXPIRED',
+        });
+        const item = attempt?.items.find((candidateItem) => candidateItem.id === job.itemId);
+        if (
+          attempt &&
+          item &&
+          item.generation === job.generation &&
+          item.gradingStatus === 'running'
+        ) {
+          item.gradingStatus = 'pending';
+          await refreshAttempt(tx, attempt);
+        }
+      });
+    }
+  }
+
+  private async claimNextJob(): Promise<ClaimedJob | null> {
+    return this.ctx.db.transaction(async (tx) => {
+      const jobs = await tx.list('gradingJobs');
+      const timestamp = Date.now();
+      const candidates = jobs
+        .filter(
+          (job) =>
+            (job.status === 'queued' || job.status === 'retry_wait') &&
+            Date.parse(job.nextRunAt) <= timestamp,
+        )
+        .sort(
+          (left, right) =>
+            left.nextRunAt.localeCompare(right.nextRunAt) ||
+            left.createdAt.localeCompare(right.createdAt),
+        );
+      for (const candidate of candidates) {
+        const attempt = await tx.get('attempts', candidate.attemptId);
+        if (await this.cancelVoidedJob(tx, candidate, attempt)) continue;
+        const item = attempt?.items.find((candidateItem) => candidateItem.id === candidate.itemId);
+        if (
+          !attempt ||
+          !item ||
+          item.generation !== candidate.generation ||
+          item.definition.gradingMode !== 'model_rubric' ||
+          item.lockedAt === null
+        ) {
+          await tx.update('gradingJobs', candidate.id, candidate.revision, {
+            status: 'failed',
+            leaseExpiresAt: null,
+            lastErrorCode: 'ATTEMPT_ITEM_NOT_FOUND',
+          });
+          continue;
+        }
+        const profile = candidate.profileId
+          ? await tx.get('gradingProfiles', candidate.profileId)
+          : undefined;
+        const leaseDuration = Math.max(this.leaseMs, (profile?.timeoutMs ?? 0) + 10_000);
+        const claimedJob = await tx.update('gradingJobs', candidate.id, candidate.revision, {
+          status: 'running',
+          attemptCount: candidate.attemptCount + 1,
+          leaseExpiresAt: new Date(Date.now() + leaseDuration).toISOString(),
+          lastErrorCode: null,
+        });
+        const baseGradeVersion = item.grade?.version ?? 0;
+        item.gradingStatus = 'running';
+        await refreshAttempt(tx, attempt);
+        return {
+          job: candidate,
+          leaseRevision: claimedJob.revision,
+          item: structuredClone(item),
+          baseGradeVersion,
+          maxRetries: profile?.maxRetries ?? 0,
+        };
+      }
+      return null;
+    });
+  }
+
+  private async resolveConfig(profileId: string | null): Promise<ResolvedConfig> {
+    if (!profileId) configError('DEFAULT_PROFILE_NOT_CONFIGURED');
+    const profile = await this.ctx.db.get('gradingProfiles', profileId);
+    if (!profile) configError('GRADING_PROFILE_NOT_FOUND');
+    if (profile.promptVersion !== PROMPT_VERSION) configError('UNSUPPORTED_PROMPT_VERSION');
+    const providerModel = await this.ctx.db.get('providerModels', profile.providerModelId);
+    if (!providerModel) configError('PROVIDER_MODEL_NOT_FOUND');
+    const version = await this.ctx.db.get('modelConnectionVersions', profile.connectionVersionId);
+    if (!version) configError('CONNECTION_VERSION_NOT_FOUND');
+    const connection = await this.ctx.db.get('modelConnections', version.connectionId);
+    if (!connection) configError('MODEL_CONNECTION_NOT_FOUND');
+    if (providerModel.connectionId !== connection.id || version.connectionId !== connection.id)
+      configError('CONNECTION_VERSION_NOT_FOUND');
+    if (!connection.enabled) configError('PROVIDER_DISABLED');
+    if (!providerModel.enabled) configError('MODEL_DISABLED');
+    return { profile, providerModel, connection, version };
+  }
+
+  private async executeClaimedJob(claimed: ClaimedJob): Promise<void> {
+    let config: ResolvedConfig;
+    try {
+      config = await this.resolveConfig(claimed.job.profileId);
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        await this.failClaimedJob(claimed, safeExecutionError(error));
+        return;
+      }
+      throw error;
+    }
+
+    let grade: GradeResult;
+    try {
+      if (!claimed.item.answer) throw new ProviderError('ANSWER_NOT_AVAILABLE', false);
+      validateQuestion(claimed.item.definition);
+      validateAnswer(claimed.item.definition, claimed.item.answer);
+      validateRubricScore(claimed.item.definition, claimed.item.maxScore);
+      const rubric = claimed.item.definition.rubric;
+      if (!rubric) throw new ProviderError('RUBRIC_REQUIRED', false);
+      const blankCriteria = new Set<string>();
+      if (claimed.item.definition.type === 'fill_blank' && 'slots' in claimed.item.answer) {
+        for (const criterion of rubric.criteria) {
+          if (criterion.slotId && claimed.item.answer.slots[criterion.slotId]?.trim() === '')
+            blankCriteria.add(criterion.id);
+        }
+      }
+      const pendingCriterionIds = rubric.criteria
+        .filter((criterion) => !blankCriteria.has(criterion.id))
+        .map((criterion) => criterion.id);
+      const apiKey = decryptApiKey(this.ctx, config.version.encryptedApiKey);
+      const output = await callChatCompletions({
+        baseUrl: config.version.baseUrl,
+        apiKey,
+        modelKey: config.profile.modelIdSnapshot,
+        definition: claimed.item.definition,
+        answer: claimed.item.answer,
+        pendingCriterionIds,
+        timeoutMs: config.profile.timeoutMs,
+        fetchImpl: this.options.fetchImpl,
+      });
+      const automatic = zeroCriterionEvaluations(claimed.item.definition).filter((evaluation) =>
+        blankCriteria.has(evaluation.criterionId),
+      );
+      grade = gradeRubric(
+        claimed.item.definition,
+        claimed.item.answer,
+        claimed.item.maxScore,
+        [...automatic, ...output.criteria],
+        {
+          source: 'model',
+          version: claimed.baseGradeVersion + 1,
+          feedback: output.summary,
+          modelId: output.modelId,
+        },
+      );
+    } catch (error) {
+      await this.failClaimedJob(claimed, safeExecutionError(error));
+      return;
+    }
+
+    try {
+      await this.ctx.db.transaction(async (tx) => {
+        const job = await tx.get('gradingJobs', claimed.job.id);
+        if (
+          !job ||
+          job.status !== 'running' ||
+          job.revision !== claimed.leaseRevision ||
+          job.generation !== claimed.job.generation
+        )
+          return;
+        const attempt = await tx.get('attempts', job.attemptId);
+        if (await this.cancelVoidedJob(tx, job, attempt)) return;
+        const item = attempt?.items.find((candidate) => candidate.id === job.itemId);
+        if (
+          !attempt ||
+          !item ||
+          item.generation !== job.generation ||
+          (item.grade?.version ?? 0) !== claimed.baseGradeVersion ||
+          item.definition.gradingMode !== 'model_rubric'
+        ) {
+          await tx.update('gradingJobs', job.id, job.revision, {
+            status: 'failed',
+            leaseExpiresAt: null,
+            lastErrorCode: 'STALE_GRADING_RESULT',
+          });
+          return;
+        }
+        if (item.grade) item.gradingHistory = [...item.gradingHistory, item.grade];
+        item.grade = grade;
+        item.gradingStatus = 'completed';
+        await refreshAttempt(tx, attempt);
+        await tx.update('gradingJobs', job.id, job.revision, {
+          status: 'succeeded',
+          leaseExpiresAt: null,
+          lastErrorCode: null,
+        });
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 409) return;
+      throw error;
+    }
+  }
+
+  private async failClaimedJob(
+    claimed: ClaimedJob,
+    failure: { code: string; retryable: boolean; blockedConfig: boolean },
+  ): Promise<void> {
+    try {
+      await this.ctx.db.transaction(async (tx) => {
+        const job = await tx.get('gradingJobs', claimed.job.id);
+        if (
+          !job ||
+          job.status !== 'running' ||
+          job.revision !== claimed.leaseRevision ||
+          job.generation !== claimed.job.generation
+        )
+          return;
+        const attempt = await tx.get('attempts', job.attemptId);
+        if (await this.cancelVoidedJob(tx, job, attempt)) return;
+        const canRetry =
+          failure.retryable && !failure.blockedConfig && job.attemptCount <= claimed.maxRetries;
+        const status: GradingJob['status'] = failure.blockedConfig
+          ? 'blocked_config'
+          : canRetry
+            ? 'retry_wait'
+            : 'failed';
+        const delay = Math.min(
+          60_000,
+          this.retryBaseDelayMs * 2 ** Math.max(0, job.attemptCount - 1),
+        );
+        await tx.update('gradingJobs', job.id, job.revision, {
+          status,
+          nextRunAt: new Date(Date.now() + (canRetry ? delay : 0)).toISOString(),
+          leaseExpiresAt: null,
+          lastErrorCode: failure.code,
+        });
+        const item = attempt?.items.find((candidate) => candidate.id === job.itemId);
+        if (attempt && item && item.generation === job.generation) {
+          item.gradingStatus = status === 'failed' ? 'failed' : 'pending';
+          await refreshAttempt(tx, attempt);
+        }
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 409) return;
+      throw error;
+    }
+  }
+
+  async testConnection(connectionId: string): Promise<void> {
+    const connection = await this.ctx.db.get('modelConnections', connectionId);
+    if (!connection) throw new AppError(404, 'NOT_FOUND', '模型连接不存在');
+    const version = await this.ctx.db.findOne('modelConnectionVersions', {
+      connectionId: connection.id,
+      configVersion: connection.configVersion,
+    });
+    if (!version) throw new AppError(422, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在');
+    await this.testConnectionConfig({
+      baseUrl: version.baseUrl,
+      apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
+    });
+  }
+
+  async testConnectionConfig(input: { baseUrl: string; apiKey: string }): Promise<void> {
+    await testChatCompletionsConnection({
+      ...input,
+      timeoutMs: 15_000,
+      fetchImpl: this.options.fetchImpl,
+    });
+  }
+
+  async discoverProviderModels(connectionId: string): Promise<DiscoveredProviderModel[]> {
+    const connection = await this.ctx.db.get('modelConnections', connectionId);
+    if (!connection) throw new AppError(404, 'NOT_FOUND', '模型连接不存在');
+    const version = await this.ctx.db.findOne('modelConnectionVersions', {
+      connectionId: connection.id,
+      configVersion: connection.configVersion,
+    });
+    if (!version) throw new AppError(422, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在');
+    return listChatCompletionsModels({
+      baseUrl: version.baseUrl,
+      apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
+      timeoutMs: 15_000,
+      fetchImpl: this.options.fetchImpl,
+    });
+  }
+
+  async testProviderModel(providerModelId: string): Promise<GradeResult> {
+    const initial = await this.ctx.db.get('providerModels', providerModelId);
+    if (!initial) throw new AppError(404, 'NOT_FOUND', '模型不存在');
+    const connection = await this.ctx.db.get('modelConnections', initial.connectionId);
+    if (!connection) throw new AppError(404, 'NOT_FOUND', '模型连接不存在');
+    const version = await this.ctx.db.findOne('modelConnectionVersions', {
+      connectionId: connection.id,
+      configVersion: connection.configVersion,
+    });
+    if (!version) throw new AppError(422, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在');
+    try {
+      const output = await callChatCompletions({
+        baseUrl: version.baseUrl,
+        apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
+        modelKey: initial.modelKey,
+        definition: syntheticTestDefinition(),
+        answer: syntheticTestAnswer,
+        timeoutMs: 30_000,
+        fetchImpl: this.options.fetchImpl,
+      });
+      const grade = gradeRubric(
+        syntheticTestDefinition(),
+        syntheticTestAnswer,
+        '1',
+        output.criteria,
+        {
+          source: 'model',
+          feedback: output.summary,
+          modelId: output.modelId,
+        },
+      );
+      await this.ctx.db.transaction(async (tx) => {
+        const model = await tx.get('providerModels', initial.id);
+        const currentConnection = await tx.get('modelConnections', initial.connectionId);
+        if (
+          !model ||
+          !currentConnection ||
+          model.revision !== initial.revision ||
+          currentConnection.configVersion !== version.configVersion ||
+          model.modelKey !== initial.modelKey
+        ) {
+          throw new AppError(409, 'VERSION_CONFLICT', '模型配置已变化，请重新测试');
+        }
+        await tx.update('providerModels', model.id, model.revision, {
+          verifiedConfigVersion: version.configVersion,
+          testError: null,
+        });
+      });
+      return grade;
+    } catch (error) {
+      const failure = safeExecutionError(error);
+      const current = await this.ctx.db.get('providerModels', initial.id);
+      if (current && current.revision === initial.revision) {
+        await this.ctx.db.update('providerModels', current.id, current.revision, {
+          verifiedConfigVersion: null,
+          testError: failure.code,
+        });
+      }
+      if (error instanceof AppError || error instanceof ProviderError) throw error;
+      throw new ProviderError(failure.code, failure.retryable);
+    }
+  }
+}
+
+const runtimes = new WeakMap<AppContext, GradingServiceImpl>();
+
+export function createGradingService(
+  ctx: AppContext,
+  options: GradingServiceOptions = {},
+): GradingService {
+  const service = new GradingServiceImpl(ctx, options);
+  runtimes.set(ctx, service);
+  return service;
+}
+
+export function gradingRuntime(ctx: AppContext): GradingServiceImpl {
+  const service = runtimes.get(ctx);
+  if (!service) throw new Error('Grading service has not been initialized');
+  return service;
+}
+
+export function isActiveGradingJob(job: GradingJob): boolean {
+  return activeJob(job);
+}

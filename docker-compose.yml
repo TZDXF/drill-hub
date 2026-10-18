@@ -1,0 +1,24 @@
+services:
+  drill-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: drill-hub:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - '${PORT:-3000}:${PORT:-3000}'
+    environment:
+      NODE_ENV: production
+      HOST: '${HOST:-0.0.0.0}'
+      PORT: '${PORT:-3000}'
+      DATABASE_PATH: /app/data/drill-hub.sqlite
+      PUBLIC_URL: '${PUBLIC_URL:-http://localhost:3000}'
+      DRILL_HUB_ENCRYPTION_KEY: '${DRILL_HUB_ENCRYPTION_KEY:-}'
+      ADMIN_USERNAME: '${ADMIN_USERNAME:-}'
+      ADMIN_PASSWORD: '${ADMIN_PASSWORD:-}'
+    volumes:
+      - drill-hub-data:/app/data
+
+volumes:
+  drill-hub-data:

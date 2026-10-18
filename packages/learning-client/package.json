@@ -1,0 +1,28 @@
+{
+  "name": "@drill-hub/learning-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./style.css": "./src/style.css"
+  },
+  "scripts": {
+    "build": "vue-tsc --noEmit -p tsconfig.json",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@drill-hub/api-client": "workspace:*",
+    "@drill-hub/contracts": "workspace:*",
+    "@iconify-icons/lucide": "2.0.21",
+    "@iconify/vue": "5.0.3",
+    "reka-ui": "2.11.0",
+    "vue": "3.5.44",
+    "vue-router": "4.6.4",
+    "vue-stream-markdown": "2.1.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.13"
+  }
+}

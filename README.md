@@ -1,0 +1,167 @@
+# Drill Hub
+
+面向 Agent 协作的学习工作台：Agent 在对话侧制定学习计划、编写内容与题目，用户在 Web 或 Android 应用内学习、练习、考试和复习错题。
+
+目前已具备可运行 MVP，不仅是设计文档；尚未完成生产环境安全审计、真实模型效果评估和 Android APK 验收。
+
+## 已实现
+
+- 多用户独立学习空间；管理员创建账号、停用账号与重置密码。
+- 学习主题、阶段计划、Markdown 内容、练习与限时考试。
+- 单选、多选、判断、填空、简答；服务端保存答案、控制考试截止与冻结提交。
+- 规则判分；内部模型按得分项等级评分，服务端确定性计算分数；显式外部 Agent rubric 批改与模型重评。
+- 系统设置中管理供应商连接、模型、评分配置和默认评分模型；可从供应商 `/models` 接口自动发现并批量导入模型，密钥在服务端加密保存。
+- 持久评分队列、失败重试、成绩报告、错题集、重练、归档与恢复。不开放永久删除和手工改分接口。
+- Agent 访问令牌、最小权限 scope 和可分发 Skill。
+- 支持正式/测试作答和保留历史的作答作废；测试及已作废作答不计学习统计、错题或计划进度。完全未答由系统记零分并单列，不增加答错次数；全空练习不完成任务，考试仍按提交/超时结算。
+- Agent 可为指定练习或考试生成限时免登录答题链接；链接秘钥只保存哈希，免登录作答归属链接所属用户，正式有效作答计入个人统计、错题及明确关联的计划任务；持链接者的作答都会记到所属用户名下，请勿转发。
+- 手机浏览器布局，以及 Tauri 2 Android 外壳：先填写 HTTP/HTTPS 服务器地址、验证连接，再登录。
+- **Iconify 离线图标**：使用 `@iconify/vue/offline` 和 Lucide 单图标数据静态导入，随 Web/Android 资源打包，不访问 Iconify API/CDN。
+- Vitest、Playwright、Oxlint、Oxfmt 与 CI 配置。
+
+## 目录
+
+```text
+apps/server              Node.js + Fastify + SQLite + TypeORM
+apps/web                 Vue 3 Web 入口
+apps/mobile              Tauri 2 Android 外壳
+packages/contracts       共享类型与 API 契约
+packages/api-client      鉴权、CSRF、超时与取消请求
+packages/learning-client 共用 Vue 3 + Reka UI 学习界面
+skills/drill-hub         外部 Agent Skill 与实际 API 参考
+scripts                  隔离 E2E 测试服务
+tests/e2e               真实浏览器桌面/手机视口测试
+```
+
+## 本地启动
+
+需要 Node.js 24 和 pnpm 12.4.1。以下命令在仓库根目录运行：
+
+```powershell
+pnpm install --frozen-lockfile
+Copy-Item .env.example .env # 仅首次创建；已有 .env 时不要覆盖
+```
+
+在 `.env` 中设置自选的 `ADMIN_USERNAME` 与至少 10 个字符的 `ADMIN_PASSWORD`。没有内置账号或默认密码。数据库为空时，启动服务自动初始化第一个管理员；之后这些变量不会重置已有账号，初始化后应从环境文件中移除管理员密码。
+
+```powershell
+pnpm dev
+```
+
+- 本机 Web 开发入口：`http://127.0.0.1:3000`。`pnpm dev` 会监听 Web 源码并在变化后自动重建，页面随后自动刷新。
+- 局域网 Web 入口：`http://<开发机局域网 IP>:3000`。开发环境默认监听 `0.0.0.0:3000`，同一局域网内的浏览器可直接访问；首次启动时如有需要，请在系统防火墙中允许 Node.js 的专用网络访问。
+- 服务端同时提供 Web 开发产物和 `/api/v1` 接口，允许所有来源的跨域访问；Web 写操作仍需要 CSRF 校验。
+- 默认数据库：仓库根 `.data/drill-hub.sqlite`，自动执行显式 TypeORM 迁移，不使用 `synchronize`。
+- 开发时未设置主密钥，会在 `.data/dev-encryption-key` 创建本地主密钥；不要将 `.data` 或 `.env` 提交到版本控制。
+- 局域网开发仅用于可信网络。不要将开发服务器暴露到公网；如需仅本机访问，将 `.env` 中的 `HOST` 改为 `127.0.0.1`。
+
+单独启动可使用 `pnpm dev:web`、`pnpm dev:server`、`pnpm dev:mobile`。`pnpm dev:web` 使用 Vite 开发服务器（默认监听 `0.0.0.0:5173`，本机入口 `http://127.0.0.1:5173`，局域网入口 `http://<开发机局域网 IP>:5173`）并代理 `/api`，需要另行启动服务端。额外创建管理员可运行 `pnpm --filter @drill-hub/server admin:create`，凭据从环境变量读取。
+
+## 构建与服务器部署
+
+```powershell
+pnpm build
+# 生产环境先设置 NODE_ENV、PUBLIC_URL 和 DRILL_HUB_ENCRYPTION_KEY
+pnpm --filter @drill-hub/server start
+```
+
+服务端同时提供 `apps/web/dist` 静态文件、SPA 路由与 `/api/v1` 接口。可部署在独立域名的根路径并直接使用 HTTP 或 HTTPS；公网部署仍建议经反向代理提供 HTTPS。不要直接将开发服务器暴露公网。
+
+主要环境项：
+
+| 变量                       | 作用                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `HOST` / `PORT`            | 开发默认 `0.0.0.0:3000`，生产默认 `127.0.0.1:3000`；按局域网或反向代理拓扑调整                    |
+| `DATABASE_PATH`            | SQLite 数据库路径，默认 `.data/drill-hub.sqlite`                                                  |
+| `NODE_ENV`                 | 生产设置为 `production`，会要求显式主密钥；HTTPS 部署使用 Secure Cookie                           |
+| `PUBLIC_URL`               | 公开 HTTP/HTTPS 地址，用于 Secure Cookie 判断和生成完整答题链接，例如 `https://study.example.org` |
+| `DRILL_HUB_ENCRYPTION_KEY` | 64 位十六进制主密钥，生产必须设置并妥善备份                                                       |
+
+可用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成主密钥。数据库和主密钥需成对备份，丢失主密钥将无法解密已保存的供应商凭据。使用 SQLite 在线备份机制或停服备份，不要在运行时只复制主文件而忽略 WAL。
+
+评分适配器当前只支持 `chat_completions` 及 `rubric-v1`；兼容端点也必须通过实际连接与模型探测，不能保证所有所谓兼容供应商都可用。生产应配合模型域名/出口网络白名单，由部署网络边界承担出站访问控制。
+
+## Docker Compose 部署
+
+仓库根目录提供多阶段 `Dockerfile` 和 `docker-compose.yml`。镜像以非 root 用户运行，服务端直接提供 Web 静态文件和 `/api/v1`，SQLite 数据保存在命名卷 `drill-hub-data` 中。
+
+首次启动前创建环境文件，并设置至少以下项目：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+- `DRILL_HUB_ENCRYPTION_KEY`：生产必填的 64 位十六进制主密钥，可使用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成。
+- `PUBLIC_URL`：浏览器实际访问的 HTTP/HTTPS 地址；本地默认 `http://localhost:3000`，局域网或公网部署必须改成实际地址。
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：仅在空数据库首次启动时创建管理员；初始化完成后应从 `.env` 删除管理员密码并重建容器。
+- `HOST` / `PORT`：容器监听地址与端口，Compose 使用同一个 `PORT` 映射到宿主机；默认 `0.0.0.0:3000`。Docker 部署通常保持 `HOST=0.0.0.0`，修改 `PORT` 后要同步调整 `PUBLIC_URL`。
+
+启动或更新部署：
+
+```powershell
+docker compose up -d --build
+docker compose ps
+docker compose logs -f drill-hub
+```
+
+本地访问 `http://localhost:3000`（或配置的地址）。`docker compose down` 不会删除命名卷；数据库与主密钥必须成对备份，备份 SQLite 时使用在线备份机制或停服备份，不要只复制运行中的主数据库文件。公网部署建议在容器前配置 HTTPS 反向代理，并将 `PUBLIC_URL` 设置为公开 HTTPS 地址。
+
+### 统一公开地址
+
+`PUBLIC_URL` 是对外分享的**部署根地址**，例如 `https://study.example.org` 或
+`http://192.168.1.20:3000`，不是 `/api/v1` 接口地址。允许 HTTP/HTTPS；末尾斜杠会移除，
+路径前缀会保留（例如 `https://study.example.org/drill`）。使用路径前缀时，需自行配置反向代理
+及前端部署，使该前缀下的页面、`/api/v1` 和 `/downloads` 均可访问；设置此变量本身不会重挂载路由。
+不允许凭据、查询参数或片段，非法配置会阻止服务启动，错误不会回显配置原文。
+
+`GET /api/v1/server-info` 返回 `publicBaseUrl`、`publicUrlSource`（`configured` 或 `request`）
+和 `isLoopback`。未设置或留空时，公开地址取自当前请求的协议与 Host，不信任转发头；
+反向代理后应显式设置 `PUBLIC_URL`，避免把内部地址发给 Agent。
+
+“Agent 配置帮助”使用上述公开地址生成接入说明、环境变量和 Skill ZIP 下载链接，并在回环地址时提示。
+这不会修改浏览器或 Android 当前连接的 API 地址，也不保证该地址能从公网访问；
+`localhost`、`127.0.0.0/8`、`[::1]` 等回环地址只能在对应主机使用，远程 Agent 需可达的部署地址。
+
+## Agent 使用流程
+
+1. 用户登录应用，在“Agent 授权”查看配置帮助，可复制当前服务器的接入说明、环境变量与只读验证请求，并按学习规划或只读权限预设新建令牌。授权列表可为每个有效令牌复制完整密钥，帮助示例始终使用占位符。
+2. 将服务器地址和令牌通过 Agent 的安全配置提供，不要放入学习材料、Git 或日志。
+3. 在“Agent 授权”的“Agent 配置帮助”中点击“下载 Drill Hub Skill（ZIP）”，或访问当前服务器的 `/downloads/drill-hub-skill.zip`（部署在路径前缀下时保留前缀）；解压后将完整的 `drill-hub/` 目录提供给外部 Agent。也可直接从项目仓库加载 `skills/drill-hub/SKILL.md`；实际接口索引见 [API 参考](skills/drill-hub/references/api.md)，按任务加载对应资源页（请求、响应、scope 和示例）；令牌管理单独说明。
+4. Agent 创建主题、内容、计划和题目/试卷；用户可登录后在应用中作答，也可通过 Agent 生成的临时链接免登录作答。
+5. Agent 按需读取报告与错题；只有 `external_rubric` 题可通过 `grade:write` 提交逐项等级，模型题由服务端调用配置的模型评分。
+
+内置聊天 Agent / Pi、云端主动回调和 Webhook 尚未实现。
+
+## 验证命令
+
+```powershell
+pnpm build
+pnpm typecheck
+pnpm test
+pnpm lint
+pnpm format:check
+pnpm exec playwright install chromium # 首次准备浏览器
+pnpm test:e2e
+```
+
+使用 `pnpm format` 自动格式化。项目不使用 ESLint/Prettier。E2E 自动构建并启动内存数据库服务，使用随机测试管理员与加密密钥，不读取开发数据库、不调用真实供应商模型。
+
+## Android 与当前边界
+
+- Android 前端资源可构建，Rust 外壳可执行本机 `cargo check`；APK 仍需 Java、Android SDK/NDK 和 Android Rust targets，本机尚未安装，未验收 APK 或真机运行。
+- Android 当前只在内存保存登录令牌，重启进程需重新登录；服务器地址可持久保存，但不是完整离线学习，也未实现安全持久登录。
+- 不考虑 iOS，不提供桌面安装包或商店上架承诺。
+- 通用创建请求幂等、cursor 分页、持久化费用预算/限额、模型评分质量基准尚未实现；批量创建不应在网络结果不明时盲目重试。
+- 当前验证覆盖本地自动化，不代表完成了公网多租户压力、安全或备份恢复演练。
+
+## 设计文档
+
+1. [需求与范围](docs/00-requirements.md)
+2. [系统、monorepo 与 Android 架构](docs/01-architecture.md)
+3. [数据模型与状态机](docs/02-data-model.md)
+4. [HTTP API 契约](docs/03-api-contract.md)
+5. [页面、里程碑与验收](docs/04-pages-and-delivery.md)
+6. [内部模型与得分项评分](docs/05-model-grading.md)
+7. [质量工具与测试](docs/06-quality.md)
+
+设计文档包含后续目标；实际已实现接口以当前代码和 Skill API 参考为准。
