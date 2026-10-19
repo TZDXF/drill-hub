@@ -17,6 +17,7 @@ import WrongQuestionDetailPage from './pages/WrongQuestionDetailPage.vue';
 import HistoryPage from './pages/HistoryPage.vue';
 import ArchivePage from './pages/ArchivePage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
+import TokenUsagePage from './pages/TokenUsagePage.vue';
 import AgentTokensPage from './pages/AgentTokensPage.vue';
 import AdminUsersPage from './pages/AdminUsersPage.vue';
 import AdminModelsPage from './pages/AdminModelsPage.vue';
@@ -84,6 +85,7 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
           { path: 'history', name: 'history', component: HistoryPage },
           { path: 'archive', name: 'archive', component: ArchivePage },
           { path: 'settings', name: 'settings', component: SettingsPage },
+          { path: 'token-usage', name: 'token-usage', component: TokenUsagePage },
           { path: 'settings/agent-tokens', name: 'agent-tokens', component: AgentTokensPage },
           {
             path: 'admin/users',

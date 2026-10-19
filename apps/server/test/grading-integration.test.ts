@@ -583,6 +583,78 @@ describe('grading administration and persistent model workflow', () => {
     },
   );
 
+  it('records each billed retry, successful grading and model test without storing answers or keys', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    let count = 0;
+    installProvider(() => {
+      count += 1;
+      return new Response(
+        JSON.stringify({
+          usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+          choices: [
+            {
+              finish_reason: count === 1 ? 'length' : 'stop',
+              message: {
+                content: JSON.stringify({
+                  criteria: [
+                    {
+                      criterionId: 'atomicity',
+                      levelId: 'met',
+                      evidence: ['事务全部成功或全部回滚'],
+                      explanation: '正确',
+                    },
+                    {
+                      criterionId: 'example',
+                      levelId: 'met',
+                      evidence: ['转账一起完成'],
+                      explanation: '正确',
+                    },
+                  ],
+                  summary: '完成',
+                }),
+              },
+            },
+          ],
+        }),
+      );
+    });
+    await configureModel(app, admin);
+    const attempt = await lockedAttempt(app, ownerId, modelDefinition(), {
+      text: '事务全部成功或全部回滚；转账一起完成。',
+    });
+    await app.ctx.grading.runOnce();
+    const job = (await app.ctx.db.list('gradingJobs', { attemptId: attempt.id }))[0]!;
+    expect(job.status).toBe('retry_wait');
+    await app.ctx.db.update('gradingJobs', job.id, job.revision, { nextRunAt: now() });
+    await app.ctx.grading.runOnce();
+    expect((await currentAttempt(app, attempt.id)).items[0].gradingStatus).toBe('completed');
+    const records = await app.ctx.db.list('modelUsage');
+    expect(records).toHaveLength(3);
+    expect(records.filter((record) => record.purpose === 'model_test')).toHaveLength(1);
+    expect(
+      records
+        .filter((record) => record.jobId === job.id)
+        .map((record) => record.status)
+        .sort(),
+    ).toEqual(['failed', 'succeeded']);
+    expect(
+      records
+        .filter((record) => record.jobId === job.id)
+        .every((record) => record.usage?.totalTokens === 120),
+    ).toBe(true);
+    expect(records.every((record) => record.ownerId === ownerId)).toBe(true);
+    expect(JSON.stringify(records)).not.toContain('test-only-provider-secret');
+    expect(JSON.stringify(records)).not.toContain('事务全部成功');
+    const result = await app.inject({ url: '/api/v1/me/token-usage', headers: admin });
+    expect(result.json().data.totals).toMatchObject({
+      calls: 3,
+      failedCalls: 1,
+      unknownUsageCalls: 1,
+      modelTestCalls: 1,
+      totalTokens: 240,
+    });
+  });
+
   it('does not call or bill for blank answers and fixes blank fill slots to zero during partial grading', async () => {
     const { app, admin, ownerId } = await setupApp();
     const provider = installProvider((_request, payload) => {
@@ -600,6 +672,7 @@ describe('grading administration and persistent model workflow', () => {
       feedback: '未作答',
     });
     expect(await app.ctx.db.list('gradingJobs', { attemptId: blank.id })).toHaveLength(0);
+    expect(await app.ctx.db.list('modelUsage')).toHaveLength(callsAfterConfig);
     const partial = await lockedAttempt(app, ownerId, fillDefinition(), {
       slots: { a: '原子性', i: ' ' },
     });

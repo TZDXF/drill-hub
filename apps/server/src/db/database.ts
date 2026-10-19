@@ -4,7 +4,13 @@ import { dirname } from 'node:path';
 import { DataSource } from 'typeorm';
 import type { EntityManager, FindOptionsWhere } from 'typeorm';
 import type { DatabaseTables, TableName } from './records.js';
-import { schemas, InitialSchema1792195200000, AddAnswerLinks1792195200001 } from './schema.js';
+import {
+  schemas,
+  InitialSchema1792195200000,
+  AddAnswerLinks1792195200001,
+  AddModelUsage1792368000000,
+} from './schema.js';
+import type { TokenUsageTotals, TokenUsageReport } from '@drill-hub/contracts';
 import { AppError } from '../core/errors.js';
 interface Queue {
   tail: Promise<void>;
@@ -22,7 +28,11 @@ export class Database {
       type: 'better-sqlite3',
       database,
       entities: schemas,
-      migrations: [InitialSchema1792195200000, AddAnswerLinks1792195200001],
+      migrations: [
+        InitialSchema1792195200000,
+        AddAnswerLinks1792195200001,
+        AddModelUsage1792368000000,
+      ],
       synchronize: false,
       logging: false,
       invalidWhereValuesBehavior: { null: 'sql-null', undefined: 'throw' },
@@ -119,6 +129,57 @@ export class Database {
         fn(new Database(this.source, manager, this.queue, true)),
       ),
     );
+  }
+  async summarizeModelUsage(
+    ownerId: string | undefined,
+    from: string,
+    until: string,
+    utcOffsetMinutes: number,
+  ) {
+    return this.locked(async () => {
+      const query = this.manager
+        .getRepository('modelUsage')
+        .createQueryBuilder('u')
+        .where('u.createdAt >= :from AND u.createdAt < :until', { from, until });
+      if (ownerId !== undefined) query.andWhere('u.ownerId = :ownerId', { ownerId });
+      query
+        .select('COUNT(*)', 'calls')
+        .addSelect(
+          "COALESCE(SUM(CASE WHEN u.status = 'failed' THEN 1 ELSE 0 END), 0)",
+          'failedCalls',
+        )
+        .addSelect(
+          'COALESCE(SUM(CASE WHEN u.usage IS NULL THEN 1 ELSE 0 END), 0)',
+          'unknownUsageCalls',
+        )
+        .addSelect(
+          "COALESCE(SUM(CASE WHEN u.purpose = 'model_test' THEN 1 ELSE 0 END), 0)",
+          'modelTestCalls',
+        );
+      for (const field of ['promptTokens', 'completionTokens', 'totalTokens']) {
+        query.addSelect(`COALESCE(SUM(json_extract(u.usage, '$.${field}')), 0)`, field);
+      }
+      const totals = await query.clone().getRawOne<TokenUsageTotals>();
+      const date = 'date(u.createdAt, :offset)';
+      const daily = await query
+        .clone()
+        .addSelect(date, 'date')
+        .setParameter('offset', `${utcOffsetMinutes} minutes`)
+        .groupBy(date)
+        .orderBy(date, 'ASC')
+        .getRawMany<TokenUsageReport['daily'][number]>();
+      const models = await query
+        .clone()
+        .addSelect('u.connectionId', 'connectionId')
+        .addSelect('u.modelKey', 'modelKey')
+        .groupBy('u.connectionId')
+        .addGroupBy('u.modelKey')
+        .orderBy('totalTokens', 'DESC')
+        .addOrderBy('u.connectionId', 'ASC')
+        .addOrderBy('u.modelKey', 'ASC')
+        .getRawMany<TokenUsageReport['models'][number]>();
+      return { totals: totals!, daily, models };
+    });
   }
   async close() {
     await this.locked(() => this.source.destroy());

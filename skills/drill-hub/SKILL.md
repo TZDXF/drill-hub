@@ -87,3 +87,9 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 - 重评：返回评分任务 ID；之后读取作答或任务状态确认完成。
 - 归档：列表切换到 archived 可看到资源，restore 后 archivedAt 为 null。
 - 作废：重读作答核对 `voidedAt`、`voidedBy`、`voidReason`；答案和评分历史仍保留，作答不再作为学习统计、错题或任务完成依据。
+
+## 用量边界
+
+用户可在「Token 用量」页查看本站服务端模型评分、重试、重评与模型能力测试的用量，
+不包含外部 Agent 自身的消耗，也不是供应商账单。用量统计仅提供交互式用户会话接口，
+不接受 Agent 令牌；不要通过 Agent API 假装读取用量或费用预算。

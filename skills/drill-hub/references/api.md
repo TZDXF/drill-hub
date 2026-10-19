@@ -121,3 +121,15 @@ Content-Type: application/json
 - 没有通过 Agent 直接创建作答、保存答案、交卷或生成汇总报告的接口；可生成临时答题链接，由答题者在浏览器中免登录作答。
 - 没有模型连接、评分配置或管理员运维的 Agent 路由。
 - `attempt:write` 只授权本文记录的作废路由，不代表有通用作答 PATCH、用途转换、恢复作废或永久删除接口。
+
+## 用量统计（非 Agent API）
+
+交互式用户通过 `GET /api/v1/me/token-usage` 查看自己的 Token 汇总、每日趋势和模型排行；
+管理员可通过 `GET /api/v1/admin/token-usage` 查看全站统计。这两个端点要求用户登录会话，
+不接受 `dhk.` Agent 令牌，也不新增 Agent scope。参数为 `days=7|30|90`（默认 `30`）和
+`utcOffsetMinutes`（默认 `0`，整数 `-840` 至 `840`）；未知参数或非法值返回
+`400 INVALID_QUERY`。成功响应遵循 `{ data, meta }`。
+
+统计仅包含本站服务端模型评分（含重试、重评）与模型能力测试；不包含外部 Agent 消耗。
+Token 只累计供应商返回的完整有效用量，缺失或无效的计入 `unknownUsageCalls`；
+失败调用若返回有效用量仍累计。历史调用不补算，不支持费用估算或预算限额。

@@ -227,6 +227,11 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <span>Agent 授权</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
+          <RouterLink class="mobile-setting-link" :to="{ name: 'token-usage' }">
+            <AppIcon name="usage" :size="18" />
+            <span>Token 用量</span>
+            <AppIcon name="chevron" :size="17" />
+          </RouterLink>
           <button
             v-if="learning.platform.kind === 'android'"
             class="mobile-setting-link"
@@ -239,6 +244,9 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           </button>
         </div>
         <div v-else class="button-row settings-account-actions">
+          <RouterLink class="button" :to="{ name: 'token-usage' }">
+            <AppIcon name="usage" :size="16" />Token 用量
+          </RouterLink>
           <RouterLink class="button" :to="{ name: 'agent-tokens' }">
             <AppIcon name="token" :size="16" />Agent 授权
           </RouterLink>

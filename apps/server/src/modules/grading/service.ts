@@ -8,12 +8,18 @@ import type {
   GradingProfile,
   ProviderModel,
   QuestionDefinition,
+  ModelTokenUsage,
 } from '@drill-hub/contracts';
 import type { AppContext, GradingService } from '../../core/context.js';
 import { AppError } from '../../core/errors.js';
 import { baseRecord, now } from '../../core/ids.js';
 import type { Database } from '../../db/database.js';
-import type { ModelConnectionRecord, ModelConnectionVersionRecord } from '../../db/records.js';
+import type {
+  ModelConnectionRecord,
+  ModelConnectionVersionRecord,
+  ModelUsageRecord,
+} from '../../db/records.js';
+import type { ChatCompletionInput, ChatCompletionOutput } from './chat-completions.js';
 import { refreshAttempt } from '../learning/helpers.js';
 import {
   callChatCompletions,
@@ -357,6 +363,37 @@ export class GradingServiceImpl implements GradingService {
     return { profile, providerModel, connection, version };
   }
 
+  private async gradeWithUsage(
+    input: ChatCompletionInput,
+    metadata: Pick<ModelUsageRecord, 'ownerId' | 'connectionId' | 'purpose' | 'jobId'>,
+    evaluate: (output: ChatCompletionOutput) => GradeResult,
+  ): Promise<GradeResult> {
+    // Preserve request time across slow responses; no database transaction spans model I/O.
+    const record = baseRecord();
+    let usage: ModelTokenUsage | null = null;
+    let status: ModelUsageRecord['status'] = 'failed';
+    try {
+      const output = await callChatCompletions({
+        ...input,
+        onUsage: (value) => {
+          usage = value;
+        },
+      });
+      const grade = evaluate(output);
+      status = 'succeeded';
+      return grade;
+    } finally {
+      // Append once per actual call, including retries, refusals and invalid grades.
+      await this.ctx.db.insert('modelUsage', {
+        ...record,
+        ...metadata,
+        modelKey: input.modelKey,
+        status,
+        usage,
+      });
+    }
+  }
+
   private async executeClaimedJob(claimed: ClaimedJob): Promise<void> {
     let config: ResolvedConfig;
     try {
@@ -388,30 +425,39 @@ export class GradingServiceImpl implements GradingService {
         .filter((criterion) => !blankCriteria.has(criterion.id))
         .map((criterion) => criterion.id);
       const apiKey = decryptApiKey(this.ctx, config.version.encryptedApiKey);
-      const output = await callChatCompletions({
-        baseUrl: config.version.baseUrl,
-        apiKey,
-        modelKey: config.profile.modelIdSnapshot,
-        definition: claimed.item.definition,
-        answer: claimed.item.answer,
-        pendingCriterionIds,
-        timeoutMs: config.profile.timeoutMs,
-        fetchImpl: this.options.fetchImpl,
-      });
       const automatic = zeroCriterionEvaluations(claimed.item.definition).filter((evaluation) =>
         blankCriteria.has(evaluation.criterionId),
       );
-      grade = gradeRubric(
-        claimed.item.definition,
-        claimed.item.answer,
-        claimed.item.maxScore,
-        [...automatic, ...output.criteria],
+      grade = await this.gradeWithUsage(
         {
-          source: 'model',
-          version: claimed.baseGradeVersion + 1,
-          feedback: output.summary,
-          modelId: output.modelId,
+          baseUrl: config.version.baseUrl,
+          apiKey,
+          modelKey: config.profile.modelIdSnapshot,
+          definition: claimed.item.definition,
+          answer: claimed.item.answer,
+          pendingCriterionIds,
+          timeoutMs: config.profile.timeoutMs,
+          fetchImpl: this.options.fetchImpl,
         },
+        {
+          ownerId: claimed.job.ownerId,
+          connectionId: config.connection.id,
+          purpose: 'grading',
+          jobId: claimed.job.id,
+        },
+        (output) =>
+          gradeRubric(
+            claimed.item.definition,
+            claimed.item.answer,
+            claimed.item.maxScore,
+            [...automatic, ...output.criteria],
+            {
+              source: 'model',
+              version: claimed.baseGradeVersion + 1,
+              feedback: output.summary,
+              modelId: output.modelId,
+            },
+          ),
       );
     } catch (error) {
       await this.failClaimedJob(claimed, safeExecutionError(error));
@@ -544,7 +590,7 @@ export class GradingServiceImpl implements GradingService {
     });
   }
 
-  async testProviderModel(providerModelId: string): Promise<GradeResult> {
+  async testProviderModel(providerModelId: string, ownerId: string): Promise<GradeResult> {
     const initial = await this.ctx.db.get('providerModels', providerModelId);
     if (!initial) throw new AppError(404, 'NOT_FOUND', '模型不存在');
     const connection = await this.ctx.db.get('modelConnections', initial.connectionId);
@@ -555,25 +601,28 @@ export class GradingServiceImpl implements GradingService {
     });
     if (!version) throw new AppError(422, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在');
     try {
-      const output = await callChatCompletions({
-        baseUrl: version.baseUrl,
-        apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
-        modelKey: initial.modelKey,
-        definition: syntheticTestDefinition(),
-        answer: syntheticTestAnswer,
-        timeoutMs: 30_000,
-        fetchImpl: this.options.fetchImpl,
-      });
-      const grade = gradeRubric(
-        syntheticTestDefinition(),
-        syntheticTestAnswer,
-        '1',
-        output.criteria,
+      const grade = await this.gradeWithUsage(
         {
-          source: 'model',
-          feedback: output.summary,
-          modelId: output.modelId,
+          baseUrl: version.baseUrl,
+          apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
+          modelKey: initial.modelKey,
+          definition: syntheticTestDefinition(),
+          answer: syntheticTestAnswer,
+          timeoutMs: 30_000,
+          fetchImpl: this.options.fetchImpl,
         },
+        {
+          ownerId,
+          connectionId: connection.id,
+          purpose: 'model_test',
+          jobId: null,
+        },
+        (output) =>
+          gradeRubric(syntheticTestDefinition(), syntheticTestAnswer, '1', output.criteria, {
+            source: 'model',
+            feedback: output.summary,
+            modelId: output.modelId,
+          }),
       );
       await this.ctx.db.transaction(async (tx) => {
         const model = await tx.get('providerModels', initial.id);

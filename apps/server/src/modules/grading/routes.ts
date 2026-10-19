@@ -17,6 +17,8 @@ import { normalizeProviderBaseUrl, ProviderError, PROMPT_VERSION } from './chat-
 import { gradeRubric, isBlankAnswer } from './engine.js';
 import { gradingRuntime, isActiveGradingJob } from './service.js';
 
+import { tokenUsageReport } from './token-usage.js';
+
 const PREFIX = '/api/v1';
 type JsonObject = Record<string, unknown>;
 
@@ -320,6 +322,18 @@ async function retryJob(
 }
 
 export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  app.get<{ Querystring: Record<string, unknown> }>(`${PREFIX}/me/token-usage`, async (request) => {
+    const actor = await ctx.requireUser(request);
+    return { data: await tokenUsageReport(ctx.db, actor.userId, request.query) };
+  });
+  app.get<{ Querystring: Record<string, unknown> }>(
+    `${PREFIX}/admin/token-usage`,
+    async (request) => {
+      await ctx.requireAdmin(request);
+      return { data: await tokenUsageReport(ctx.db, undefined, request.query) };
+    },
+  );
+
   app.get(`${PREFIX}/admin/model-adapters`, async (request) => {
     await ctx.requireAdmin(request);
     return {
@@ -717,7 +731,7 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       const input = body(request, true);
       keys(input, []);
       try {
-        const grade = await gradingRuntime(ctx).testProviderModel(request.params.id);
+        const grade = await gradingRuntime(ctx).testProviderModel(request.params.id, actor.userId);
         const model = await ctx.db.get('providerModels', request.params.id);
         await ctx.audit(actor, 'provider_model.tested', 'providerModel', request.params.id, {
           verifiedConfigVersion: model?.verifiedConfigVersion ?? null,

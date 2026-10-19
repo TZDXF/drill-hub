@@ -3,6 +3,8 @@ import { mkdtemp, rm, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '../src/db/database.js';
+import { DataSource } from 'typeorm';
+import { InitialSchema1792195200000, AddAnswerLinks1792195200001 } from '../src/db/schema.js';
 import { baseRecord } from '../src/core/ids.js';
 describe('SQLite storage and migrations', () => {
   it('migrates, rolls back transactions and rejects stale versions', async () => {
@@ -62,4 +64,59 @@ describe('SQLite storage and migrations', () => {
       await rmdir(directory);
     }
   });
+});
+
+it('adds model usage to an existing development schema without losing learning data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'drill-hub-usage-migration-'));
+  const path = join(directory, 'development.sqlite');
+  const old = new DataSource({
+    type: 'better-sqlite3',
+    database: path,
+    synchronize: false,
+    migrations: [InitialSchema1792195200000, AddAnswerLinks1792195200001],
+  });
+  try {
+    await old.initialize();
+    await old.runMigrations();
+    await old
+      .createQueryBuilder()
+      .insert()
+      .into('topics')
+      .values({
+        ...baseRecord(),
+        id: 'preserved-topic',
+        ownerId: 'owner',
+        title: '保留的主题',
+        goalText: '',
+        archivedAt: null,
+      })
+      .execute();
+    await old.destroy();
+    const db = await Database.open(path);
+    try {
+      expect((await db.get('topics', 'preserved-topic'))?.title).toBe('保留的主题');
+      await db.insert('modelUsage', {
+        ...baseRecord(),
+        ownerId: 'owner',
+        connectionId: 'connection',
+        modelKey: 'model',
+        purpose: 'grading',
+        jobId: null,
+        status: 'succeeded',
+        usage: { promptTokens: 2, completionTokens: 3, totalTokens: 5 },
+      });
+    } finally {
+      await db.close();
+    }
+    const reopened = await Database.open(path);
+    try {
+      expect(await reopened.list('modelUsage')).toHaveLength(1);
+    } finally {
+      await reopened.close();
+    }
+  } finally {
+    if (old.isInitialized) await old.destroy();
+    await rm(path, { force: true });
+    await rmdir(directory);
+  }
 });

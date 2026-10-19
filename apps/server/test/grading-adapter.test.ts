@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Answer, QuestionDefinition } from '@drill-hub/contracts';
+import type { Answer, QuestionDefinition, ModelTokenUsage } from '@drill-hub/contracts';
 import {
   ProviderError,
+  parseTokenUsage,
   callChatCompletions,
   listChatCompletionsModels,
   normalizeProviderBaseUrl,
@@ -226,5 +227,55 @@ describe('chat_completions adapter', () => {
     });
     expect(seenUrl).toBe('http://provider.test/v1/models');
     expect(seenBody).toBeUndefined();
+  });
+});
+
+describe('provider token usage', () => {
+  it('accepts complete counts including a genuine zero', () => {
+    expect(
+      parseTokenUsage({ prompt_tokens: 123, completion_tokens: 45, total_tokens: 168 }),
+    ).toEqual({ promptTokens: 123, completionTokens: 45, totalTokens: 168 });
+    expect(parseTokenUsage({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })).toEqual({
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    });
+  });
+  it.each([
+    undefined,
+    null,
+    {},
+    { total_tokens: 10 },
+    { prompt_tokens: '10', completion_tokens: 2, total_tokens: 12 },
+    { prompt_tokens: -1, completion_tokens: 2, total_tokens: 1 },
+    { prompt_tokens: 1.5, completion_tokens: 2, total_tokens: 3.5 },
+    { prompt_tokens: 10, completion_tokens: 2, total_tokens: 13 },
+    {
+      prompt_tokens: Number.MAX_SAFE_INTEGER,
+      completion_tokens: 2,
+      total_tokens: Number.MAX_SAFE_INTEGER + 2,
+    },
+  ])('does not mistake absent or invalid usage for zero: %j', (value) => {
+    expect(parseTokenUsage(value)).toBeNull();
+  });
+  it('captures billed usage before rejecting an incomplete response', async () => {
+    const onUsage = vi.fn<(usage: ModelTokenUsage | null) => void>();
+    const fake = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            usage: { prompt_tokens: 30, completion_tokens: 5, total_tokens: 35 },
+            choices: [{ finish_reason: 'length', message: { content: '{}' } }],
+          }),
+        ),
+    );
+    await expect(callChatCompletions({ ...input(fake), onUsage })).rejects.toMatchObject({
+      code: 'MODEL_INCOMPLETE',
+    });
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({
+      promptTokens: 30,
+      completionTokens: 5,
+      totalTokens: 35,
+    });
   });
 });

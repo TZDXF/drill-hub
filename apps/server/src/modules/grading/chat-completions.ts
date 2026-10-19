@@ -1,6 +1,10 @@
-import type { Answer, DiscoveredProviderModel, QuestionDefinition } from '@drill-hub/contracts';
+import type {
+  Answer,
+  DiscoveredProviderModel,
+  QuestionDefinition,
+  ModelTokenUsage,
+} from '@drill-hub/contracts';
 
-export const PROMPT_VERSION = 'rubric-v1';
 export const MAX_PROVIDER_RESPONSE_BYTES = 1_048_576;
 export const MAX_PROVIDER_MODEL_LIST_BYTES = 4_194_304;
 export const DEFAULT_MAX_COMPLETION_TOKENS = 6_000;
@@ -25,6 +29,7 @@ export interface ChatCompletionInput {
   pendingCriterionIds?: string[];
   timeoutMs: number;
   fetchImpl?: typeof fetch;
+  onUsage?: (usage: ModelTokenUsage | null) => void;
 }
 
 export interface ChatCompletionOutput {
@@ -249,6 +254,23 @@ export function buildChatCompletionBody(
   };
 }
 
+/** Missing or inconsistent provider counts are unknown, not zero or an estimate. */
+export function parseTokenUsage(raw: unknown): ModelTokenUsage | null {
+  if (!object(raw)) return null;
+  const values = [raw.prompt_tokens, raw.completion_tokens, raw.total_tokens];
+  if (
+    !values.every((value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+  )
+    return null;
+  const [promptTokens, completionTokens, totalTokens] = values as number[];
+  if (promptTokens! + completionTokens! !== totalTokens) return null;
+  return {
+    promptTokens: promptTokens!,
+    completionTokens: completionTokens!,
+    totalTokens: totalTokens!,
+  };
+}
+
 /** Call a Chat Completions-compatible provider without an SDK. No answer/key is logged or included in errors. */
 export async function callChatCompletions(
   input: ChatCompletionInput,
@@ -262,6 +284,7 @@ export async function callChatCompletions(
     resource: 'chat/completions',
     body,
   });
+  input.onUsage?.(parseTokenUsage(object(raw) ? raw.usage : undefined));
   if (!object(raw) || !Array.isArray(raw.choices) || raw.choices.length === 0)
     throw new ProviderError('MODEL_INVALID_RESPONSE', true);
   const choice = raw.choices[0];

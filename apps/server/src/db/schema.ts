@@ -9,6 +9,15 @@ const common: Record<string, Field> = {
   revision: 'integer',
 };
 export const definitions: Record<TableName, Record<string, Field>> = {
+  modelUsage: {
+    ownerId: 'text',
+    connectionId: 'text',
+    modelKey: 'text',
+    purpose: 'text',
+    jobId: 'text?',
+    status: 'text',
+    usage: 'json?',
+  },
   users: {
     username: 'text',
     displayName: 'text',
@@ -198,7 +207,9 @@ export const schemas = Object.entries(definitions).map(
 export class InitialSchema1792195200000 implements MigrationInterface {
   name = 'InitialSchema1792195200000';
   async up(runner: QueryRunner) {
-    for (const [name, fields] of Object.entries(definitions)) {
+    for (const [name, fields] of Object.entries(definitions).filter(
+      ([name]) => name !== 'modelUsage',
+    )) {
       const all = { ...common, ...fields };
       await runner.createTable(
         new Table({
@@ -232,7 +243,10 @@ export class InitialSchema1792195200000 implements MigrationInterface {
     );
   }
   async down(runner: QueryRunner) {
-    for (const name of Object.keys(definitions).reverse()) await runner.dropTable(name);
+    for (const name of Object.keys(definitions)
+      .filter((name) => name !== 'modelUsage')
+      .reverse())
+      await runner.dropTable(name);
   }
 }
 
@@ -277,5 +291,39 @@ export class AddAnswerLinks1792195200001 implements MigrationInterface {
       await runner.dropColumn('attempts', 'answerLinkId');
     }
     if (await runner.hasTable('answerLinks')) await runner.dropTable('answerLinks');
+  }
+}
+
+export class AddModelUsage1792368000000 implements MigrationInterface {
+  name = 'AddModelUsage1792368000000';
+  async up(runner: QueryRunner) {
+    await runner.createTable(
+      new Table({
+        name: 'modelUsage',
+        columns: Object.entries({ ...common, ...definitions.modelUsage }).map(([name, field]) => ({
+          name,
+          type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
+          isPrimary: name === 'id',
+          isNullable: field.endsWith('?'),
+        })),
+      }),
+    );
+    await runner.createIndex(
+      'modelUsage',
+      new TableIndex({
+        name: 'ix_modelUsage_owner_date',
+        columnNames: ['ownerId', 'createdAt'],
+      }),
+    );
+    await runner.createIndex(
+      'modelUsage',
+      new TableIndex({
+        name: 'ix_modelUsage_date',
+        columnNames: ['createdAt'],
+      }),
+    );
+  }
+  async down(runner: QueryRunner) {
+    await runner.dropTable('modelUsage');
   }
 }

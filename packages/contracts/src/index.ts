@@ -392,3 +392,25 @@ export interface WrongQuestionListItem extends WrongQuestion {
   topicTitle: string;
   type: QuestionType | null;
 }
+
+/** Provider-reported counts, never an estimate from answer length. */
+export interface ModelTokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+export interface TokenUsageTotals extends ModelTokenUsage {
+  calls: number;
+  failedCalls: number;
+  unknownUsageCalls: number;
+  modelTestCalls: number;
+}
+export interface TokenUsageReport {
+  days: number;
+  utcOffsetMinutes: number;
+  fromDate: string;
+  toDate: string;
+  totals: TokenUsageTotals;
+  daily: (TokenUsageTotals & { date: string })[];
+  models: (TokenUsageTotals & { connectionId: string; modelKey: string })[];
+}

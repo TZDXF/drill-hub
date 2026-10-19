@@ -34,6 +34,7 @@ const title = computed(() => {
     history: '学习历史',
     archive: '归档',
     settings: '我的设置',
+    'token-usage': 'Token 用量',
     'agent-tokens': 'Agent 授权',
     'admin-users': '账号管理',
     'admin-models': '供应商与模型',
@@ -48,6 +49,7 @@ const primaryNav = computed(() => [
   { name: 'history', label: '学习历史', icon: 'history' },
 ]);
 const secondaryNav = computed(() => [
+  { name: 'token-usage', label: 'Token 用量', icon: 'usage' },
   { name: 'archive', label: '归档资源', icon: 'archive' },
   { name: 'settings', label: '我的设置', icon: 'settings' },
   { name: 'agent-tokens', label: 'Agent 授权', icon: 'token' },

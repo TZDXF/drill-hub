@@ -20,6 +20,7 @@ import fileX from '@iconify-icons/lucide/file-x';
 import flag from '@iconify-icons/lucide/flag';
 import history from '@iconify-icons/lucide/history';
 import home from '@iconify-icons/lucide/home';
+import chartColumn from '@iconify-icons/lucide/chart-column';
 import lock from '@iconify-icons/lucide/lock';
 import logOut from '@iconify-icons/lucide/log-out';
 import monitor from '@iconify-icons/lucide/monitor';
@@ -38,6 +39,7 @@ const props = withDefaults(defineProps<{ name: string; size?: number }>(), { siz
 
 const icons: Record<string, IconifyIcon> = {
   book,
+  usage: chartColumn,
   home,
   topics: calendarDays,
   wrong: fileX,

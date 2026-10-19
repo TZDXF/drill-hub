@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 
 function devAutoReload(): Plugin {
   return {
@@ -46,7 +47,11 @@ function devAutoReload(): Plugin {
 }
 
 export default defineConfig(({ command, mode }) => ({
-  plugins: [vue(), ...(command === 'build' && mode === 'development' ? [devAutoReload()] : [])],
+  plugins: [
+    vue(),
+    tailwindcss(),
+    ...(command === 'build' && mode === 'development' ? [devAutoReload()] : []),
+  ],
   server: {
     port: 5173,
     strictPort: true,

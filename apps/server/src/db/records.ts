@@ -13,6 +13,7 @@ import type {
   ProviderModel,
   GradingProfile,
   GradingJob,
+  ModelTokenUsage,
 } from '@drill-hub/contracts';
 export interface UserRecord extends UserView {
   passwordHash: string;
@@ -84,7 +85,17 @@ export interface IdempotencyRecord extends BaseRecord {
   result: unknown;
   expiresAt: string;
 }
+export interface ModelUsageRecord extends BaseRecord {
+  ownerId: string;
+  connectionId: string;
+  modelKey: string;
+  purpose: 'grading' | 'model_test';
+  jobId: string | null;
+  status: 'succeeded' | 'failed';
+  usage: ModelTokenUsage | null;
+}
 export interface DatabaseTables {
+  modelUsage: ModelUsageRecord;
   users: UserRecord;
   sessions: SessionRecord;
   agentTokens: AgentTokenRecord;
