@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { UserView } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { useLocale } from '../i18n';
+import { cycleThemePreference, themePreference } from '../theme';
 import type { SessionView } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
@@ -15,6 +16,9 @@ import EmptyState from '../components/EmptyState.vue';
 const { t } = useI18n();
 
 const { locale, toggleLocale } = useLocale();
+const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
+const themeIcon = computed(() => themeIcons[themePreference.value]);
+const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
 const learning = useLearning();
 const router = useRouter();
 const displayName = ref(learning.state.user?.displayName ?? '');
@@ -279,7 +283,20 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           >
             <AppIcon name="settings" :size="18" />
             <span>{{ t('components.language.label') }}</span>
-            <span class="language-current">{{ locale === 'zh-CN' ? '中文' : 'English' }}</span>
+            <span class="ml-auto text-(--ink-soft)">{{
+              locale === 'zh-CN' ? '中文' : 'English'
+            }}</span>
+          </button>
+          <button
+            class="mobile-setting-link"
+            type="button"
+            data-testid="settings-theme-toggle"
+            :aria-label="t('components.theme.switch')"
+            @click="cycleThemePreference"
+          >
+            <AppIcon :name="themeIcon" :size="18" />
+            <span>{{ t('components.theme.label') }}</span>
+            <span class="ml-auto text-(--ink-soft)">{{ themeLabel }}</span>
           </button>
           <RouterLink class="mobile-setting-link" :to="{ name: 'change-password' }">
             <AppIcon name="lock" :size="18" />
@@ -440,10 +457,3 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
     </ConfirmDialog>
   </div>
 </template>
-
-<style scoped>
-.language-current {
-  margin-left: auto;
-  color: var(--ink-soft);
-}
-</style>

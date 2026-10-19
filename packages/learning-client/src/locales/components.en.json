@@ -66,6 +66,13 @@
     "menuLogout": "Sign out",
     "logoutFailed": "Could not sign out"
   },
+  "theme": {
+    "switch": "Switch theme",
+    "label": "Theme",
+    "auto": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "settings": {
     "titleDesktop": "My settings",
     "profileEditAction": "Edit",

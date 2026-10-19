@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#f5f3ed" />
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem('drill-hub.theme');
+          const dark =
+            stored === 'dark' ||
+            (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', dark ? '#141614' : '#f5f3ed');
+        } catch {}
+      })();
+    </script>
     <title>Drill Hub</title>
   </head>
   <body>

@@ -74,6 +74,13 @@
     "zh": "中文",
     "en": "English"
   },
+  "theme": {
+    "switch": "切换主题",
+    "label": "主题",
+    "auto": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
   "settings": {
     "titleMobile": "我的",
     "titleDesktop": "我的设置",

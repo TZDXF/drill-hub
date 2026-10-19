@@ -13,6 +13,7 @@ import {
 } from 'reka-ui';
 import { useLearning } from '../injection';
 import { useLocale } from '../i18n';
+import { cycleThemePreference, themePreference } from '../theme';
 import { errorMessage } from '../utils';
 import AppIcon from './AppIcon.vue';
 import AppScrollArea from './AppScrollArea.vue';
@@ -20,6 +21,9 @@ import AppScrollArea from './AppScrollArea.vue';
 const { t } = useI18n();
 
 const { locale, toggleLocale } = useLocale();
+const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
+const themeIcon = computed(() => themeIcons[themePreference.value]);
+const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
 const learning = useLearning();
 const route = useRoute();
 const router = useRouter();
@@ -193,7 +197,7 @@ async function logout() {
     <div class="app-main">
       <header class="topbar">
         <h2>{{ title }}</h2>
-        <div class="topbar-actions">
+        <div class="flex items-center gap-3.5">
           <button
             v-if="learning.platform.kind === 'web'"
             class="button button--small"
@@ -204,6 +208,16 @@ async function logout() {
           >
             <span aria-hidden="true">中 / EN</span>
             <span>{{ locale === 'zh-CN' ? '中文' : 'English' }}</span>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            data-testid="desktop-theme-toggle"
+            :aria-label="t('components.theme.switch')"
+            :title="themeLabel"
+            @click="cycleThemePreference"
+          >
+            <AppIcon :name="themeIcon" :size="18" />
           </button>
           <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
@@ -279,11 +293,3 @@ async function logout() {
     </nav>
   </div>
 </template>
-
-<style scoped>
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-</style>

@@ -5,6 +5,7 @@ import { learningContextKey } from './injection';
 import { createLearningRouter } from './router';
 import type { ClientPlatform } from '@drill-hub/contracts';
 import { i18n, initializeLocale } from './i18n';
+import './theme';
 import './style.css';
 
 export interface CreateLearningAppOptions {

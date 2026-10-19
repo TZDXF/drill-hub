@@ -24,11 +24,13 @@ import chartColumn from '@iconify-icons/lucide/chart-column';
 import lock from '@iconify-icons/lucide/lock';
 import logOut from '@iconify-icons/lucide/log-out';
 import monitor from '@iconify-icons/lucide/monitor';
+import moon from '@iconify-icons/lucide/moon';
 import plus from '@iconify-icons/lucide/plus';
 import refreshCw from '@iconify-icons/lucide/refresh-cw';
 import save from '@iconify-icons/lucide/save';
 import server from '@iconify-icons/lucide/server';
 import settings from '@iconify-icons/lucide/settings';
+import sun from '@iconify-icons/lucide/sun';
 import target from '@iconify-icons/lucide/target';
 import triangleAlert from '@iconify-icons/lucide/triangle-alert';
 import user from '@iconify-icons/lucide/user';
@@ -71,6 +73,9 @@ const icons: Record<string, IconifyIcon> = {
   save,
   eye,
   'eye-off': eyeOff,
+  sun,
+  moon,
+  system: monitor,
 };
 
 const icon = computed(() => icons[props.name] ?? icons.book);
