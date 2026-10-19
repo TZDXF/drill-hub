@@ -4,6 +4,9 @@
 
 @custom-variant dark (&:where([data-theme='dark'] *));
 
+/* 显式声明扫描源：monorepo 下自动探测无法覆盖本包内的 Vue SFC。 */
+@source '.';
+
 @layer components {
   :root {
     color-scheme: light;
