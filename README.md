@@ -127,7 +127,7 @@ docker compose logs -f drill-hub
 
 1. 用户登录应用，在“Agent 授权”查看配置帮助，可复制当前服务器的接入说明、环境变量与只读验证请求，并按学习规划或只读权限预设新建令牌。授权列表可为每个有效令牌复制完整密钥，帮助示例始终使用占位符。
 2. 将服务器地址和令牌通过 Agent 的安全配置提供，不要放入学习材料、Git 或日志。
-3. 在“Agent 授权”的“Agent 配置帮助”中点击“下载 Drill Hub Skill（ZIP）”，或访问当前服务器的 `/downloads/drill-hub-skill.zip`（部署在路径前缀下时保留前缀）；解压后将完整的 `drill-hub/` 目录提供给外部 Agent。也可直接从项目仓库加载 `skills/drill-hub/SKILL.md`；实际接口索引见 [API 参考](skills/drill-hub/references/api.md)，按任务加载对应资源页（请求、响应、scope 和示例）；令牌管理单独说明。
+3. 在“Agent 授权”的“Agent 配置帮助”中点击“下载 Drill Hub Skill（ZIP）”，或访问当前服务器的 `/downloads/drill-hub-skill.zip`（部署在路径前缀下时保留前缀）；解压后将完整的 `drill-hub/` 目录提供给外部 Agent。也可直接从项目仓库加载 `skills/drill-hub/SKILL.md`；实际接口索引见 [API 参考](skills/drill-hub/references/api.md)，按任务加载对应资源页（请求、响应、scope 和示例）。
 4. Agent 创建主题、内容、计划和题目/试卷；用户可登录后在应用中作答，也可通过 Agent 生成的临时链接免登录作答。
 5. Agent 按需读取报告与错题；只有 `external_rubric` 题可通过 `grade:write` 提交逐项等级，模型题由服务端调用配置的模型评分。
 

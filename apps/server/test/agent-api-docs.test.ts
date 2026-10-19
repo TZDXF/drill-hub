@@ -92,7 +92,6 @@ describe('Agent API documentation', () => {
     const expected = [
       resolve(skillRoot, 'SKILL.md'),
       resolve(skillRoot, 'references/api.md'),
-      resolve(skillRoot, 'references/tokens.md'),
       ...resourceFiles,
     ];
     const visited = new Set<string>();
@@ -126,10 +125,6 @@ describe('Agent API documentation', () => {
     const pages = [
       ...(await resourcePages()),
       { path: 'api.md', markdown: await readFile(resolve(skillRoot, 'references/api.md'), 'utf8') },
-      {
-        path: 'tokens.md',
-        markdown: await readFile(resolve(skillRoot, 'references/tokens.md'), 'utf8'),
-      },
     ];
     let count = 0;
     for (const page of pages) count += examples(page.markdown).length;
