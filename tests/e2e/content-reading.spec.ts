@@ -142,7 +142,7 @@ test('内容正文静态渲染 Markdown，长代码与表格不撑开页面', as
   await expect(image).toHaveJSProperty('naturalWidth', 1600);
   await expect(body.locator('pre code')).toHaveText(longCode);
   await expect(body.locator('p').last()).toHaveText('**未闭合的强调');
-  await expect(body.locator('button')).toHaveCount(0);
+  await expect(body.getByRole('button', { name: /完成|标记|提交/ })).toHaveCount(0);
   expect(await body.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(0);
   expect(externalRequests).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -188,4 +188,57 @@ test('Markdown 阅读不执行脚本、事件处理器和危险链接', async ({
     body.locator('a[href^="javascript:"], a[href^="data:"], a[href^="file:"]'),
   ).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, '__readingXss'))).toBeUndefined();
+});
+
+test('内容正文本地渲染数学公式、Mermaid 图表与信息图', async ({ page }) => {
+  const bodyText = [
+    '## 渲染扩展',
+    '',
+    '行内公式 $E = mc^2$ 与块级公式：',
+    '',
+    '$$',
+    '\\int_{a}^{b} f(x) dx = F(b) - F(a)',
+    '$$',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    '    A[开始] --> B{判断}',
+    '    B -->|是| C[结束]',
+    '```',
+    '',
+    '```infographic',
+    'infographic list-row-simple-horizontal-arrow',
+    'data',
+    '  lists',
+    '    - label 第一步',
+    '      desc 开始',
+    '    - label 第二步',
+    '      desc 进行中',
+    '    - label 第三步',
+    '      desc 完成',
+    '```',
+  ].join('\n');
+  const { content } = await createReading(page, bodyText);
+  const externalRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).origin !== new URL(page.url()).origin) {
+      externalRequests.push(request.url());
+    }
+  });
+  await page.goto(`/contents/${content.id}`);
+  const body = page.locator('.reading-body');
+  await expect(body.getByRole('heading', { name: '渲染扩展' })).toBeVisible();
+  // KaTeX 行内与块级公式。
+  await expect(body.locator('.katex').first()).toBeVisible();
+  await expect(body.locator('.katex-display').first()).toBeVisible();
+  // Mermaid 图表渲染为 SVG。
+  await expect(body.locator('[data-stream-markdown="mermaid"] svg').first()).toBeVisible({
+    timeout: 15000,
+  });
+  // 信息图渲染为 SVG。
+  await expect(
+    body.locator('[data-stream-markdown="infographic-preview"] svg').first(),
+  ).toBeVisible({ timeout: 15000 });
+  // 全部扩展依赖本地加载，不请求外部 CDN。
+  expect(externalRequests).toEqual([]);
 });

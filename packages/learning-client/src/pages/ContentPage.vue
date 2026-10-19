@@ -134,7 +134,6 @@ onBeforeUnmount(() => {
           mode="static"
           :enable-animate="false"
           :controls="false"
-          :previewers="false"
           :parser-options="parserOptions"
           :link-options="{ favicon: false }"
           :harden-options="{
