@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import {
   AGENT_SCOPES,
   type AgentTokenScopesUpdate,
@@ -16,6 +17,7 @@ import EmptyState from '../components/EmptyState.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AgentSetupHelp from '../components/AgentSetupHelp.vue';
 import AppCheckbox from '../components/AppCheckbox.vue';
+import AppDateTimePicker from '../components/AppDateTimePicker.vue';
 import AppScrollArea from '../components/AppScrollArea.vue';
 
 const learning = useLearning();
@@ -28,7 +30,8 @@ const editing = ref<AgentTokenView | null>(null);
 const editScopes = ref<Scope[]>([]);
 const savingScopes = ref(false);
 const name = ref('');
-const scopes = ref<Scope[]>(['read']);
+const scopes = ref<Scope[]>([...AGENT_SCOPES]);
+const scopesOpen = ref(false);
 const expiresAt = ref('');
 const selected = ref<AgentTokenView | null>(null);
 const revoking = ref(false);
@@ -49,8 +52,9 @@ async function load() {
     loading.value = false;
   }
 }
-function openCreate(selectedScopes: Scope[] = ['read']) {
-  scopes.value = [...selectedScopes];
+function openCreate() {
+  scopes.value = [...AGENT_SCOPES];
+  scopesOpen.value = false;
   createOpen.value = true;
 }
 async function create() {
@@ -72,7 +76,7 @@ async function create() {
     copied.value = false;
     createOpen.value = false;
     name.value = '';
-    scopes.value = ['read'];
+    scopes.value = [...AGENT_SCOPES];
     expiresAt.value = '';
     learning.notify.success('Agent 令牌已创建', '请妥善保存，之后也可在授权列表复制。');
     await load();
@@ -181,11 +185,7 @@ onMounted(load);
 
 <template>
   <div>
-    <PageHeader
-      title="Agent 授权"
-      eyebrow="AGENT ACCESS"
-      description="让外部 Agent 按明确权限创建学习内容、组卷并读取结果。令牌只绑定你的账号，不提供自由改分能力。"
-    >
+    <PageHeader title="Agent 授权" eyebrow="AGENT ACCESS" description="管理外部 Agent 的访问令牌。">
       <template #back
         ><RouterLink class="back-link" :to="{ name: 'settings' }"
           ><AppIcon name="back" :size="16" />我的设置</RouterLink
@@ -197,21 +197,7 @@ onMounted(load);
         </button></template
       >
     </PageHeader>
-    <div class="notice" style="margin-bottom: 18px">
-      <AppIcon name="lock" />
-      <div>
-        <strong>最小权限原则</strong>
-        <p>
-          只授予当前工作需要的权限。令牌在服务端加密保存，仅在复制时读取，本页面不会把令牌写入
-          localStorage。
-        </p>
-      </div>
-    </div>
-    <AgentSetupHelp
-      v-if="learning.state.connection"
-      :base-url="learning.state.connection.baseUrl"
-      @create-token="openCreate"
-    />
+    <AgentSetupHelp />
     <div v-if="loading" class="loading-block"><span class="spinner" />正在读取授权</div>
     <EmptyState
       v-else-if="error"
@@ -292,20 +278,18 @@ onMounted(load);
         </tbody>
       </table>
     </AppScrollArea>
-    <EmptyState
-      v-else
-      title="还没有 Agent 令牌"
-      description="创建一个最小权限令牌，再把它交给你信任的外部 Agent。主题与练习将由 Agent 通过真实 API 创建。"
-      ><button class="button button--primary" type="button" @click="createOpen = true">
+    <EmptyState v-else title="还没有 Agent 令牌" description="创建令牌，授权你信任的 Agent 接入。"
+      ><button class="button button--primary" type="button" @click="openCreate()">
         <AppIcon name="plus" :size="17" />创建第一个令牌
       </button></EmptyState
     >
     <ConfirmDialog
       v-model:open="createOpen"
       title="新建 Agent 令牌"
-      description="令牌会加密保存在服务端，之后仍可从列表复制。请按实际工作选择最少权限。"
+      description="默认授予全部权限，可展开调整。请仅交给你信任的 Agent。"
       confirm-label="创建令牌"
       :busy="creating"
+      :confirm-disabled="!name.trim() || !scopes.length"
       @confirm="create"
       ><div class="form-grid">
         <div class="form-field form-field--full">
@@ -319,23 +303,43 @@ onMounted(load);
           />
         </div>
         <div class="form-field form-field--full">
-          <label for="token-expiry">到期时间（可选）</label
-          ><input id="token-expiry" v-model="expiresAt" class="input" type="datetime-local" />
+          <label id="token-expiry-label">到期时间（可选）</label>
+          <AppDateTimePicker
+            id="token-expiry"
+            v-model="expiresAt"
+            labelled-by="token-expiry-label"
+            :disabled="creating"
+          />
+          <p class="field-hint">留空则无固定期限。</p>
         </div>
-        <fieldset class="form-field form-field--full" style="border: 0; padding: 0; margin: 0">
-          <legend class="field-label" style="margin-bottom: 8px">权限范围</legend>
-          <div class="scope-list">
-            <AppCheckbox
-              v-for="scope in AGENT_SCOPES"
-              :key="scope"
-              :model-value="scopes.includes(scope)"
-              @update:model-value="toggleScope(scope)"
+        <CollapsibleRoot v-model:open="scopesOpen" class="form-field form-field--full token-scopes">
+          <CollapsibleTrigger class="token-scopes-trigger">
+            <span
+              >权限范围
+              <span class="subtle"
+                >已选 {{ scopes.length }}/{{ AGENT_SCOPES.length }} 项</span
+              ></span
             >
-              <strong>{{ scope }}</strong
-              ><br /><span class="subtle">{{ scopeLabels[scope] }}</span>
-            </AppCheckbox>
-          </div>
-        </fieldset>
+            <AppIcon name="down" :size="16" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <fieldset class="token-scopes-fieldset" :disabled="creating">
+              <legend class="sr-only">权限范围</legend>
+              <div class="scope-list">
+                <AppCheckbox
+                  v-for="scope in AGENT_SCOPES"
+                  :key="scope"
+                  :model-value="scopes.includes(scope)"
+                  :disabled="creating"
+                  @update:model-value="toggleScope(scope)"
+                >
+                  <strong>{{ scope }}</strong
+                  ><br /><span class="subtle">{{ scopeLabels[scope] }}</span>
+                </AppCheckbox>
+              </div>
+            </fieldset>
+          </CollapsibleContent>
+        </CollapsibleRoot>
       </div></ConfirmDialog
     >
     <ConfirmDialog
@@ -395,3 +399,35 @@ onMounted(load);
     >
   </div>
 </template>
+
+<style scoped>
+.token-scopes {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.token-scopes-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.token-scopes-trigger .subtle {
+  margin-left: 8px;
+}
+.token-scopes-trigger[data-state='open'] > .app-icon {
+  transform: rotate(180deg);
+}
+.token-scopes-fieldset {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+</style>
