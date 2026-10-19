@@ -147,6 +147,43 @@ describe('translation catalogs', () => {
     expect(missing).toEqual([]);
   });
 
+  it('maps every server audit action to an existing translation key', () => {
+    const serverRoot = fileURLToPath(new URL('../../../apps/server/src', import.meta.url));
+    function serverSources(directory: string): string[] {
+      return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory() ? serverSources(path) : /\.ts$/.test(entry.name) ? [path] : [];
+      });
+    }
+    const serverActions = new Set<string>();
+    for (const file of serverSources(serverRoot)) {
+      const source = readFileSync(file, 'utf8');
+      for (const call of source.matchAll(
+        /ctx\.audit\(\s*actor\s*,([\s\S]{0,300}?)(?:,\s*(?:'[a-zA-Z-]+'|[a-zA-Z_$][\w$]*)\s*,)/g,
+      )) {
+        for (const literal of call[1].matchAll(/'([a-z][a-z0-9_.-]*\.[a-z0-9_.-]+)'/g)) {
+          serverActions.add(literal[1]);
+        }
+      }
+    }
+    const auditPage = readFileSync(
+      fileURLToPath(new URL('../src/pages/AdminAuditPage.vue', import.meta.url)),
+      'utf8',
+    );
+    const mapped = new Map(
+      [...auditPage.matchAll(/^\s*'([a-z_.-]+)':\s*'(management\.audit\.action\.\w+)',$/gm)].map(
+        (match) => [match[1], match[2]],
+      ),
+    );
+    const unmapped = [...serverActions].filter((action) => !mapped.has(action));
+    expect(unmapped).toEqual([]);
+    const stale = [...mapped.keys()].filter((action) => !serverActions.has(action));
+    expect(stale).toEqual([]);
+    for (const key of mapped.values()) {
+      expect({ key, defined: key in chinese }).toEqual({ key, defined: true });
+    }
+  });
+
   it('preserves interpolation parameters and compiles every message', () => {
     const placeholders = (value: string) =>
       [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();

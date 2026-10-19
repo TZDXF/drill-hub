@@ -4,6 +4,7 @@
 // - 引擎默认从 antv CDN 注入 Web 字体，这里在渲染前清空字体远程地址，改用系统字体回退；
 // - DSL 中的 icon/illus 会触发外部图标服务请求，渲染前直接剥离这些字段。
 import { onBeforeUnmount, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 interface InfographicCodeNode {
   value: string;
@@ -33,6 +34,7 @@ interface InfographicInstance {
 }
 
 const props = defineProps<{ node: InfographicCodeNode }>();
+const { t } = useI18n();
 
 const containerRef = ref<HTMLElement>();
 const errorMessage = ref<string>();
@@ -117,7 +119,7 @@ async function render(syntax: string): Promise<void> {
     instance.render(sanitizeSyntax(syntax));
     const svg = offscreen.querySelector('svg');
     if (!instance.rendered || !svg) {
-      throw new Error(errors.join('；') || '信息图内容不完整或语法无法解析');
+      throw new Error(errors.join('；') || t('components.infographic.invalidSyntax'));
     }
     // destroy 会把 SVG 从 DOM 摘除，先销毁实例再把 SVG 挂到可视容器。
     instance.destroy();
@@ -149,9 +151,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="infographic-preview" data-stream-markdown="infographic-preview">
     <div v-if="errorMessage" class="infographic-preview__error" role="alert">
-      信息图渲染失败：{{ errorMessage }}
+      {{ t('components.infographic.failed', { error: errorMessage }) }}
     </div>
-    <div v-else-if="rendering" class="infographic-preview__loading">信息图渲染中…</div>
+    <div v-else-if="rendering" class="infographic-preview__loading">
+      {{ t('components.infographic.loading') }}
+    </div>
     <div
       ref="containerRef"
       class="infographic-preview__canvas"
