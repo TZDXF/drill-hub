@@ -260,6 +260,242 @@ async function currentAttempt(app: FastifyInstance, attemptId: string): Promise<
 }
 
 describe('grading administration and persistent model workflow', () => {
+  it('edits the grading model as a new profile while retaining bound jobs and rejecting stale edits', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const calls: string[] = [];
+    installProvider((request) => {
+      calls.push(request.model);
+      return responseWithCriteria(zeroCriterionEvaluations(modelDefinition()));
+    });
+    const configured = await configureModel(app, admin);
+    expect(configured.profile.concurrency).toBe(2);
+    expect(configured.profile).not.toHaveProperty('promptVersion');
+    const originalAttempt = await lockedAttempt(app, ownerId, modelDefinition(), {
+      text: '旧任务',
+    });
+    const added = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/model-connections/${configured.connection.id}/models`,
+      headers: admin,
+      payload: { modelKey: 'replacement-model', displayName: '替换模型' },
+    });
+    const model = added.json().data;
+    const unverified = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.profile.revision, providerModelId: model.id },
+    });
+    expect(unverified.statusCode).toBe(409);
+    expect(unverified.json().error.code).toBe('STALE_MODEL_VERIFICATION');
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/provider-models/${model.id}/test`,
+      headers: admin,
+      payload: {},
+    });
+    const change = {
+      expectedRevision: configured.profile.revision,
+      providerModelId: model.id,
+      concurrency: 3,
+      timeoutMs: 2000,
+      maxRetries: 1,
+    };
+    const edited = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: change,
+    });
+    expect(edited.statusCode).toBe(200);
+    const replacement = edited.json().data;
+    expect(replacement.id).not.toBe(configured.profile.id);
+    expect(replacement).toMatchObject({
+      providerModelId: model.id,
+      modelIdSnapshot: 'replacement-model',
+      concurrency: 3,
+      timeoutMs: 2000,
+      maxRetries: 1,
+      isDefault: true,
+    });
+    expect(await app.ctx.db.get('gradingProfiles', configured.profile.id)).toMatchObject({
+      providerModelId: configured.model.id,
+      concurrency: 2,
+      timeoutMs: 1000,
+      maxRetries: 2,
+      isDefault: false,
+    });
+    expect((await app.ctx.db.get('settings', 'global'))?.defaultGradingProfileId).toBe(
+      replacement.id,
+    );
+    const repeated = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: change,
+    });
+    expect(repeated.statusCode).toBe(409);
+    expect(repeated.json().error.code).toBe('VERSION_CONFLICT');
+    const newerAttempt = await lockedAttempt(app, ownerId, modelDefinition(), { text: '新任务' });
+    expect(
+      (await app.ctx.db.list('gradingJobs', { attemptId: originalAttempt.id }))[0].profileId,
+    ).toBe(configured.profile.id);
+    expect(
+      (await app.ctx.db.list('gradingJobs', { attemptId: newerAttempt.id }))[0].profileId,
+    ).toBe(replacement.id);
+    await app.ctx.grading.runOnce();
+    expect(calls.sort()).toEqual(['configured-model', 'replacement-model']);
+    for (const attempt of [originalAttempt, newerAttempt])
+      expect((await currentAttempt(app, attempt.id)).items[0].gradingStatus).toBe('completed');
+    const listed = await app.inject({ url: '/api/v1/admin/grading-profiles', headers: admin });
+    expect(listed.json().data.every((profile: object) => !('promptVersion' in profile))).toBe(true);
+    const adapters = await app.inject({ url: '/api/v1/admin/model-adapters', headers: admin });
+    expect(adapters.json().data[0]).not.toHaveProperty('promptVersions');
+    const audits = await app.ctx.db.list('auditLogs', { action: 'grading_profile.updated' });
+    expect(audits[0].summary).toMatchObject({
+      previousProfileId: configured.profile.id,
+      concurrency: 3,
+    });
+  });
+
+  it('rejects invalid concurrency, removed prompt versions and edits without revisions', async () => {
+    const { app, admin } = await setupApp();
+    installProvider(() => {
+      throw new Error('unexpected grading call');
+    });
+    const configured = await configureModel(app, admin);
+    for (const concurrency of [0, 21, 1.5, '2', null]) {
+      for (const method of ['POST', 'PATCH'] as const) {
+        const response = await app.inject({
+          method,
+          url: `/api/v1/admin/grading-profiles${method === 'PATCH' ? `/${configured.profile.id}` : ''}`,
+          headers: admin,
+          payload: {
+            providerModelId: configured.model.id,
+            concurrency,
+            expectedRevision: method === 'PATCH' ? configured.profile.revision : undefined,
+          },
+        });
+        expect(response.statusCode).toBe(422);
+        expect(response.json().error.code).toBe('INVALID_FIELD');
+      }
+    }
+    const removed = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/grading-profiles',
+      headers: admin,
+      payload: { providerModelId: configured.model.id, promptVersion: 'rubric-v1' },
+    });
+    expect(removed.statusCode).toBe(400);
+    expect(removed.json().error.code).toBe('CLIENT_FIELD_FORBIDDEN');
+    const missingRevision = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: { concurrency: 3 },
+    });
+    expect(missingRevision.statusCode).toBe(422);
+    expect(missingRevision.json().error.code).toBe('INVALID_REVISION');
+  });
+
+  it.each([1, 2, 3])(
+    'runs at most %i model calls concurrently and refills available slots',
+    async (limit) => {
+      const { app, admin, ownerId } = await setupApp();
+      let active = 0;
+      let peak = 0;
+      let completed = 0;
+      const releases: (() => void)[] = [];
+      installProvider(async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+        active -= 1;
+        completed += 1;
+        return responseWithCriteria(zeroCriterionEvaluations(modelDefinition()));
+      });
+      const configured = await configureModel(app, admin);
+      const updated = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+        headers: admin,
+        payload: { expectedRevision: configured.profile.revision, concurrency: limit },
+      });
+      expect(updated.statusCode).toBe(200);
+      for (let index = 0; index < 5; index += 1)
+        await lockedAttempt(app, ownerId, modelDefinition(), { text: `答案 ${index}` });
+      const running = app.ctx.grading.runOnce();
+      expect(app.ctx.grading.runOnce()).toBe(running);
+      try {
+        await vi.waitFor(() => expect(releases).toHaveLength(limit));
+        expect(await app.ctx.db.list('gradingJobs', { status: 'running' })).toHaveLength(limit);
+        releases.shift()!();
+        // One completion must free a slot without waiting for the rest of the batch.
+        await vi.waitFor(() => expect(releases).toHaveLength(limit));
+        while (completed < 5) {
+          releases.splice(0).forEach((release) => release());
+          await vi.waitFor(() => expect(completed === 5 || releases.length > 0).toBe(true));
+        }
+        await running;
+        expect(peak).toBe(limit);
+        expect(
+          (await app.ctx.db.list('gradingJobs')).every((job) => job.status === 'succeeded'),
+        ).toBe(true);
+      } finally {
+        // Release any blocked calls even when an assertion fails.
+        releases.splice(0).forEach((release) => release());
+      }
+    },
+  );
+
+  it('does not let a saturated historical profile block jobs on another configuration', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const releases: (() => void)[] = [];
+    let releaseAll = false;
+    installProvider(async () => {
+      if (!releaseAll)
+        await new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+      return responseWithCriteria(zeroCriterionEvaluations(modelDefinition()));
+    });
+    const configured = await configureModel(app, admin);
+    const single = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.profile.revision, concurrency: 1 },
+    });
+    expect(single.statusCode).toBe(200);
+    for (let index = 0; index < 2; index += 1)
+      await lockedAttempt(app, ownerId, modelDefinition(), { text: `旧配置答案 ${index}` });
+    const parallel = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${single.json().data.id}`,
+      headers: admin,
+      payload: { expectedRevision: single.json().data.revision, concurrency: 2 },
+    });
+    expect(parallel.statusCode).toBe(200);
+    for (let index = 0; index < 2; index += 1)
+      await lockedAttempt(app, ownerId, modelDefinition(), { text: `新配置答案 ${index}` });
+    const running = app.ctx.grading.runOnce();
+    try {
+      await vi.waitFor(() => expect(releases).toHaveLength(3));
+      const active = await app.ctx.db.list('gradingJobs', { status: 'running' });
+      expect(active.filter((job) => job.profileId === single.json().data.id)).toHaveLength(1);
+      expect(active.filter((job) => job.profileId === parallel.json().data.id)).toHaveLength(2);
+    } finally {
+      releaseAll = true;
+      releases.splice(0).forEach((release) => release());
+      await running;
+    }
+    expect((await app.ctx.db.list('gradingJobs')).every((job) => job.status === 'succeeded')).toBe(
+      true,
+    );
+  });
+
   it('tests connection form values without creating a connection', async () => {
     const { app, admin } = await setupApp();
     const provider = installProvider(() => {

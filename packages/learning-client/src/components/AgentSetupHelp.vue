@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, ref } from 'vue';
 import { useLearning } from '../injection';
 import { copyTextToClipboard } from '../utils';
 import AppIcon from './AppIcon.vue';
+
+const { t } = useI18n();
 
 const learning = useLearning();
 const showInstructions = ref(false);
@@ -10,25 +13,24 @@ const deploymentBase = computed(() => learning.state.serverInfo?.publicBaseUrl ?
 const apiBase = computed(() => `${deploymentBase.value}/api/v1`);
 const skillDownloadUrl = computed(() => `${deploymentBase.value}/downloads/drill-hub-skill.zip`);
 const capabilityUrl = computed(() => `${apiBase.value}/agent/capabilities`);
-const agentInstructions = computed(
-  () => `请使用 Drill Hub 帮助我规划学习、创建学习内容和练习，并按需查看学习结果。
-
-服务器公开地址：${deploymentBase.value}
-API 根地址：${apiBase.value}
-认证：Authorization: Bearer <AGENT_TOKEN>。从安全配置中的 DRILL_HUB_AGENT_TOKEN 环境变量读取实际令牌；不要向我索取密码，也不要在对话、日志或学习材料中回显令牌。
-
-请先从 ${skillDownloadUrl.value} 下载并解压 Skill，读取 drill-hub/SKILL.md 和 references/api.md，再调用 GET ${capabilityUrl.value} 确认令牌权限与支持能力。不要猜测未记录的接口。
-按“主题 → 内容/题目 → 练习或考试 → 计划任务”的依赖顺序创建资源，使用响应中的真实 ID 与 revision；内容目前只支持纯文本。
-内部模型题由服务端按 rubric 评分；只有 external_rubric 题且令牌具备 grade:write 时，才可提交逐项等级与原文证据，不能直接指定分数。
-结果按需读取，不要高频轮询。修改冲突时先重新读取；创建请求结果不明时先核对，不要盲目重试。默认使用归档和恢复，不永久删除。`,
+const agentInstructions = computed(() =>
+  t('components.agentSetup.instructions', {
+    baseUrl: deploymentBase.value,
+    apiBase: apiBase.value,
+    skillUrl: skillDownloadUrl.value,
+    capabilityUrl: capabilityUrl.value,
+  }),
 );
 
 async function copyInstructions() {
   if (await copyTextToClipboard(agentInstructions.value)) {
-    learning.notify.success('Agent 接入说明已复制');
+    learning.notify.success(t('components.agentSetup.notifyCopied'));
   } else {
     showInstructions.value = true;
-    learning.notify.error('无法访问剪贴板', '请手动复制下方接入说明。');
+    learning.notify.error(
+      t('components.agentSetup.notifyClipboardFailed'),
+      t('components.agentSetup.notifyClipboardFailedDescription'),
+    );
   }
 }
 </script>
@@ -41,20 +43,22 @@ async function copyInstructions() {
   >
     <div class="agent-setup-heading">
       <div>
-        <h2 id="agent-setup-title"><AppIcon name="book" />Agent 接入</h2>
-        <p class="muted">创建令牌并配置到 Agent 的安全环境，再将接入说明交给它。</p>
+        <h2 id="agent-setup-title">
+          <AppIcon name="book" />{{ t('components.agentSetup.heading') }}
+        </h2>
+        <p class="muted">{{ t('components.agentSetup.description') }}</p>
       </div>
       <button class="button button--small" type="button" @click="copyInstructions">
-        复制 Agent 接入说明
+        {{ t('components.agentSetup.copyButton') }}
       </button>
     </div>
     <p v-if="learning.state.serverInfo.isLoopback" class="field-hint" role="status">
-      当前为本机地址，远程 Agent 需要可访问的服务器地址。
+      {{ t('components.agentSetup.loopbackHint') }}
     </p>
     <textarea
       v-if="showInstructions"
       class="textarea"
-      aria-label="Agent 接入说明"
+      :aria-label="t('components.agentSetup.instructionsLabel')"
       :value="agentInstructions"
       rows="8"
       readonly

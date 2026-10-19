@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
-import { resourceTypeLabels, type ArchiveEntry, type ArchiveResourceType } from '../types';
+import type { ArchiveEntry, ArchiveResourceType } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
@@ -10,6 +11,7 @@ import EmptyState from '../components/EmptyState.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AppSelect from '../components/AppSelect.vue';
 
+const { t } = useI18n();
 const learning = useLearning();
 const entries = ref<ArchiveEntry[]>([]);
 const type = ref('all');
@@ -17,19 +19,23 @@ const loading = ref(true);
 const error = ref('');
 const selected = ref<ArchiveEntry | null>(null);
 const restoring = ref(false);
-const typeOptions = [
-  { value: 'all', label: '全部类型' },
-  { value: 'topic', label: '主题' },
-  { value: 'plan', label: '计划' },
-  { value: 'content', label: '内容' },
-  { value: 'question', label: '题目' },
-  { value: 'assessment', label: '练习 / 考试' },
-];
+const typeOptions = computed(() => [
+  { value: 'all', label: t('management.archive.filter.all') },
+  { value: 'topic', label: t('management.archive.filter.topic') },
+  { value: 'plan', label: t('management.archive.filter.plan') },
+  { value: 'content', label: t('management.archive.filter.content') },
+  { value: 'question', label: t('management.archive.filter.question') },
+  { value: 'assessment', label: t('management.archive.filter.assessment') },
+]);
+
+function typeLabel(resourceType: ArchiveResourceType): string {
+  return t(`management.archive.filter.${resourceType}`);
+}
 
 function normalize(value: unknown): ArchiveEntry[] {
-  if (!Array.isArray(value)) throw new Error('服务器归档响应格式不正确');
+  if (!Array.isArray(value)) throw new Error(t('management.archive.invalidResponse'));
   return value.map((raw) => {
-    if (!raw || typeof raw !== 'object') throw new Error('归档记录格式不正确');
+    if (!raw || typeof raw !== 'object') throw new Error(t('management.archive.invalidRecord'));
     const record = raw as Record<string, unknown>;
     const resource =
       record.resource && typeof record.resource === 'object'
@@ -37,9 +43,9 @@ function normalize(value: unknown): ArchiveEntry[] {
         : record;
     const resourceType = (record.resourceType ?? record.type) as ArchiveResourceType;
     if (!['topic', 'plan', 'content', 'question', 'assessment'].includes(resourceType))
-      throw new Error('归档记录包含未知资源类型');
+      throw new Error(t('management.archive.unknownType'));
     const id = String(record.id ?? resource.id ?? '');
-    if (!id) throw new Error('归档记录缺少资源标识');
+    if (!id) throw new Error(t('management.archive.missingId'));
     return {
       resourceType,
       id,
@@ -64,7 +70,7 @@ async function load() {
       type.value === 'all' ? result : result.filter((entry) => entry.resourceType === type.value);
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('归档读取失败', error.value);
+    learning.notify.error(t('management.archive.loadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -90,12 +96,10 @@ async function resolveRevision(entry: ArchiveEntry): Promise<number> {
       )
     ).flat();
     const plan = plans.find((item) => item.id === entry.id);
-    if (!plan) throw new Error('服务端未找到这份归档计划，无法安全恢复');
+    if (!plan) throw new Error(t('management.archive.planMissing'));
     return plan.revision;
   }
-  throw new Error(
-    '题目归档记录未返回 expectedRevision；为避免覆盖并发修改，已停止恢复。需要后端在归档列表契约中补充 revision',
-  );
+  throw new Error(t('management.archive.missingRevision'));
 }
 async function restore() {
   if (!selected.value) return;
@@ -106,11 +110,11 @@ async function restore() {
     await learning.post(`/archive/${selected.value.resourceType}/${selected.value.id}/restore`, {
       expectedRevision: revision,
     });
-    learning.notify.success('资源已恢复', '该资源已重新可用，历史记录保持不变。');
+    learning.notify.success(t('management.archive.restored'), t('management.archive.restoredDesc'));
     selected.value = null;
     await load();
   } catch (reason) {
-    learning.notify.error('恢复资源失败', errorMessage(reason));
+    learning.notify.error(t('management.archive.restoreFailed'), errorMessage(reason));
   } finally {
     restoring.value = false;
   }
@@ -121,24 +125,28 @@ onMounted(load);
 <template>
   <div>
     <PageHeader
-      title="归档资源"
+      :title="t('management.archive.title')"
       eyebrow="ARCHIVE"
-      description="归档不会删除作答、评分或错题历史。恢复父资源不会自动恢复独立归档的子资源。"
+      :description="t('management.archive.description')"
     />
     <form class="card filter-bar" @submit.prevent="load">
       <div class="form-field">
-        <label for="archive-type">资源类型</label
+        <label for="archive-type">{{ t('management.archive.resourceType') }}</label
         ><AppSelect id="archive-type" v-model="type" :items="typeOptions" />
       </div>
-      <button class="button" type="submit">应用筛选</button>
+      <button class="button" type="submit">{{ t('management.common.applyFilter') }}</button>
     </form>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取归档</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('management.archive.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="归档读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('management.archive.loadFailed')"
+      :description="t('management.common.networkRetry')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('management.common.retry') }}
+      </button></EmptyState
     >
     <div v-else-if="entries.length" class="list-stack">
       <article
@@ -150,33 +158,39 @@ onMounted(load);
         <div class="list-card__body">
           <h3>{{ entry.title }}</h3>
           <p>
-            {{ resourceTypeLabels[entry.resourceType] }} · 归档于 {{ formatDate(entry.archivedAt) }}
+            {{ typeLabel(entry.resourceType) }} ·
+            {{ t('management.archive.archivedAt', { date: formatDate(entry.archivedAt) }) }}
           </p>
           <div class="list-card__meta">
-            <span>资源标识 {{ entry.id }}</span>
+            <span>{{ t('management.archive.resourceId', { id: entry.id }) }}</span>
           </div>
         </div>
-        <button class="button button--small" type="button" @click="selected = entry">恢复</button>
+        <button class="button button--small" type="button" @click="selected = entry">
+          {{ t('management.archive.restore') }}
+        </button>
       </article>
     </div>
     <EmptyState
       v-else
-      title="归档中是空的"
-      description="没有符合条件的已归档资源。首版不提供永久删除，因此这里也不会出现伪造的回收站项目。"
+      :title="t('management.archive.empty')"
+      :description="t('management.archive.emptyDesc')"
     />
     <ConfirmDialog
       :open="Boolean(selected)"
-      title="恢复这项资源？"
+      :title="t('management.archive.restoreTitle')"
       :description="
         selected
-          ? `${resourceTypeLabels[selected.resourceType]}「${selected.title}」将恢复为可用状态。`
+          ? t('management.archive.restoreDesc', {
+              type: typeLabel(selected.resourceType),
+              title: selected.title,
+            })
           : ''
       "
-      confirm-label="确认恢复"
+      :confirm-label="t('management.archive.restoreConfirm')"
       :busy="restoring"
       @update:open="!$event && (selected = null)"
       @confirm="restore"
-      ><p class="muted small">恢复后可开始新的学习操作；既有历史与关联保持不变。</p></ConfirmDialog
+      ><p class="muted small">{{ t('management.archive.restoreNote') }}</p></ConfirmDialog
     >
   </div>
 </template>

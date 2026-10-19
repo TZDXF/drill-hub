@@ -15,6 +15,7 @@ import { baseRecord, id, now } from './core/ids.js';
 import type { AppContext, ServerConfig } from './core/context.js';
 import { createAuthFunctions, createUser, registerAuthRoutes } from './modules/auth/index.js';
 import { registerLearningRoutes, expireAttempts } from './modules/learning/index.js';
+import { registerAccessLogging, registerAuditRoutes } from './modules/audit/index.js';
 import { createGradingService, registerGradingRoutes } from './modules/grading/index.js';
 declare module 'fastify' {
   interface FastifyInstance {
@@ -35,6 +36,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     bodyLimit: 1024 * 1024,
     requestTimeout: 30000,
     trustProxy: false,
+    requestIdHeader: false,
+    genReqId: id,
   });
   await app.register(cookie);
   await app.register(cors, {
@@ -72,6 +75,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
   ctx.grading = createGradingService(ctx);
   app.decorate('ctx', ctx);
+  registerAccessLogging(app, ctx);
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
       return reply.code(error.statusCode).send({
@@ -144,6 +148,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       },
     };
   });
+  registerAuditRoutes(app, ctx);
   await registerAuthRoutes(app, ctx);
   await registerLearningRoutes(app, ctx);
   await registerGradingRoutes(app, ctx);

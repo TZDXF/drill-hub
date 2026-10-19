@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AttemptReport } from '@drill-hub/contracts';
@@ -21,6 +22,8 @@ import GradeFeedback from '../components/GradeFeedback.vue';
 import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
+
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<{ publicAccess?: boolean }>(), { publicAccess: false });
 const learning = useLearning();
@@ -65,7 +68,7 @@ async function load(background = false, notifyFailure = true) {
   try {
     if (props.publicAccess) {
       publicToken.value = captureAnswerLinkToken(route.hash);
-      if (!publicToken.value) throw new Error('答题链接缺少临时秘钥');
+      if (!publicToken.value) throw new Error(t('core.errors.ANSWER_LINK_REQUIRED'));
       report.value = await learning.publicGet<AttemptReport>(
         '/public/answer/report',
         publicToken.value,
@@ -86,7 +89,7 @@ async function load(background = false, notifyFailure = true) {
     }
   } catch (reason) {
     error.value = errorMessage(reason);
-    if (notifyFailure) learning.notify.error('报告刷新失败', error.value);
+    if (notifyFailure) learning.notify.error(t('learning.report.notifyRefreshError'), error.value);
   } finally {
     loading.value = false;
     refreshing.value = false;
@@ -110,12 +113,12 @@ async function voidAttempt() {
     voidOpen.value = false;
     voidReason.value = '';
     learning.notify.success(
-      '作答已作废',
-      '记录和已有评分仍会保留，不再计入学习统计，也不能继续答题、交卷或触发评分。',
+      t('learning.report.notifyVoidedTitle'),
+      t('learning.report.notifyVoidedBody'),
     );
     await load(true);
   } catch (reason) {
-    learning.notify.error('作废失败', errorMessage(reason));
+    learning.notify.error(t('learning.report.notifyVoidError'), errorMessage(reason));
     if (isApiError(reason, 409)) {
       voidOpen.value = false;
       await load(true);
@@ -146,26 +149,36 @@ onBeforeUnmount(() => {
 <template>
   <div class="attempt-layout">
     <main class="report-container">
-      <div v-if="loading" class="loading-block"><span class="spinner" />正在读取服务端报告</div>
+      <div v-if="loading" class="loading-block">
+        <span class="spinner" />{{ t('learning.report.loading') }}
+      </div>
       <EmptyState
         v-else-if="error && !report"
         icon="alert"
-        title="报告读取失败"
-        description="请检查网络连接后重试。"
+        :title="t('learning.report.loadFailed')"
+        :description="t('learning.common.networkHint')"
         ><button class="button button--small" type="button" @click="load()">
-          重试
+          {{ t('learning.common.retry') }}
         </button></EmptyState
       >
       <template v-else-if="report">
         <PageHeader
           :title="report.attempt.title"
           eyebrow="LEARNING REPORT"
-          :description="`${report.attempt.kind === 'exam' ? '考试' : '练习'} · 提交于 ${formatDate(report.attempt.submittedAt)}`"
+          :description="
+            t('learning.report.submittedAt', {
+              kind:
+                report.attempt.kind === 'exam'
+                  ? t('learning.common.exam')
+                  : t('learning.common.practice'),
+              date: formatDate(report.attempt.submittedAt),
+            })
+          "
         >
           <template v-if="!publicAccess" #back
             ><RouterLink class="back-link" :to="planReturn ?? { name: 'history' }"
               ><AppIcon name="back" :size="16" />{{
-                planReturn ? '返回学习计划' : '学习历史'
+                planReturn ? t('learning.content.backToPlan') : t('learning.report.backToHistory')
               }}</RouterLink
             ></template
           >
@@ -178,7 +191,7 @@ onBeforeUnmount(() => {
                 params: { attemptId: report.attempt.id },
                 query: planNavigationQuery(route.query),
               }"
-              >继续作答</RouterLink
+              >{{ t('learning.home.continueAttempt') }}</RouterLink
             >
             <button
               v-if="!publicAccess && !report.attempt.voidedAt"
@@ -187,7 +200,7 @@ onBeforeUnmount(() => {
               :disabled="voiding || refreshing"
               @click="voidOpen = true"
             >
-              作废作答
+              {{ t('learning.report.voidAction') }}
             </button>
             <button
               class="button"
@@ -199,7 +212,7 @@ onBeforeUnmount(() => {
                 v-else
                 name="refresh"
                 :size="17"
-              />刷新报告
+              />{{ t('learning.report.refresh') }}
             </button></template
           >
         </PageHeader>
@@ -207,12 +220,16 @@ onBeforeUnmount(() => {
           <span
             class="badge"
             :class="report.attempt.purpose === 'test' ? 'badge--amber' : 'badge--teal'"
-            >{{ report.attempt.purpose === 'test' ? '测试作答' : '正式作答' }}</span
+            >{{
+              report.attempt.purpose === 'test'
+                ? t('core.attempt.purpose.test')
+                : t('core.attempt.purpose.learning')
+            }}</span
           >
           <p v-if="report.attempt.purpose === 'test'">
-            可正常答题、交卷及评分，不计入学习统计、错题和计划进度。
+            {{ t('learning.report.testNotice') }}
           </p>
-          <p v-else>未作废的正式作答计入所属用户的学习统计、错题和计划进度。</p>
+          <p v-else>{{ t('learning.report.formalNotice') }}</p>
         </div>
         <div
           v-if="report.attempt.voidedAt"
@@ -221,11 +238,15 @@ onBeforeUnmount(() => {
         >
           <AppIcon name="archive" />
           <div>
-            <strong>已作废 · 只读</strong>
-            <p>不再计入学习统计、错题与计划进度；不能编辑、交卷或触发后续评分，历史记录仍保留。</p>
-            <p>作废时间：{{ formatDate(report.attempt.voidedAt) }}</p>
-            <p>作废人：{{ report.attempt.voidedBy }}</p>
-            <p class="feedback-text">作废原因：{{ report.attempt.voidReason }}</p>
+            <strong>{{ t('learning.report.voidedTitle') }}</strong>
+            <p>{{ t('learning.report.voidedDescription') }}</p>
+            <p>
+              {{ t('learning.report.voidedAt', { date: formatDate(report.attempt.voidedAt) }) }}
+            </p>
+            <p>{{ t('learning.report.voidedBy', { name: report.attempt.voidedBy }) }}</p>
+            <p class="feedback-text">
+              {{ t('learning.report.voidReason', { reason: report.attempt.voidReason }) }}
+            </p>
           </div>
         </div>
         <div class="report-workspace">
@@ -246,7 +267,7 @@ onBeforeUnmount(() => {
               style="margin-bottom: 14px"
             >
               <AppIcon name="eye" />
-              <p>临时链接作答记到链接所属用户名下；登录后只能只读查看，不能修改链接答案。</p>
+              <p>{{ t('learning.report.answerLinkNotice') }}</p>
             </div>
             <template v-if="currentIndex < 0">
               <div
@@ -256,8 +277,8 @@ onBeforeUnmount(() => {
               >
                 <AppIcon name="refresh" />
                 <div>
-                  <strong>有重评任务正在进行</strong>
-                  <p>当前有效成绩仍会保留显示，新结果不会把旧分静默清零。</p>
+                  <strong>{{ t('learning.report.regradingTitle') }}</strong>
+                  <p>{{ t('learning.report.regradingDescription') }}</p>
                 </div>
               </div>
               <div
@@ -267,8 +288,8 @@ onBeforeUnmount(() => {
               >
                 <AppIcon name="clock" />
                 <div>
-                  <strong>报告尚未最终完成</strong>
-                  <p>已判得分与待评分分值分开显示；待评分不是 0 分。</p>
+                  <strong>{{ t('learning.report.notFinalTitle') }}</strong>
+                  <p>{{ t('learning.report.notFinalDescription') }}</p>
                 </div>
               </div>
               <div
@@ -278,53 +299,66 @@ onBeforeUnmount(() => {
               >
                 <AppIcon name="alert" />
                 <div>
-                  <strong>{{ report.failedCount }} 题评分未完成</strong>
-                  <p>失败不等于零分。请稍后刷新，或等待管理员恢复评分任务。</p>
+                  <strong>{{
+                    t('learning.report.failedCountTitle', { count: report.failedCount })
+                  }}</strong>
+                  <p>{{ t('learning.report.failedCountDescription') }}</p>
                 </div>
               </div>
-              <section class="paper-panel report-summary" aria-label="成绩摘要">
+              <section
+                class="paper-panel report-summary"
+                :aria-label="t('learning.report.summaryLabel')"
+              >
                 <div class="report-summary__item">
-                  <span>{{ report.isFinal ? '最终得分' : '当前已判得分' }}</span
+                  <span>{{
+                    report.isFinal
+                      ? t('learning.report.finalScore')
+                      : t('learning.report.currentScore')
+                  }}</span
                   ><strong
                     >{{ formatScore(report.awardedScore) }}
                     <small>/ {{ formatScore(report.maxScore) }}</small></strong
                   >
                 </div>
                 <div class="report-summary__item">
-                  <span>待评分分值</span><strong>{{ formatScore(report.pendingMaxScore) }}</strong>
+                  <span>{{ t('learning.report.pendingScore') }}</span
+                  ><strong>{{ formatScore(report.pendingMaxScore) }}</strong>
                 </div>
                 <div class="report-summary__item">
-                  <span>报告状态</span
+                  <span>{{ t('learning.report.reportStatus') }}</span
                   ><strong style="font-size: 20px">{{
                     report.attempt.voidedAt
-                      ? '已作废'
+                      ? t('learning.home.voided')
                       : report.attempt.status === 'in_progress'
-                        ? '作答中'
+                        ? t('learning.report.statusInProgress')
                         : report.isFinal
-                          ? '已完成'
-                          : '评分中'
+                          ? t('learning.plan.statusCompleted')
+                          : t('learning.report.statusGrading')
                   }}</strong>
                 </div>
                 <div class="report-summary__item">
-                  <span>未作答题数</span><strong>{{ report.unansweredCount }} 题</strong>
+                  <span>{{ t('learning.report.unansweredCount') }}</span
+                  ><strong>{{
+                    t('learning.common.questionCount', { count: report.unansweredCount })
+                  }}</strong>
                 </div>
               </section>
               <p v-if="report.attempt.taskId" class="muted small">
                 {{
                   report.attempt.purpose === 'test' || report.attempt.voidedAt
-                    ? '此记录不计入计划进度。'
+                    ? t('learning.report.taskNoteTest')
                     : report.attempt.kind === 'exam'
-                      ? '正式考试交卷即满足作答任务完成条件，全部留空也可完成。'
-                      : '正式练习全部留空不会完成计划任务。'
+                      ? t('learning.attempt.submitNoteExam')
+                      : t('learning.attempt.submitNotePractice')
                 }}
               </p>
             </template>
-            <section v-if="currentItem" aria-label="逐题报告">
+            <section v-if="currentItem" :aria-label="t('learning.report.itemLabel')">
               <article :key="currentItem.id" class="paper-panel report-item">
                 <header class="report-item__header">
                   <div>
                     <span class="question-number"
-                      >第 {{ currentIndex + 1 }} 题 ·
+                      >{{ t('learning.attempt.questionNumber', { index: currentIndex + 1 }) }} ·
                       {{ questionTypeLabels[currentItem.type] }}</span
                     >
                     <h2>{{ currentItem.stem }}</h2>
@@ -342,7 +376,11 @@ onBeforeUnmount(() => {
                   >
                 </header>
                 <p class="muted small">
-                  答案状态：{{ answerStatusLabels[currentItem.answerStatus] }}
+                  {{
+                    t('learning.report.answerStatus', {
+                      status: answerStatusLabels[currentItem.answerStatus],
+                    })
+                  }}
                 </p>
                 <AttemptChoiceReview :item="currentItem" />
                 <GradeFeedback
@@ -354,20 +392,31 @@ onBeforeUnmount(() => {
                 />
               </article>
             </section>
-            <nav v-if="report.attempt.items.length" class="report-pagination" aria-label="逐题切换">
+            <nav
+              v-if="report.attempt.items.length"
+              class="report-pagination"
+              :aria-label="t('learning.report.paginationLabel')"
+            >
               <button
                 class="button"
                 type="button"
                 :disabled="currentIndex < 0"
                 @click="goTo(currentIndex - 1)"
               >
-                <AppIcon name="back" :size="16" />{{ currentIndex === 0 ? '评分总览' : '上一题' }}
+                <AppIcon name="back" :size="16" />{{
+                  currentIndex === 0
+                    ? t('learning.report.paginationOverview')
+                    : t('learning.attempt.previous')
+                }}
               </button>
               <span class="muted small" aria-live="polite" aria-atomic="true">
                 {{
                   currentIndex < 0
-                    ? `评分总览 · 共 ${report.attempt.items.length} 题`
-                    : `第 ${currentIndex + 1} / ${report.attempt.items.length} 题`
+                    ? t('learning.report.overviewCount', { count: report.attempt.items.length })
+                    : t('learning.report.questionProgress', {
+                        index: currentIndex + 1,
+                        total: report.attempt.items.length,
+                      })
                 }}
               </span>
               <button
@@ -376,24 +425,32 @@ onBeforeUnmount(() => {
                 :disabled="currentIndex === report.attempt.items.length - 1"
                 @click="goTo(currentIndex + 1)"
               >
-                {{ currentIndex < 0 ? '查看题目' : '下一题' }}<AppIcon name="chevron" :size="16" />
+                {{
+                  currentIndex < 0
+                    ? t('learning.report.viewQuestions')
+                    : t('learning.attempt.next')
+                }}<AppIcon name="chevron" :size="16" />
               </button>
             </nav>
-            <EmptyState v-else title="暂无题目" description="这份报告没有可展示的题目。" />
+            <EmptyState
+              v-else
+              :title="t('learning.report.emptyTitle')"
+              :description="t('learning.report.emptyDescription')"
+            />
           </div>
         </div>
         <ConfirmDialog
           v-model:open="voidOpen"
-          title="确认作废本次作答？"
-          description="作废后不可恢复：作答仅供只读查看，不计入学习统计、错题和计划进度，也不能继续答题、交卷或触发评分。已有记录与评分历史仍保留。"
-          confirm-label="确认作废"
+          :title="t('learning.report.voidDialogTitle')"
+          :description="t('learning.report.voidDialogDescription')"
+          :confirm-label="t('learning.report.voidDialogConfirm')"
           :busy="voiding"
           :confirm-disabled="!validVoidReason"
           danger
           @confirm="voidAttempt"
         >
           <div class="form-field">
-            <label for="attempt-void-reason">作废原因（必填，最多 4000 字）</label>
+            <label for="attempt-void-reason">{{ t('learning.report.voidReasonLabel') }}</label>
             <textarea
               id="attempt-void-reason"
               v-model="voidReason"
@@ -403,7 +460,7 @@ onBeforeUnmount(() => {
               :disabled="voiding"
               required
             />
-            <p class="muted small">请确认当前记录和原因，版本冲突时需要重新查看后确认。</p>
+            <p class="muted small">{{ t('learning.report.voidReasonHint') }}</p>
           </div>
         </ConfirmDialog>
       </template>

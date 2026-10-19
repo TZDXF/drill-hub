@@ -55,6 +55,8 @@ function makePlatform(kind: 'web' | 'android') {
   const platform: ClientPlatform = {
     kind,
     sessionPersistence: 'memory',
+    getLocale: () => null,
+    setLocale() {},
     async getConnection() {
       return { ...connection };
     },

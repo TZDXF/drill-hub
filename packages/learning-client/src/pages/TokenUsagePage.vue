@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { TokenUsageReport } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
@@ -9,6 +10,7 @@ import AppSelect from '../components/AppSelect.vue';
 import EmptyState from '../components/EmptyState.vue';
 import PageHeader from '../components/PageHeader.vue';
 
+const { t, n } = useI18n();
 const learning = useLearning();
 const days = ref('30');
 const scope = ref('me');
@@ -16,15 +18,17 @@ const report = ref<TokenUsageReport | null>(null);
 const loading = ref(true);
 const error = ref('');
 const isAdmin = computed(() => learning.state.user?.role === 'admin');
-const dayOptions = [7, 30, 90].map((value) => ({
-  value: String(value),
-  label: `最近 ${value} 天`,
-}));
-const scopeOptions = [
-  { value: 'me', label: '我的用量' },
-  { value: 'admin', label: '全站用量' },
-];
-const number = (value: number) => value.toLocaleString('zh-CN');
+const dayOptions = computed(() =>
+  [7, 30, 90].map((value) => ({
+    value: String(value),
+    label: t('management.usage.daysOption', { days: n(value) }),
+  })),
+);
+const scopeOptions = computed(() => [
+  { value: 'me', label: t('management.usage.scopeMe') },
+  { value: 'admin', label: t('management.usage.scopeAdmin') },
+]);
+const number = (value: number) => n(value);
 const peak = computed(() =>
   Math.max(1, ...(report.value?.daily.map((day) => day.totalTokens) ?? [])),
 );
@@ -59,91 +63,114 @@ onBeforeUnmount(() => {
 <template>
   <div class="usage-page">
     <PageHeader
-      title="Token 用量"
+      :title="t('management.usage.title')"
       eyebrow="TOKEN USAGE"
-      description="了解模型评分的消耗，让每一次学习投入都有迹可循。"
+      :description="t('management.usage.description')"
     >
       <template #actions>
         <button class="button" type="button" :disabled="loading" @click="load">
-          <AppIcon name="refresh" :size="17" />刷新
+          <AppIcon name="refresh" :size="17" />{{ t('management.common.refresh') }}
         </button>
       </template>
     </PageHeader>
     <div class="card filter-bar">
       <div class="form-field">
-        <label for="usage-days">统计范围</label>
+        <label for="usage-days">{{ t('management.usage.range') }}</label>
         <AppSelect id="usage-days" v-model="days" :items="dayOptions" />
       </div>
       <div v-if="isAdmin" class="form-field">
-        <label for="usage-scope">用量归属</label>
+        <label for="usage-scope">{{ t('management.usage.scopeLabel') }}</label>
         <AppSelect id="usage-scope" v-model="scope" :items="scopeOptions" />
       </div>
-      <p class="muted small usage-filter-hint">包含今天，按设备时区 {{ timezone }} 分日</p>
+      <p class="muted small usage-filter-hint">
+        {{ t('management.usage.scopeHint', { timezone: timezone }) }}
+      </p>
     </div>
     <div v-if="loading" class="loading-block" role="status">
-      <span class="spinner" />正在读取用量统计
+      <span class="spinner" />{{ t('management.usage.loading') }}
     </div>
-    <EmptyState v-else-if="error" icon="alert" title="用量统计读取失败" :description="error">
-      <button class="button button--small" type="button" @click="load">重试</button>
+    <EmptyState
+      v-else-if="error"
+      icon="alert"
+      :title="t('management.usage.loadFailed')"
+      :description="error"
+    >
+      <button class="button button--small" type="button" @click="load">
+        {{ t('management.common.retry') }}
+      </button>
     </EmptyState>
     <template v-else-if="report">
-      <section class="stats-grid" aria-label="Token 用量概览">
+      <section class="stats-grid" :aria-label="t('management.usage.overviewLabel')">
         <article class="card stat-card stat-card--teal">
           <div class="stat-card__icon"><AppIcon name="usage" /></div>
           <strong>{{ number(report.totals.totalTokens) }}</strong
-          ><span>已知总 Token</span>
+          ><span>{{ t('management.usage.totalTokens') }}</span>
         </article>
         <article class="card stat-card">
           <div class="stat-card__icon"><AppIcon name="arrow" /></div>
           <strong>{{ number(report.totals.promptTokens) }}</strong
-          ><span>输入 Token</span>
+          ><span>{{ t('management.usage.promptTokens') }}</span>
         </article>
         <article class="card stat-card">
           <div class="stat-card__icon"><AppIcon name="back" /></div>
           <strong>{{ number(report.totals.completionTokens) }}</strong
-          ><span>输出 Token</span>
+          ><span>{{ t('management.usage.completionTokens') }}</span>
         </article>
         <article class="card stat-card stat-card--amber">
           <div class="stat-card__icon"><AppIcon name="model" /></div>
           <strong>{{ number(report.totals.calls) }}</strong
-          ><span>模型调用次数（含重试）</span>
+          ><span>{{ t('management.usage.calls') }}</span>
         </article>
       </section>
       <div class="usage-status" aria-live="polite">
-        <span class="badge">{{ report.fromDate }} 至 {{ report.toDate }}</span>
-        <span class="badge" :class="report.totals.failedCalls ? 'badge--red' : 'badge--green'"
-          >失败 {{ number(report.totals.failedCalls) }} 次</span
-        >
-        <span class="badge" :class="report.totals.unknownUsageCalls ? 'badge--amber' : ''"
-          >用量未知 {{ number(report.totals.unknownUsageCalls) }} 次</span
-        >
-        <span class="badge">模型测试 {{ number(report.totals.modelTestCalls) }} 次</span>
+        <span class="badge">{{
+          t('management.usage.rangeBadge', { from: report.fromDate, to: report.toDate })
+        }}</span>
+        <span class="badge" :class="report.totals.failedCalls ? 'badge--red' : 'badge--green'">{{
+          t('management.usage.failedCalls', { count: number(report.totals.failedCalls) })
+        }}</span>
+        <span class="badge" :class="report.totals.unknownUsageCalls ? 'badge--amber' : ''">{{
+          t('management.usage.unknownCalls', { count: number(report.totals.unknownUsageCalls) })
+        }}</span>
+        <span class="badge">{{
+          t('management.usage.modelTestCalls', { count: number(report.totals.modelTestCalls) })
+        }}</span>
       </div>
       <EmptyState
         v-if="!report.totals.calls"
         icon="usage"
-        title="这个时间段暂无模型调用"
-        description="完成一次模型评分后，这里会展示实际用量。规则评分和外部 Agent 评分不产生本站模型调用。"
+        :title="t('management.usage.empty')"
+        :description="t('management.usage.emptyDesc')"
       />
       <template v-else>
         <section class="card usage-trend" aria-labelledby="usage-trend-title">
           <div class="section-heading">
             <div>
-              <h2 id="usage-trend-title">每日用量</h2>
-              <p class="muted small">仅累计供应商已返回的 Token；用量未知的调用不计入柱高。</p>
+              <h2 id="usage-trend-title">{{ t('management.usage.dailyTitle') }}</h2>
+              <p class="muted small">{{ t('management.usage.dailyDesc') }}</p>
             </div>
-            <div class="usage-legend"><span>输入</span><span>输出</span></div>
+            <div class="usage-legend">
+              <span>{{ t('management.usage.legendInput') }}</span
+              ><span>{{ t('management.usage.legendOutput') }}</span>
+            </div>
           </div>
           <AppScrollArea orientation="horizontal" type="auto">
             <ul
               class="usage-chart"
               :style="{ minWidth: `${report.days * 10}px` }"
-              aria-label="每日 Token 趋势"
+              :aria-label="t('management.usage.trendLabel')"
             >
               <li
                 v-for="(day, index) in report.daily"
                 :key="day.date"
-                :title="`${day.date}：输入 ${number(day.promptTokens)}，输出 ${number(day.completionTokens)}，用量未知 ${day.unknownUsageCalls} 次`"
+                :title="
+                  t('management.usage.dayTitle', {
+                    date: day.date,
+                    input: number(day.promptTokens),
+                    output: number(day.completionTokens),
+                    unknown: number(day.unknownUsageCalls),
+                  })
+                "
               >
                 <div class="usage-chart__bar" aria-hidden="true">
                   <span
@@ -162,31 +189,34 @@ onBeforeUnmount(() => {
                     ? day.date.slice(5)
                     : ''
                 }}</span>
-                <span class="sr-only"
-                  >{{ day.date }}：{{ number(day.totalTokens) }} 个已知 Token，{{
-                    day.unknownUsageCalls
-                  }}
-                  次用量未知</span
-                >
+                <span class="sr-only">{{
+                  t('management.usage.daySr', {
+                    date: day.date,
+                    total: number(day.totalTokens),
+                    unknown: number(day.unknownUsageCalls),
+                  })
+                }}</span>
               </li>
             </ul>
           </AppScrollArea>
           <details class="usage-daily-details">
-            <summary>查看每日明细</summary>
+            <summary>{{ t('management.usage.dailyDetails') }}</summary>
             <AppScrollArea orientation="horizontal" type="auto">
               <table class="data-table">
                 <caption class="sr-only">
-                  每日用量明细
+                  {{
+                    t('management.usage.dailyCaption')
+                  }}
                 </caption>
                 <thead>
                   <tr>
-                    <th>日期</th>
-                    <th>输入</th>
-                    <th>输出</th>
-                    <th>已知总量</th>
-                    <th>调用</th>
-                    <th>失败</th>
-                    <th>用量未知</th>
+                    <th>{{ t('management.usage.col.date') }}</th>
+                    <th>{{ t('management.usage.col.input') }}</th>
+                    <th>{{ t('management.usage.col.output') }}</th>
+                    <th>{{ t('management.usage.col.knownTotal') }}</th>
+                    <th>{{ t('management.usage.col.calls') }}</th>
+                    <th>{{ t('management.usage.col.failed') }}</th>
+                    <th>{{ t('management.usage.col.unknown') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -206,55 +236,59 @@ onBeforeUnmount(() => {
         </section>
         <section aria-labelledby="usage-models-title">
           <div class="section-heading">
-            <h2 id="usage-models-title">模型用量排行</h2>
-            <span class="muted small">按已知总 Token 排序</span>
+            <h2 id="usage-models-title">{{ t('management.usage.modelsTitle') }}</h2>
+            <span class="muted small">{{ t('management.usage.modelsDesc') }}</span>
           </div>
           <AppScrollArea class="paper-panel table-wrap" orientation="horizontal" type="auto">
             <table class="data-table responsive-table">
               <caption class="sr-only">
-                模型用量排行
+                {{
+                  t('management.usage.modelsCaption')
+                }}
               </caption>
               <thead>
                 <tr>
-                  <th>模型 / 连接</th>
-                  <th>输入 Token</th>
-                  <th>输出 Token</th>
-                  <th>已知总 Token</th>
-                  <th>调用次数</th>
-                  <th>用量未知</th>
+                  <th>{{ t('management.usage.col.modelConnection') }}</th>
+                  <th>{{ t('management.usage.promptTokens') }}</th>
+                  <th>{{ t('management.usage.completionTokens') }}</th>
+                  <th>{{ t('management.usage.col.knownTotalTokens') }}</th>
+                  <th>{{ t('management.usage.col.callCount') }}</th>
+                  <th>{{ t('management.usage.col.unknown') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="model in report.models" :key="`${model.connectionId}:${model.modelKey}`">
-                  <td data-label="模型 / 连接">
+                  <td :data-label="t('management.usage.col.modelConnection')">
                     <span class="table-primary usage-model-key">{{ model.modelKey }}</span
-                    ><span class="table-secondary usage-model-key"
-                      >连接 {{ model.connectionId }}</span
-                    >
+                    ><span class="table-secondary usage-model-key">{{
+                      t('management.usage.connection', { id: model.connectionId })
+                    }}</span>
                   </td>
-                  <td data-label="输入 Token">{{ number(model.promptTokens) }}</td>
-                  <td data-label="输出 Token">{{ number(model.completionTokens) }}</td>
-                  <td data-label="已知总 Token">
+                  <td :data-label="t('management.usage.promptTokens')">
+                    {{ number(model.promptTokens) }}
+                  </td>
+                  <td :data-label="t('management.usage.completionTokens')">
+                    {{ number(model.completionTokens) }}
+                  </td>
+                  <td :data-label="t('management.usage.col.knownTotalTokens')">
                     <strong>{{ number(model.totalTokens) }}</strong>
                   </td>
-                  <td data-label="调用次数">{{ number(model.calls) }}</td>
-                  <td data-label="用量未知">{{ number(model.unknownUsageCalls) }}</td>
+                  <td :data-label="t('management.usage.col.callCount')">
+                    {{ number(model.calls) }}
+                  </td>
+                  <td :data-label="t('management.usage.col.unknown')">
+                    {{ number(model.unknownUsageCalls) }}
+                  </td>
                 </tr>
               </tbody>
             </table>
           </AppScrollArea>
         </section>
       </template>
-      <aside class="card usage-note" aria-label="统计口径">
-        <h2>统计口径</h2>
-        <p>
-          仅统计本站服务端发起的模型评分与模型能力测试；每次重试、重评分别计数。供应商连接测试和模型列表读取不计入，外部
-          Agent 自身的模型消耗也不在统计范围内。
-        </p>
-        <p>
-          Token 来自供应商响应，不按文本长度估算。失败调用可能已消耗
-          Token；未返回完整有效用量时记为“用量未知”，而非零消耗。历史调用不会补算，本页不等同于供应商账单，也不提供费用估算。
-        </p>
+      <aside class="card usage-note" :aria-label="t('management.usage.noteLabel')">
+        <h2>{{ t('management.usage.noteTitle') }}</h2>
+        <p>{{ t('management.usage.noteP1') }}</p>
+        <p>{{ t('management.usage.noteP2') }}</p>
       </aside>
     </template>
   </div>

@@ -9,6 +9,28 @@ const common: Record<string, Field> = {
   revision: 'integer',
 };
 export const definitions: Record<TableName, Record<string, Field>> = {
+  apiLogs: {
+    requestId: 'text',
+    ownerId: 'text?',
+    actorId: 'text?',
+    channel: 'text',
+    method: 'text',
+    route: 'text',
+    statusCode: 'integer',
+    durationMs: 'integer',
+    ip: 'text',
+    errorCode: 'text?',
+  },
+  loginLogs: {
+    requestId: 'text',
+    ownerId: 'text?',
+    username: 'text?',
+    channel: 'text',
+    outcome: 'text',
+    statusCode: 'integer',
+    ip: 'text',
+    errorCode: 'text?',
+  },
   modelUsage: {
     ownerId: 'text',
     connectionId: 'text',
@@ -139,7 +161,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     providerModelId: 'text',
     connectionVersionId: 'text',
     modelIdSnapshot: 'text',
-    promptVersion: 'text',
+    concurrency: 'integer',
     timeoutMs: 'integer',
     maxRetries: 'integer',
     isDefault: 'boolean',
@@ -208,7 +230,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
   name = 'InitialSchema1792195200000';
   async up(runner: QueryRunner) {
     for (const [name, fields] of Object.entries(definitions).filter(
-      ([name]) => name !== 'modelUsage',
+      ([name]) => !['modelUsage', 'apiLogs', 'loginLogs'].includes(name),
     )) {
       const all = { ...common, ...fields };
       await runner.createTable(
@@ -244,7 +266,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
   }
   async down(runner: QueryRunner) {
     for (const name of Object.keys(definitions)
-      .filter((name) => name !== 'modelUsage')
+      .filter((name) => !['modelUsage', 'apiLogs', 'loginLogs'].includes(name))
       .reverse())
       await runner.dropTable(name);
   }
@@ -325,5 +347,38 @@ export class AddModelUsage1792368000000 implements MigrationInterface {
   }
   async down(runner: QueryRunner) {
     await runner.dropTable('modelUsage');
+  }
+}
+
+export class AddAccessLogs1792368000001 implements MigrationInterface {
+  name = 'AddAccessLogs1792368000001';
+  async up(runner: QueryRunner) {
+    for (const name of ['apiLogs', 'loginLogs'] as const) {
+      await runner.createTable(
+        new Table({
+          name,
+          columns: Object.entries({ ...common, ...definitions[name] }).map(([key, field]) => ({
+            name: key,
+            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
+            isPrimary: key === 'id',
+            isNullable: field.endsWith('?'),
+          })),
+        }),
+      );
+    }
+    for (const name of ['auditLogs', 'apiLogs', 'loginLogs']) {
+      await runner.createIndex(
+        name,
+        new TableIndex({
+          name: 'ix_' + name + '_date_id',
+          columnNames: ['createdAt', 'id'],
+        }),
+      );
+    }
+  }
+  async down(runner: QueryRunner) {
+    await runner.dropIndex('auditLogs', 'ix_auditLogs_date_id');
+    await runner.dropTable('loginLogs');
+    await runner.dropTable('apiLogs');
   }
 }

@@ -1,14 +1,74 @@
 import { ApiError } from '@drill-hub/api-client';
+import { appLocale, i18n } from './i18n';
+
+type Translate = (key: string, named?: Record<string, unknown>) => string;
+type TranslateExists = (key: string, locale?: string) => boolean;
+
+/** 翻译 core 命名空间的消息，键为消息 ID。 */
+export const translate = i18n.global.t as unknown as Translate;
+const translateExists = i18n.global.te as unknown as TranslateExists;
+
+export function hasMessage(key: string): boolean {
+  return translateExists(key, appLocale.value);
+}
+
+export function numberLocale(): string {
+  return appLocale.value === 'en' ? 'en-US' : 'zh-CN';
+}
+
+/**
+ * 创建一个可即时生效的标签表：每次读取都按当前语言解析，
+ * 因此切换语言后无需重新构建即可得到新文案。
+ */
+export function localizedRecord<T extends string>(keys: Record<T, string>): Record<T, string> {
+  const target = {} as Record<T, string>;
+  for (const key of Object.keys(keys) as T[]) {
+    Object.defineProperty(target, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => translate(keys[key]),
+    });
+  }
+  return target;
+}
+
+const fieldMessageKeys: Record<string, string> = {
+  必须是非空字符串: 'core.error.field.requiredString',
+  必须是字符串: 'core.error.field.string',
+  该字段由服务端确定: 'core.error.field.serverOwned',
+  'Invalid score.': 'core.error.field.invalidScore',
+  'Score is too large.': 'core.error.field.scoreTooLarge',
+  'Score must be greater than zero.': 'core.error.field.scorePositive',
+  'Use a decimal string with at most two fractional digits.': 'core.error.field.scoreDecimal',
+};
+
+function localizeFieldMessage(value: string): string {
+  const text = value.trim();
+  const known = fieldMessageKeys[text];
+  if (known) return translate(known);
+  const maxLength = /^最多 (\d+) 个字符$/.exec(text);
+  if (maxLength) return translate('core.error.field.maxLength', { max: maxLength[1] });
+  const integerRange = /^必须是 1 到 (\d+) 的整数$/.exec(text);
+  if (integerRange) return translate('core.error.field.integerRange', { max: integerRange[1] });
+  return translate('core.error.field.generic');
+}
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    const key = `core.errors.${error.code}`;
+    const message = hasMessage(key)
+      ? translate(key)
+      : translate('core.error.unmapped', { code: error.code });
     const fields = error.fields ? Object.values(error.fields).filter(Boolean) : [];
-    return fields.length ? `${error.message}：${fields.join('；')}` : error.message;
+    if (!fields.length) return message;
+    const details = fields.map(localizeFieldMessage).join(translate('core.error.fieldSeparator'));
+    return translate('core.error.withFields', { message, fields: details });
   }
-  if (error instanceof DOMException && error.name === 'AbortError') return '请求已取消';
-  if (error instanceof TypeError) return '无法连接服务器，请检查网络、地址或传输设置后重试';
+  if (error instanceof DOMException && error.name === 'AbortError')
+    return translate('core.error.requestCancelled');
+  if (error instanceof TypeError) return translate('core.error.network');
   if (error instanceof Error) return error.message;
-  return '操作未完成，请稍后重试';
+  return translate('core.error.unknown');
 }
 
 export function isApiError(error: unknown, status?: number): error is ApiError {
@@ -16,11 +76,11 @@ export function isApiError(error: unknown, status?: number): error is ApiError {
 }
 
 export function formatDate(value: string | null | undefined, withTime = true): string {
-  if (!value) return '—';
+  if (!value) return translate('core.common.notAvailable');
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(numberLocale(), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -30,10 +90,12 @@ export function formatDate(value: string | null | undefined, withTime = true): s
 }
 
 export function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds) return '不限时';
+  if (!seconds) return translate('core.common.unlimited');
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
-  return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
+  return rest
+    ? translate('core.duration.minutesSeconds', { minutes, seconds: rest })
+    : translate('core.duration.minutes', { minutes });
 }
 
 export function optionPrefix(index: number): string {
@@ -52,10 +114,10 @@ export function formatOptionLabel(index: number, text: string): string {
 }
 
 export function formatScore(value: string | null | undefined): string {
-  if (value === null || value === undefined) return '待评分';
+  if (value === null || value === undefined) return translate('core.common.pendingGrade');
   const number = Number(value);
   return Number.isFinite(number)
-    ? new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(number)
+    ? new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 2 }).format(number)
     : value;
 }
 
@@ -64,7 +126,7 @@ export function clone<T>(value: T): T {
 }
 
 export function abortError(): DOMException {
-  return new DOMException('请求已取消', 'AbortError');
+  return new DOMException(translate('core.error.requestCancelled'), 'AbortError');
 }
 
 function copyTextWithSelection(text: string): boolean {
@@ -83,7 +145,7 @@ function copyTextWithSelection(text: string): boolean {
   document.body.append(textarea);
   textarea.focus({ preventScroll: true });
   textarea.select();
-  textarea.setSelectionRange(0, text.length);
+  textarea.setSelectionRange(0, textarea.value.length);
   let copied = false;
   try {
     copied = document.execCommand('copy');

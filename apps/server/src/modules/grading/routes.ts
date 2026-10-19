@@ -13,7 +13,7 @@ import { baseRecord, now } from '../../core/ids.js';
 import type { Database } from '../../db/database.js';
 import type { ModelConnectionRecord } from '../../db/records.js';
 import { refreshAttempt } from '../learning/helpers.js';
-import { normalizeProviderBaseUrl, ProviderError, PROMPT_VERSION } from './chat-completions.js';
+import { normalizeProviderBaseUrl, ProviderError } from './chat-completions.js';
 import { gradeRubric, isBlankAnswer } from './engine.js';
 import { gradingRuntime, isActiveGradingJob } from './service.js';
 
@@ -206,12 +206,6 @@ async function assertProfileUsable(db: Database, profile: GradingProfile): Promi
     '评分配置不是当前已验证连接版本',
     409,
   );
-  assert(
-    profile.promptVersion === PROMPT_VERSION,
-    'UNSUPPORTED_PROMPT_VERSION',
-    '提示词版本不受支持',
-    422,
-  );
 }
 
 async function setDefaultProfile(
@@ -333,7 +327,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       return { data: await tokenUsageReport(ctx.db, undefined, request.query) };
     },
   );
-
   app.get(`${PREFIX}/admin/model-adapters`, async (request) => {
     await ctx.requireAdmin(request);
     return {
@@ -341,7 +334,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         {
           protocol: 'chat_completions',
           displayName: 'Chat Completions compatible',
-          promptVersions: [PROMPT_VERSION],
           fields: ['displayName', 'baseUrl', 'apiKey', 'modelKey'],
           supportsManualModels: true,
         },
@@ -754,13 +746,9 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
   app.post(`${PREFIX}/admin/grading-profiles`, async (request, reply) => {
     const actor = await ctx.requireAdmin(request);
     const input = body(request);
-    keys(input, ['providerModelId', 'promptVersion', 'timeoutMs', 'maxRetries', 'isDefault']);
+    keys(input, ['providerModelId', 'concurrency', 'timeoutMs', 'maxRetries', 'isDefault']);
     const providerModelId = requiredText(input.providerModelId, 'providerModelId', 128);
-    const promptVersion =
-      input.promptVersion === undefined
-        ? PROMPT_VERSION
-        : requiredText(input.promptVersion, 'promptVersion', 128);
-    assert(promptVersion === PROMPT_VERSION, 'UNSUPPORTED_PROMPT_VERSION', '提示词版本不受支持');
+    const concurrency = integerInRange(input.concurrency, 'concurrency', 1, 20, 2);
     const timeoutMs = integerInRange(input.timeoutMs, 'timeoutMs', 100, 120_000, 30_000);
     const maxRetries = integerInRange(input.maxRetries, 'maxRetries', 0, 5, 2);
     const isDefault = optionalBoolean(input.isDefault, false);
@@ -771,7 +759,7 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         providerModelId,
         connectionVersionId: verified.connectionVersionId,
         modelIdSnapshot: verified.model.modelKey,
-        promptVersion,
+        concurrency,
         timeoutMs,
         maxRetries,
         isDefault: false,
@@ -792,6 +780,82 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       return record;
     });
     reply.code(201);
+    return { data: profile };
+  });
+
+  app.patch<{ Params: { id: string } }>(`${PREFIX}/admin/grading-profiles/:id`, async (request) => {
+    const actor = await ctx.requireAdmin(request);
+    const input = body(request);
+    keys(input, [
+      'expectedRevision',
+      'providerModelId',
+      'concurrency',
+      'timeoutMs',
+      'maxRetries',
+      'isDefault',
+    ]);
+    const expected = expectedRevision(input);
+    const profile = await ctx.db.transaction(async (tx) => {
+      const current = await tx.get('gradingProfiles', request.params.id);
+      assert(current, 'NOT_FOUND', '评分配置不存在', 404);
+      assert(current.revision === expected, 'VERSION_CONFLICT', '配置已变化', 409);
+      const providerModelId =
+        input.providerModelId === undefined
+          ? current.providerModelId
+          : requiredText(input.providerModelId, 'providerModelId', 128);
+      const verified = await assertCurrentModelVerified(tx, providerModelId);
+      const concurrency = integerInRange(
+        input.concurrency,
+        'concurrency',
+        1,
+        20,
+        current.concurrency,
+      );
+      const timeoutMs = integerInRange(
+        input.timeoutMs,
+        'timeoutMs',
+        100,
+        120_000,
+        current.timeoutMs,
+      );
+      const maxRetries = integerInRange(input.maxRetries, 'maxRetries', 0, 5, current.maxRetries);
+      const isDefault = optionalBoolean(input.isDefault, current.isDefault);
+      assert(
+        !current.isDefault || isDefault,
+        'DEFAULT_PROFILE_REQUIRED',
+        '请将另一配置设为默认评分配置',
+        409,
+      );
+      // Advance the source revision without changing historical execution settings.
+      await tx.update('gradingProfiles', current.id, current.revision, {});
+      let record = await tx.insert('gradingProfiles', {
+        ...baseRecord(),
+        providerModelId,
+        connectionVersionId: verified.connectionVersionId,
+        modelIdSnapshot: verified.model.modelKey,
+        concurrency,
+        timeoutMs,
+        maxRetries,
+        isDefault: false,
+      });
+      if (isDefault) record = await setDefaultProfile(ctx, actor, tx, record);
+      await ctx.audit(
+        actor,
+        'grading_profile.updated',
+        'gradingProfile',
+        record.id,
+        {
+          previousProfileId: current.id,
+          providerModelId,
+          concurrency,
+          timeoutMs,
+          maxRetries,
+          isDefault,
+        },
+        tx,
+      );
+      return record;
+    });
     return { data: profile };
   });
 

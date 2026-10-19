@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { watch } from 'vue';
 import {
   ToastClose,
@@ -10,6 +11,8 @@ import {
 } from 'reka-ui';
 import { useLearning } from '../injection';
 import AppIcon from './AppIcon.vue';
+
+const { t } = useI18n();
 
 const learning = useLearning();
 const { toasts, add } = useToastManager();
@@ -56,9 +59,9 @@ watch(
         toast.description
       }}</ToastDescription>
     </div>
-    <ToastClose class="app-toast__close" aria-label="关闭通知">
+    <ToastClose class="app-toast__close" :aria-label="t('components.toast.close')">
       <AppIcon name="close" :size="16" />
     </ToastClose>
   </ToastRoot>
-  <ToastViewport class="app-toast-viewport" label="通知" />
+  <ToastViewport class="app-toast-viewport" :label="t('components.toast.viewportLabel')" />
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import {
   AGENT_SCOPES,
@@ -9,7 +10,7 @@ import {
   type Scope,
 } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
-import { scopeLabels, type AgentTokenCreated } from '../types';
+import type { AgentTokenCreated } from '../types';
 import { copyTextToClipboard, errorMessage, formatDate, isApiError } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
@@ -20,6 +21,7 @@ import AppCheckbox from '../components/AppCheckbox.vue';
 import AppDateTimePicker from '../components/AppDateTimePicker.vue';
 import AppScrollArea from '../components/AppScrollArea.vue';
 
+const { t } = useI18n();
 const learning = useLearning();
 const tokens = ref<AgentTokenView[]>([]);
 const loading = ref(true);
@@ -40,6 +42,20 @@ const secretOpen = ref(false);
 const copied = ref(false);
 const copyingTokenId = ref<string | null>(null);
 
+const scopeLabelKeys: Record<Scope, string> = {
+  read: 'management.tokens.scope.read',
+  'content:write': 'management.tokens.scope.contentWrite',
+  'assessment:write': 'management.tokens.scope.assessmentWrite',
+  'attempt:write': 'management.tokens.scope.attemptWrite',
+  'grading:request': 'management.tokens.scope.gradingRequest',
+  'grade:write': 'management.tokens.scope.gradeWrite',
+  'archive:write': 'management.tokens.scope.archiveWrite',
+};
+
+function scopeDescription(scope: Scope): string {
+  return t(scopeLabelKeys[scope]);
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -47,7 +63,7 @@ async function load() {
     tokens.value = await learning.get<AgentTokenView[]>('/me/agent-tokens');
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('Agent 授权读取失败', error.value);
+    learning.notify.error(t('management.tokens.loadError'), error.value);
   } finally {
     loading.value = false;
   }
@@ -59,7 +75,10 @@ function openCreate() {
 }
 async function create() {
   if (!name.value.trim() || !scopes.value.length) {
-    learning.notify.warning('无法创建令牌', '请填写令牌名称并至少选择一项权限。');
+    learning.notify.warning(
+      t('management.tokens.createUnavailable'),
+      t('management.tokens.createUnavailableDesc'),
+    );
     return;
   }
   creating.value = true;
@@ -70,7 +89,7 @@ async function create() {
       expiresAt: expiresAt.value ? new Date(expiresAt.value).toISOString() : null,
     });
     if (typeof result.token !== 'string' || !result.token)
-      throw new Error('服务器未返回 Agent 令牌');
+      throw new Error(t('management.tokens.missingToken'));
     secret.value = result.token;
     secretOpen.value = true;
     copied.value = false;
@@ -78,10 +97,10 @@ async function create() {
     name.value = '';
     scopes.value = [...AGENT_SCOPES];
     expiresAt.value = '';
-    learning.notify.success('Agent 令牌已创建', '请妥善保存，之后也可在授权列表复制。');
+    learning.notify.success(t('management.tokens.created'), t('management.tokens.createdDesc'));
     await load();
   } catch (reason) {
-    learning.notify.error('创建 Agent 令牌失败', errorMessage(reason));
+    learning.notify.error(t('management.tokens.createFailed'), errorMessage(reason));
   } finally {
     creating.value = false;
   }
@@ -103,7 +122,10 @@ function toggleEditScope(scope: Scope) {
 async function saveScopes() {
   if (!editing.value || savingScopes.value) return;
   if (!editScopes.value.length) {
-    learning.notify.warning('无法保存权限', '请至少选择一项权限。');
+    learning.notify.warning(
+      t('management.tokens.scopeUnavailable'),
+      t('management.tokens.scopeUnavailableDesc'),
+    );
     return;
   }
   savingScopes.value = true;
@@ -114,10 +136,13 @@ async function saveScopes() {
     };
     await learning.patch<AgentTokenView>(`/me/agent-tokens/${editing.value.id}`, body);
     editing.value = null;
-    learning.notify.success('Agent 令牌权限已更新', '新权限立即生效，无需更换原密钥。');
+    learning.notify.success(
+      t('management.tokens.scopeUpdated'),
+      t('management.tokens.scopeUpdatedDesc'),
+    );
     await load();
   } catch (reason) {
-    learning.notify.error('更新 Agent 令牌权限失败', errorMessage(reason));
+    learning.notify.error(t('management.tokens.scopeFailed'), errorMessage(reason));
     if (isApiError(reason, 409) || isApiError(reason, 404)) {
       editing.value = null;
       await load();
@@ -131,11 +156,11 @@ async function revoke() {
   revoking.value = true;
   try {
     await learning.post(`/me/agent-tokens/${selected.value.id}/revoke`, {});
-    learning.notify.success('Agent 令牌已撤销并删除');
+    learning.notify.success(t('management.tokens.revoked'));
     selected.value = null;
     await load();
   } catch (reason) {
-    learning.notify.error('撤销 Agent 令牌失败', errorMessage(reason));
+    learning.notify.error(t('management.tokens.revokeFailed'), errorMessage(reason));
   } finally {
     revoking.value = false;
   }
@@ -144,14 +169,19 @@ function isTokenExpired(token: AgentTokenView) {
   return Boolean(token.expiresAt && Date.parse(token.expiresAt) <= Date.now());
 }
 async function writeSecretToClipboard() {
-  if (await copyTextToClipboard(secret.value)) {
+  try {
+    await copyTextToClipboard(secret.value);
     copied.value = true;
-    learning.notify.success('令牌已复制');
+    learning.notify.success(t('management.tokens.copiedToast'));
     return true;
+  } catch {
+    copied.value = false;
+    learning.notify.error(
+      t('management.tokens.clipboardError'),
+      t('management.tokens.clipboardErrorDesc'),
+    );
+    return false;
   }
-  copied.value = false;
-  learning.notify.error('无法访问剪贴板', '请在弹窗中手动复制令牌并保存到受控 Agent 配置中。');
-  return false;
 }
 async function copySecret() {
   await writeSecretToClipboard();
@@ -162,13 +192,13 @@ async function copyTokenSecret(token: AgentTokenView) {
   try {
     const result = await learning.post<AgentTokenSecret>(`/me/agent-tokens/${token.id}/reveal`, {});
     if (typeof result.token !== 'string' || !result.token)
-      throw new Error('服务器未返回 Agent 令牌');
+      throw new Error(t('management.tokens.missingToken'));
     secret.value = result.token;
     copied.value = false;
     if (await writeSecretToClipboard()) secret.value = '';
     else secretOpen.value = true;
   } catch (reason) {
-    learning.notify.error('复制 Agent 令牌失败', errorMessage(reason));
+    learning.notify.error(t('management.tokens.copyFailed'), errorMessage(reason));
   } finally {
     copyingTokenId.value = null;
   }
@@ -185,26 +215,34 @@ onMounted(load);
 
 <template>
   <div>
-    <PageHeader title="Agent 授权" eyebrow="AGENT ACCESS" description="管理外部 Agent 的访问令牌。">
+    <PageHeader
+      :title="t('management.tokens.title')"
+      eyebrow="AGENT ACCESS"
+      :description="t('management.tokens.description')"
+    >
       <template #back
         ><RouterLink class="back-link" :to="{ name: 'settings' }"
-          ><AppIcon name="back" :size="16" />我的设置</RouterLink
+          ><AppIcon name="back" :size="16" />{{ t('management.tokens.back') }}</RouterLink
         ></template
       >
       <template #actions
         ><button class="button button--primary" type="button" @click="openCreate()">
-          <AppIcon name="plus" :size="17" />新建令牌
+          <AppIcon name="plus" :size="17" />{{ t('management.tokens.create') }}
         </button></template
       >
     </PageHeader>
     <AgentSetupHelp />
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取授权</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('management.tokens.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="Agent 授权读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('management.tokens.loadFailed')"
+      :description="t('management.common.networkRetry')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('management.common.retry') }}
+      </button></EmptyState
     >
     <AppScrollArea
       v-else-if="tokens.length"
@@ -215,38 +253,44 @@ onMounted(load);
       <table class="data-table responsive-table">
         <thead>
           <tr>
-            <th>名称与前缀</th>
-            <th>权限</th>
-            <th>有效期</th>
-            <th>最近使用</th>
-            <th>状态</th>
-            <th><span class="sr-only">操作</span></th>
+            <th>{{ t('management.tokens.col.name') }}</th>
+            <th>{{ t('management.tokens.col.scopes') }}</th>
+            <th>{{ t('management.tokens.col.expires') }}</th>
+            <th>{{ t('management.tokens.col.lastUsed') }}</th>
+            <th>{{ t('management.tokens.col.status') }}</th>
+            <th>
+              <span class="sr-only">{{ t('management.common.actions') }}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="token in tokens" :key="token.id">
-            <td data-label="令牌">
+            <td :data-label="t('management.tokens.col.name')">
               <span class="table-primary">{{ token.name }}</span
               ><span class="table-secondary">{{ token.prefix }}…</span>
             </td>
-            <td data-label="权限">
+            <td :data-label="t('management.tokens.col.scopes')">
               <div class="tag-list">
                 <span
                   v-for="scope in token.scopes"
                   :key="scope"
                   class="badge"
-                  :title="scopeLabels[scope]"
+                  :title="scopeDescription(scope)"
                   >{{ scope }}</span
                 >
               </div>
             </td>
-            <td data-label="有效期">
-              {{ token.expiresAt ? formatDate(token.expiresAt) : '无固定期限' }}
+            <td :data-label="t('management.tokens.col.expires')">
+              {{ token.expiresAt ? formatDate(token.expiresAt) : t('management.tokens.noExpiry') }}
             </td>
-            <td data-label="最近使用">{{ formatDate(token.lastUsedAt) }}</td>
-            <td data-label="状态">
+            <td :data-label="t('management.tokens.col.lastUsed')">
+              {{ formatDate(token.lastUsedAt) }}
+            </td>
+            <td :data-label="t('management.tokens.col.status')">
               <span class="badge" :class="isTokenExpired(token) ? 'badge--red' : 'badge--green'">{{
-                isTokenExpired(token) ? '已过期' : '有效'
+                isTokenExpired(token)
+                  ? t('management.tokens.expired')
+                  : t('management.tokens.valid')
               }}</span>
             </td>
             <td>
@@ -259,18 +303,20 @@ onMounted(load);
                   @click="copyTokenSecret(token)"
                 >
                   <span v-if="copyingTokenId === token.id" class="spinner" />{{
-                    copyingTokenId === token.id ? '复制中…' : '复制密钥'
+                    copyingTokenId === token.id
+                      ? t('management.tokens.copying')
+                      : t('management.tokens.copy')
                   }}
                 </button>
                 <button class="button button--small" type="button" @click="openEdit(token)">
-                  编辑权限
+                  {{ t('management.tokens.editScopes') }}
                 </button>
                 <button
                   class="button button--small button--danger"
                   type="button"
                   @click="selected = token"
                 >
-                  撤销
+                  {{ t('management.tokens.revoke') }}
                 </button>
               </div>
             </td>
@@ -278,53 +324,59 @@ onMounted(load);
         </tbody>
       </table>
     </AppScrollArea>
-    <EmptyState v-else title="还没有 Agent 令牌" description="创建令牌，授权你信任的 Agent 接入。"
+    <EmptyState
+      v-else
+      :title="t('management.tokens.empty')"
+      :description="t('management.tokens.emptyDesc')"
       ><button class="button button--primary" type="button" @click="openCreate()">
-        <AppIcon name="plus" :size="17" />创建第一个令牌
+        <AppIcon name="plus" :size="17" />{{ t('management.tokens.createFirst') }}
       </button></EmptyState
     >
     <ConfirmDialog
       v-model:open="createOpen"
-      title="新建 Agent 令牌"
-      description="默认授予全部权限，可展开调整。请仅交给你信任的 Agent。"
-      confirm-label="创建令牌"
+      :title="t('management.tokens.createTitle')"
+      :description="t('management.tokens.createDesc')"
+      :confirm-label="t('management.tokens.createConfirm')"
       :busy="creating"
       :confirm-disabled="!name.trim() || !scopes.length"
       @confirm="create"
       ><div class="form-grid">
         <div class="form-field form-field--full">
-          <label for="token-name">令牌名称</label
+          <label for="token-name">{{ t('management.tokens.field.name') }}</label
           ><input
             id="token-name"
             v-model="name"
             class="input"
             required
-            placeholder="例如：我的学习计划助手"
+            :placeholder="t('management.tokens.field.namePlaceholder')"
           />
         </div>
         <div class="form-field form-field--full">
-          <label id="token-expiry-label">到期时间（可选）</label>
+          <label id="token-expiry-label">{{ t('management.tokens.field.expires') }}</label>
           <AppDateTimePicker
             id="token-expiry"
             v-model="expiresAt"
             labelled-by="token-expiry-label"
             :disabled="creating"
           />
-          <p class="field-hint">留空则无固定期限。</p>
+          <p class="field-hint">{{ t('management.tokens.expiresHint') }}</p>
         </div>
         <CollapsibleRoot v-model:open="scopesOpen" class="form-field form-field--full token-scopes">
           <CollapsibleTrigger class="token-scopes-trigger">
             <span
-              >权限范围
-              <span class="subtle"
-                >已选 {{ scopes.length }}/{{ AGENT_SCOPES.length }} 项</span
-              ></span
+              >{{ t('management.tokens.scopeLabel') }}
+              <span class="subtle">{{
+                t('management.tokens.scopeSelected', {
+                  selected: scopes.length,
+                  total: AGENT_SCOPES.length,
+                })
+              }}</span></span
             >
             <AppIcon name="down" :size="16" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <fieldset class="token-scopes-fieldset" :disabled="creating">
-              <legend class="sr-only">权限范围</legend>
+              <legend class="sr-only">{{ t('management.tokens.scopeLegend') }}</legend>
               <div class="scope-list">
                 <AppCheckbox
                   v-for="scope in AGENT_SCOPES"
@@ -334,7 +386,7 @@ onMounted(load);
                   @update:model-value="toggleScope(scope)"
                 >
                   <strong>{{ scope }}</strong
-                  ><br /><span class="subtle">{{ scopeLabels[scope] }}</span>
+                  ><br /><span class="subtle">{{ scopeDescription(scope) }}</span>
                 </AppCheckbox>
               </div>
             </fieldset>
@@ -344,20 +396,18 @@ onMounted(load);
     >
     <ConfirmDialog
       :open="Boolean(editing)"
-      title="编辑 Agent 令牌权限"
-      :description="
-        editing
-          ? `修改「${editing.name}」的权限，保存后立即生效。原密钥、名称和有效期保持不变。`
-          : ''
-      "
-      confirm-label="保存权限"
+      :title="t('management.tokens.editTitle')"
+      :description="editing ? t('management.tokens.editDesc', { name: editing.name }) : ''"
+      :confirm-label="t('management.tokens.editConfirm')"
       :busy="savingScopes"
       :confirm-disabled="!editScopes.length"
       @update:open="!$event && (editing = null)"
       @confirm="saveScopes"
     >
       <fieldset class="form-field" style="border: 0; padding: 0; margin: 0">
-        <legend class="field-label" style="margin-bottom: 8px">权限范围（至少选择一项）</legend>
+        <legend class="field-label" style="margin-bottom: 8px">
+          {{ t('management.tokens.scopeLegendRequired') }}
+        </legend>
         <div class="scope-list">
           <AppCheckbox
             v-for="scope in AGENT_SCOPES"
@@ -367,18 +417,16 @@ onMounted(load);
             @update:model-value="toggleEditScope(scope)"
           >
             <strong>{{ scope }}</strong
-            ><br /><span class="subtle">{{ scopeLabels[scope] }}</span>
+            ><br /><span class="subtle">{{ scopeDescription(scope) }}</span>
           </AppCheckbox>
         </div>
       </fieldset>
     </ConfirmDialog>
     <ConfirmDialog
       :open="Boolean(selected)"
-      title="撤销 Agent 令牌？"
-      :description="
-        selected ? `「${selected.name}」将立即失效并永久删除，不保留令牌记录，无法恢复。` : ''
-      "
-      confirm-label="撤销并删除"
+      :title="t('management.tokens.revokeTitle')"
+      :description="selected ? t('management.tokens.revokeDesc', { name: selected.name }) : ''"
+      :confirm-label="t('management.tokens.revokeConfirm')"
       danger
       :busy="revoking"
       @update:open="!$event && (selected = null)"
@@ -386,15 +434,15 @@ onMounted(load);
     />
     <ConfirmDialog
       :open="secretOpen"
-      title="保存 Agent 令牌"
-      description="请保存到你的密码管理器或受控 Agent 配置中；之后仍可从授权列表复制。"
-      confirm-label="复制令牌"
-      cancel-label="关闭"
+      :title="t('management.tokens.secretTitle')"
+      :description="t('management.tokens.secretDesc')"
+      :confirm-label="t('management.tokens.secretConfirm')"
+      :cancel-label="t('management.tokens.secretCancel')"
       @update:open="closeSecret"
       @confirm="copySecret"
       ><div class="secret-box">
         <strong>Agent Token</strong><code>{{ secret }}</code
-        ><span v-if="copied" class="badge badge--green">已复制</span>
+        ><span v-if="copied" class="badge badge--green">{{ t('management.tokens.copied') }}</span>
       </div></ConfirmDialog
     >
   </div>

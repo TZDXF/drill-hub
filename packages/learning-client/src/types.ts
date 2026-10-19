@@ -10,6 +10,7 @@ import type {
   Scope,
   UserView,
 } from '@drill-hub/contracts';
+import { localizedRecord, translate } from './utils';
 
 export interface CsrfResult {
   csrfToken: string;
@@ -73,7 +74,6 @@ export interface ModelAdapter {
   name?: string;
   displayName?: string;
   protocol: ModelProtocol;
-  promptVersions?: string[];
 }
 
 export interface AdminUserCreated extends UserView {
@@ -85,31 +85,32 @@ export interface PasswordResetResult {
   password?: string;
 }
 
-export const questionTypeLabels: Record<QuestionType, string> = {
-  single_choice: '单选题',
-  multiple_choice: '多选题',
-  true_false: '判断题',
-  fill_blank: '填空题',
-  short_answer: '简答题',
-};
+export const questionTypeLabels: Record<QuestionType, string> = localizedRecord<QuestionType>({
+  single_choice: 'core.questionType.single_choice',
+  multiple_choice: 'core.questionType.multiple_choice',
+  true_false: 'core.questionType.true_false',
+  fill_blank: 'core.questionType.fill_blank',
+  short_answer: 'core.questionType.short_answer',
+});
 
-export const scopeLabels: Record<Scope, string> = {
-  read: '读取学习内容与结果',
-  'content:write': '创建与调整主题、计划、内容',
-  'assessment:write': '创建与调整练习和考试',
-  'attempt:write': '作废作答记录（需填写原因）',
-  'grading:request': '请求评分重试与有原因的重评',
-  'grade:write': '提交外部评分模式的得分项等级',
-  'archive:write': '归档与恢复资源',
-};
+export const scopeLabels: Record<Scope, string> = localizedRecord<Scope>({
+  read: 'core.scope.read',
+  'content:write': 'core.scope.content:write',
+  'assessment:write': 'core.scope.assessment:write',
+  'attempt:write': 'core.scope.attempt:write',
+  'grading:request': 'core.scope.grading:request',
+  'grade:write': 'core.scope.grade:write',
+  'archive:write': 'core.scope.archive:write',
+});
 
-export const resourceTypeLabels: Record<ArchiveResourceType, string> = {
-  topic: '主题',
-  plan: '计划',
-  content: '内容',
-  question: '题目',
-  assessment: '练习 / 考试',
-};
+export const resourceTypeLabels: Record<ArchiveResourceType, string> =
+  localizedRecord<ArchiveResourceType>({
+    topic: 'core.resourceType.topic',
+    plan: 'core.resourceType.plan',
+    content: 'core.resourceType.content',
+    question: 'core.resourceType.question',
+    assessment: 'core.resourceType.assessment',
+  });
 
 export function isAnswerEmpty(answer: Answer | null | undefined): boolean {
   if (!answer) return true;
@@ -121,13 +122,20 @@ export function isAnswerEmpty(answer: Answer | null | undefined): boolean {
 }
 
 export function answerText(answer: Answer | null | undefined): string {
-  if (!answer) return '未作答';
-  if ('text' in answer) return answer.text || '未作答';
+  if (!answer) return translate('core.common.unanswered');
+  if ('text' in answer) return answer.text || translate('core.common.unanswered');
   if ('optionId' in answer) return answer.optionId;
-  if ('optionIds' in answer) return answer.optionIds.join('、') || '未作答';
-  if ('value' in answer) return answer.value ? '正确' : '错误';
+  if ('optionIds' in answer)
+    return (
+      answer.optionIds.join(translate('core.answer.optionSeparator')) ||
+      translate('core.common.unanswered')
+    );
+  if ('value' in answer)
+    return answer.value ? translate('core.common.correct') : translate('core.common.incorrect');
   return Object.entries(answer.slots)
-    .map(([slot, value]) => `${slot}：${value || '未作答'}`)
+    .map(([slot, value]) =>
+      translate('core.answer.slot', { slot, value: value || translate('core.common.unanswered') }),
+    )
     .join('\n');
 }
 
@@ -155,7 +163,7 @@ export function wrongPracticeRequest(detail: WrongQuestionDetailView) {
     ?.flatMap((attempt) => attempt.items)
     .find((item) => item.questionId === detail.questionId && typeof item.maxScore === 'string');
   if (!snapshot) {
-    throw new Error('服务端错题详情缺少历史题目分值，无法按真实评分配置开始重练');
+    throw new Error(translate('core.wrongPractice.missingScore'));
   }
   return { items: [{ questionId: detail.questionId, maxScore: snapshot.maxScore }] };
 }

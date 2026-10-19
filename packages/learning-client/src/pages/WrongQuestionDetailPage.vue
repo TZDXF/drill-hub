@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AttemptItemView, AttemptView } from '@drill-hub/contracts';
@@ -17,6 +18,8 @@ import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AttemptPurposeSelect from '../components/AttemptPurposeSelect.vue';
 
+const { t } = useI18n();
+
 const purpose = ref<AttemptView['purpose']>('learning');
 const learning = useLearning();
 const route = useRoute();
@@ -25,7 +28,11 @@ const detail = ref<WrongQuestionDetailView | null>(null);
 const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
-const masteryLabels = { pending: '待复习', reviewing: '复习中', mastered: '已掌握' } as const;
+const masteryLabels = {
+  pending: t('learning.common.mastery.pending'),
+  reviewing: t('learning.common.mastery.reviewing'),
+  mastered: t('learning.common.mastery.mastered'),
+} as const;
 type Mastery = keyof typeof masteryLabels;
 
 async function load() {
@@ -37,7 +44,7 @@ async function load() {
     );
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('错题详情读取失败', error.value);
+    learning.notify.error(t('learning.wrongQuestionDetail.loadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -51,10 +58,16 @@ async function setMastery(masteryStatus: Mastery) {
       masteryStatus,
       expectedRevision: detail.value.revision,
     });
-    learning.notify.success('掌握状态已更新', masteryLabels[masteryStatus]);
+    learning.notify.success(
+      t('learning.wrongQuestionDetail.notifyMasteryUpdated'),
+      masteryLabels[masteryStatus],
+    );
     await load();
   } catch (reason) {
-    learning.notify.error('更新掌握状态失败', errorMessage(reason));
+    learning.notify.error(
+      t('learning.wrongQuestionDetail.notifyMasteryError'),
+      errorMessage(reason),
+    );
   } finally {
     busy.value = false;
   }
@@ -70,21 +83,21 @@ async function practice() {
     );
     await router.push({ name: 'attempt', params: { attemptId: asAttemptView(result).id } });
   } catch (reason) {
-    learning.notify.error('开始重练失败', errorMessage(reason));
+    learning.notify.error(t('learning.wrongQuestions.notifyPracticeError'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
 }
 function displayAnswer(item: AttemptItemView) {
   const answer = item.answer;
-  if (!answer) return '未作答';
+  if (!answer) return t('learning.attempt.statUnanswered');
   if ('optionId' in answer)
     return item.options?.find((option) => option.id === answer.optionId)?.text ?? answer.optionId;
   if ('optionIds' in answer)
     return (
       answer.optionIds
         .map((id) => item.options?.find((option) => option.id === id)?.text ?? id)
-        .join('\n') || '未作答'
+        .join('\n') || t('learning.attempt.statUnanswered')
     );
   return answerText(answer);
 }
@@ -93,32 +106,49 @@ onMounted(load);
 
 <template>
   <div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取错题详情</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.wrongQuestionDetail.loading') }}
+    </div>
     <EmptyState
       v-else-if="error && !detail"
       icon="alert"
-      title="错题详情读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.wrongQuestionDetail.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
     <template v-else-if="detail">
       <PageHeader
-        title="错题详情"
+        :title="t('learning.wrongQuestionDetail.title')"
         eyebrow="WRONG QUESTION REVIEW"
-        :description="`累计答错 ${detail.wrongCount} 次 · 最近答错 ${formatDate(detail.lastWrongAt)}`"
+        :description="
+          t('learning.wrongQuestionDetail.description', {
+            count: detail.wrongCount,
+            date: formatDate(detail.lastWrongAt),
+          })
+        "
       >
         <template #back
           ><RouterLink class="back-link" :to="{ name: 'wrong-questions' }"
-            ><AppIcon name="back" :size="16" />返回错题集</RouterLink
+            ><AppIcon name="back" :size="16" />{{
+              t('learning.wrongQuestionDetail.backToList')
+            }}</RouterLink
           ></template
         >
         <template #actions
           ><button class="button button--primary" type="button" :disabled="busy" @click="practice">
-            <AppIcon name="refresh" :size="17" />开始重练
+            <AppIcon name="refresh" :size="17" />{{
+              t('learning.wrongQuestionDetail.startPractice')
+            }}
           </button></template
         >
       </PageHeader>
-      <section class="card" aria-label="错题重练用途" style="margin-bottom: 16px">
+      <section
+        class="card"
+        :aria-label="t('learning.wrongQuestions.purposeLabel')"
+        style="margin-bottom: 16px"
+      >
         <AttemptPurposeSelect id="wrong-detail-purpose" v-model="purpose" :disabled="busy" />
       </section>
       <section
@@ -128,8 +158,8 @@ onMounted(load);
       >
         <div class="section-heading">
           <div>
-            <h2 id="mastery-title">掌握状态</h2>
-            <p>只记录复习状态，不修改任何历史得分</p>
+            <h2 id="mastery-title">{{ t('learning.wrongQuestions.filterLabel') }}</h2>
+            <p>{{ t('learning.wrongQuestionDetail.masteryDescription') }}</p>
           </div>
           <span class="badge badge--amber">{{ masteryLabels[detail.masteryStatus] }}</span>
         </div>
@@ -148,7 +178,9 @@ onMounted(load);
         </div>
       </section>
       <section v-if="detail.question" class="paper-panel report-item" aria-labelledby="wrong-stem">
-        <span class="question-number">题目版本 {{ detail.question.version }}</span>
+        <span class="question-number">{{
+          t('learning.wrongQuestionDetail.questionVersion', { version: detail.question.version })
+        }}</span>
         <h2 id="wrong-stem" style="margin-top: 8px; white-space: pre-wrap">
           {{ detail.question.definition.stem }}
         </h2>
@@ -168,8 +200,8 @@ onMounted(load);
       <section aria-labelledby="wrong-history-title">
         <div class="section-heading">
           <div>
-            <h2 id="wrong-history-title">错答与复习历史</h2>
-            <p>每次作答独立保留，重练不会覆盖旧记录</p>
+            <h2 id="wrong-history-title">{{ t('learning.wrongQuestionDetail.historyTitle') }}</h2>
+            <p>{{ t('learning.wrongQuestionDetail.historyDescription') }}</p>
           </div>
         </div>
         <div v-if="detail.attempts?.length" class="list-stack">
@@ -183,20 +215,24 @@ onMounted(load);
                 <h3>{{ attempt.title }}</h3>
                 <p>
                   {{ formatDate(attempt.submittedAt ?? attempt.startedAt) }} ·
-                  {{ attempt.kind === 'exam' ? '考试' : '练习' }}
+                  {{
+                    attempt.kind === 'exam'
+                      ? t('learning.common.exam')
+                      : t('learning.common.practice')
+                  }}
                 </p>
               </div>
               <RouterLink
                 class="text-link"
                 :to="{ name: 'report', params: { attemptId: attempt.id } }"
-                >完整报告<AppIcon name="arrow" :size="14"
+                >{{ t('learning.wrongQuestionDetail.fullReport') }}<AppIcon name="arrow" :size="14"
               /></RouterLink>
             </div>
             <div v-for="item in attempt.items" :key="item.id">
               <h4 style="white-space: pre-wrap">{{ item.stem }}</h4>
               <AttemptChoiceReview :item="item" />
               <div class="report-answer">
-                <span class="meta-label">本次答案</span>
+                <span class="meta-label">{{ t('learning.wrongQuestionDetail.thisAnswer') }}</span>
                 <p>{{ displayAnswer(item) }}</p>
               </div>
               <GradeFeedback :item="item" show-reference />
@@ -204,7 +240,7 @@ onMounted(load);
           </article>
         </div>
         <div v-else class="notice">
-          <AppIcon name="history" />服务端未返回错答历史，可在“学习历史”中查找对应作答。
+          <AppIcon name="history" />{{ t('learning.wrongQuestionDetail.noHistoryNotice') }}
         </div>
       </section>
     </template>

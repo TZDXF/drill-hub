@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppIcon from './AppIcon.vue';
+
+const { t } = useI18n();
 defineProps<{ title: string; description: string }>();
 </script>
 
@@ -11,10 +14,10 @@ defineProps<{ title: string; description: string }>();
       </div>
       <div class="auth-message">
         <span class="eyebrow">PERSONAL LEARNING WORKSPACE</span>
-        <h1>把目标拆成计划，<br />让每次练习都有回应。</h1>
-        <p>内容、作答与评分记录安全保存在你的学习服务器。专注于理解，而不是管理工具。</p>
+        <h1 style="white-space: pre-line">{{ t('components.auth.headline') }}</h1>
+        <p>{{ t('components.auth.description') }}</p>
       </div>
-      <span class="auth-footnote">纯文本学习 · 服务端评分 · 个人数据隔离</span>
+      <span class="auth-footnote">{{ t('components.auth.footnote') }}</span>
     </aside>
     <main class="auth-main">
       <section class="auth-card" aria-labelledby="auth-title">

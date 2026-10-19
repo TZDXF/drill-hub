@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { LearningPlan, LearningTask } from '@drill-hub/contracts';
@@ -7,6 +8,8 @@ import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
+
+const { t } = useI18n();
 
 const learning = useLearning();
 const route = useRoute();
@@ -17,7 +20,12 @@ const completing = ref('');
 const plan = computed(
   () => plans.value.find((item) => item.id === String(route.params.planId)) ?? null,
 );
-const kindLabels = { reading: '阅读', practice: '练习', exam: '考试', manual: '任务' };
+const kindLabels = computed(() => ({
+  reading: t('learning.plan.kinds.reading'),
+  practice: t('learning.common.practice'),
+  exam: t('learning.common.exam'),
+  manual: t('learning.plan.kinds.manual'),
+}));
 
 async function load() {
   loading.value = true;
@@ -28,7 +36,7 @@ async function load() {
     );
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('学习计划读取失败', error.value);
+    learning.notify.error(t('learning.plan.notifyLoadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -55,10 +63,10 @@ async function complete(task: LearningTask) {
   error.value = '';
   try {
     await learning.post(`/tasks/${task.id}/complete`, { expectedRevision: plan.value.revision });
-    learning.notify.success('任务已标记完成', task.title);
+    learning.notify.success(t('learning.plan.notifyCompleteTitle'), task.title);
     await load();
   } catch (reason) {
-    learning.notify.error('完成任务失败', errorMessage(reason));
+    learning.notify.error(t('learning.plan.notifyCompleteError'), errorMessage(reason));
   } finally {
     completing.value = '';
   }
@@ -68,40 +76,44 @@ onMounted(load);
 
 <template>
   <div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取计划</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.plan.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="计划读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.plan.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
     <EmptyState
       v-else-if="!plan"
-      title="没有找到这份计划"
-      description="计划可能已归档或不再可用，请返回主题查看现有计划。"
+      :title="t('learning.plan.notFoundTitle')"
+      :description="t('learning.plan.notFoundDescription')"
       ><RouterLink
         class="button"
         :to="{ name: 'topic-detail', params: { topicId: String(route.params.topicId) } }"
-        >返回主题</RouterLink
+        >{{ t('learning.plan.backToTopic') }}</RouterLink
       ></EmptyState
     >
     <template v-else>
       <PageHeader
         :title="plan.title"
         eyebrow="LEARNING PLAN"
-        :description="`${plan.phases.length} 个阶段，按顺序推进；阅读内容打开即完成，普通任务需手动标记完成。`"
+        :description="t('learning.plan.description', { count: plan.phases.length })"
       >
         <template #back
           ><RouterLink
             class="back-link"
             :to="{ name: 'topic-detail', params: { topicId: plan.topicId } }"
-            ><AppIcon name="back" :size="16" />返回主题</RouterLink
+            ><AppIcon name="back" :size="16" />{{ t('learning.plan.backToTopic') }}</RouterLink
           ></template
         >
       </PageHeader>
       <div v-if="plan.archivedAt" class="notice notice--pending" style="margin-bottom: 18px">
-        <AppIcon name="archive" />这份计划已归档，历史记录仍可查看。
+        <AppIcon name="archive" />{{ t('learning.plan.archivedNotice') }}
       </div>
       <section
         v-for="(phase, phaseIndex) in plan.phases"
@@ -125,7 +137,10 @@ onMounted(load);
                 }}<template v-if="task.scheduledDate">
                   · {{ formatDate(task.scheduledDate, false) }}</template
                 ><template v-if="task.estimatedMinutes">
-                  · 约 {{ task.estimatedMinutes }} 分钟</template
+                  ·
+                  {{
+                    t('learning.plan.estimatedMinutes', { count: task.estimatedMinutes })
+                  }}</template
                 ></span
               >
             </div>
@@ -141,17 +156,21 @@ onMounted(load);
                 "
                 >{{
                   task.status === 'completed'
-                    ? '已完成'
+                    ? t('learning.plan.statusCompleted')
                     : task.status === 'in_progress'
-                      ? '进行中'
-                      : '待开始'
+                      ? t('learning.plan.statusInProgress')
+                      : t('learning.plan.statusPending')
                 }}</span
               >
               <RouterLink
                 v-if="taskLink(task)"
                 class="button button--small"
                 :to="taskLink(task)!"
-                >{{ task.status === 'in_progress' ? '继续' : '前往' }}</RouterLink
+                >{{
+                  task.status === 'in_progress'
+                    ? t('learning.plan.continueAction')
+                    : t('learning.plan.goAction')
+                }}</RouterLink
               >
               <button
                 v-else-if="task.kind === 'manual' && task.status !== 'completed'"
@@ -160,12 +179,14 @@ onMounted(load);
                 :disabled="completing === task.id"
                 @click="complete(task)"
               >
-                <span v-if="completing === task.id" class="spinner" />标记完成
+                <span v-if="completing === task.id" class="spinner" />{{
+                  t('learning.plan.markComplete')
+                }}
               </button>
             </div>
           </article>
         </div>
-        <EmptyState v-else compact title="这个阶段还没有任务" />
+        <EmptyState v-else compact :title="t('learning.plan.emptyPhase')" />
       </section>
     </template>
   </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import {
   DialogClose,
   DialogContent,
@@ -11,6 +12,8 @@ import {
 import AppIcon from './AppIcon.vue';
 import AppScrollArea from './AppScrollArea.vue';
 
+const { t } = useI18n();
+
 const open = defineModel<boolean>('open', { required: true });
 withDefaults(
   defineProps<{
@@ -22,7 +25,7 @@ withDefaults(
     confirmDisabled?: boolean;
     danger?: boolean;
   }>(),
-  { confirmLabel: '确认', cancelLabel: '取消', confirmDisabled: false, danger: false },
+  { confirmDisabled: false, danger: false },
 );
 const emit = defineEmits<{ confirm: [] }>();
 </script>
@@ -44,7 +47,12 @@ const emit = defineEmits<{ confirm: [] }>();
             }}</DialogDescription>
           </div>
           <DialogClose as-child>
-            <button class="icon-button" type="button" aria-label="关闭" :disabled="busy">
+            <button
+              class="icon-button"
+              type="button"
+              :aria-label="t('components.confirm.close')"
+              :disabled="busy"
+            >
               <AppIcon name="close" />
             </button>
           </DialogClose>
@@ -60,7 +68,9 @@ const emit = defineEmits<{ confirm: [] }>();
         <div class="dialog-actions">
           <slot name="actions" />
           <DialogClose as-child>
-            <button class="button" type="button" :disabled="busy">{{ cancelLabel }}</button>
+            <button class="button" type="button" :disabled="busy">
+              {{ cancelLabel ?? t('components.confirm.cancel') }}
+            </button>
           </DialogClose>
           <button
             class="button"
@@ -69,7 +79,9 @@ const emit = defineEmits<{ confirm: [] }>();
             :disabled="busy || confirmDisabled"
             @click="emit('confirm')"
           >
-            <span v-if="busy" class="spinner" />{{ confirmLabel }}
+            <span v-if="busy" class="spinner" />{{
+              confirmLabel ?? t('components.confirm.confirm')
+            }}
           </button>
         </div>
       </DialogContent>

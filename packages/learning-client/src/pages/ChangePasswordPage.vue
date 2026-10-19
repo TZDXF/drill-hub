@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
 import AuthLayout from '../components/AuthLayout.vue';
 import AppIcon from '../components/AppIcon.vue';
 
+const { t } = useI18n();
 const learning = useLearning();
 const router = useRouter();
 const currentPassword = ref('');
@@ -16,7 +18,9 @@ const showNewPassword = ref(false);
 const showConfirmation = ref(false);
 const busy = ref(false);
 const confirmationError = computed(() =>
-  confirmation.value && newPassword.value !== confirmation.value ? '两次输入的新密码不一致。' : '',
+  confirmation.value && newPassword.value !== confirmation.value
+    ? t('management.password.mismatch')
+    : '',
 );
 
 async function submit() {
@@ -33,7 +37,7 @@ async function submit() {
     await learning.logout().catch(() => undefined);
     await router.replace({ name: 'login', query: { changed: '1' } });
   } catch (reason) {
-    learning.notify.error('修改密码失败', errorMessage(reason));
+    learning.notify.error(t('management.password.failed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -41,20 +45,23 @@ async function submit() {
 </script>
 
 <template>
-  <AuthLayout title="修改密码" description="验证当前密码，并设置一个仅用于 Drill Hub 的新密码。">
+  <AuthLayout
+    :title="t('management.password.title')"
+    :description="t('management.password.description')"
+  >
     <template #back>
       <RouterLink
         v-if="!learning.state.user?.mustChangePassword"
         class="back-link"
         :to="{ name: 'settings' }"
       >
-        <AppIcon name="back" :size="16" />返回个人设置
+        <AppIcon name="back" :size="16" />{{ t('management.password.back') }}
       </RouterLink>
     </template>
 
     <form class="auth-form" @submit.prevent="submit">
       <div class="form-field">
-        <label for="current-password">当前密码</label>
+        <label for="current-password">{{ t('management.password.current') }}</label>
         <div class="password-input">
           <input
             id="current-password"
@@ -67,7 +74,11 @@ async function submit() {
           <button
             class="icon-button password-input__toggle"
             type="button"
-            :aria-label="showCurrentPassword ? '隐藏当前密码' : '显示当前密码'"
+            :aria-label="
+              showCurrentPassword
+                ? t('management.password.hideCurrent')
+                : t('management.password.showCurrent')
+            "
             :aria-pressed="showCurrentPassword"
             @click="showCurrentPassword = !showCurrentPassword"
           >
@@ -77,7 +88,7 @@ async function submit() {
       </div>
 
       <div class="form-field">
-        <label for="new-password">新密码</label>
+        <label for="new-password">{{ t('management.password.new') }}</label>
         <div class="password-input">
           <input
             id="new-password"
@@ -92,7 +103,9 @@ async function submit() {
           <button
             class="icon-button password-input__toggle"
             type="button"
-            :aria-label="showNewPassword ? '隐藏新密码' : '显示新密码'"
+            :aria-label="
+              showNewPassword ? t('management.password.hideNew') : t('management.password.showNew')
+            "
             :aria-pressed="showNewPassword"
             @click="showNewPassword = !showNewPassword"
           >
@@ -100,12 +113,12 @@ async function submit() {
           </button>
         </div>
         <p id="new-password-hint" class="field-hint">
-          密码长度至少为 4 个字符，请勿与其他服务重复。
+          {{ t('management.password.newHint') }}
         </p>
       </div>
 
       <div class="form-field">
-        <label for="confirm-password">确认新密码</label>
+        <label for="confirm-password">{{ t('management.password.confirm') }}</label>
         <div class="password-input">
           <input
             id="confirm-password"
@@ -120,7 +133,11 @@ async function submit() {
           <button
             class="icon-button password-input__toggle"
             type="button"
-            :aria-label="showConfirmation ? '隐藏确认密码' : '显示确认密码'"
+            :aria-label="
+              showConfirmation
+                ? t('management.password.hideConfirm')
+                : t('management.password.showConfirm')
+            "
             :aria-pressed="showConfirmation"
             @click="showConfirmation = !showConfirmation"
           >
@@ -137,13 +154,15 @@ async function submit() {
         type="submit"
         :disabled="busy || Boolean(confirmationError)"
       >
-        <span v-if="busy" class="spinner" />{{ busy ? '正在修改…' : '确认修改' }}
+        <span v-if="busy" class="spinner" />{{
+          busy ? t('management.password.submitting') : t('management.password.submit')
+        }}
       </button>
     </form>
 
     <div class="password-notice">
       <AppIcon name="lock" :size="17" />
-      <p>修改成功后，当前及其他设备的登录会话都会失效，请使用新密码重新登录。</p>
+      <p>{{ t('management.password.notice') }}</p>
     </div>
   </AuthLayout>
 </template>

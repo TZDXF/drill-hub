@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import {
   ScrollAreaRoot,
   ScrollAreaScrollbar,
@@ -17,6 +18,8 @@ import {
 } from 'reka-ui';
 import AppIcon from './AppIcon.vue';
 
+const { t } = useI18n();
+
 export interface AppSelectItem {
   value: string;
   label: string;
@@ -29,7 +32,7 @@ withDefaults(
     placeholder?: string;
     disabled?: boolean;
   }>(),
-  { placeholder: '请选择' },
+  {},
 );
 
 const model = defineModel<string>({ required: true });
@@ -38,7 +41,7 @@ const model = defineModel<string>({ required: true });
 <template>
   <SelectRoot v-model="model" :disabled="disabled">
     <SelectTrigger :id="id" class="select">
-      <SelectValue :placeholder="placeholder" />
+      <SelectValue :placeholder="placeholder ?? t('components.select.placeholder')" />
       <SelectIcon class="select__icon"><AppIcon name="down" :size="16" /></SelectIcon>
     </SelectTrigger>
     <SelectPortal>

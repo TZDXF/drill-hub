@@ -63,6 +63,14 @@ export function createAuthFunctions(
     if ((bearer && session.channel !== 'mobile') || (!bearer && session.channel !== 'web'))
       throw new AppError(401, 'INVALID_SESSION', '登录会话无效');
     const user = await activeUser(db, session.userId);
+    request.auditActor = {
+      id: session.id,
+      userId: user.id,
+      role: user.role,
+      channel: session.channel,
+      scopes: [],
+      sessionId: session.id,
+    };
     if (session.channel === 'web' && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
       const token = request.headers['x-csrf-token'];
       if (typeof token !== 'string' || !session.csrfHash || !sameSecret(token, session.csrfHash))
@@ -91,6 +99,14 @@ export function createAuthFunctions(
     if (!token || (token.expiresAt && Date.parse(token.expiresAt) <= Date.now()))
       throw new AppError(401, 'AGENT_TOKEN_INVALID', 'Agent 令牌无效或已撤销');
     const user = await activeUser(db, token.ownerId);
+    request.auditActor = {
+      id: token.id,
+      userId: user.id,
+      role: user.role,
+      channel: 'agent',
+      scopes: token.scopes,
+      tokenId: token.id,
+    };
     if (!token.scopes.includes(scope))
       throw new AppError(403, 'SCOPE_REQUIRED', '令牌缺少权限：' + scope);
     if (!token.lastUsedAt || Date.now() - Date.parse(token.lastUsedAt) > 60000)
@@ -162,6 +178,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     const username = text(body.username, '用户名', 64, 3);
     const password = typeof body.password === 'string' ? body.password : '';
     const user = await db.findOne('users', { username });
+    request.loginAccount = user ? { userId: user.id, username: user.username } : null;
     const valid = verifyPassword(password, user?.passwordHash ?? dummyPassword);
     if (!valid || !user || user.status !== 'active')
       throw new AppError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
@@ -185,6 +202,14 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
         channel === 'mobile' ? new Date(Date.now() + 30 * 86400000).toISOString() : null,
       revokedAt: null,
     });
+    request.auditActor = {
+      id: sessionId,
+      userId: user.id,
+      role: user.role,
+      channel,
+      scopes: [],
+      sessionId,
+    };
     if (channel === 'web') {
       cookie(reply, request, raw, config);
       return { data: { user: userView(user), csrfToken } };

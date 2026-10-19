@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type {
   DiscoveredProviderModel,
@@ -20,6 +21,7 @@ import AppSelect from '../components/AppSelect.vue';
 import AppCheckbox from '../components/AppCheckbox.vue';
 import AppScrollArea from '../components/AppScrollArea.vue';
 
+const { t } = useI18n();
 const learning = useLearning();
 const adapters = ref<ModelAdapter[]>([]);
 const connections = ref<ModelConnectionView[]>([]);
@@ -49,7 +51,10 @@ const selectedDiscoveredKeys = ref<string[]>([]);
 const discoveryFilter = ref('');
 const profileOpen = ref(false);
 const providerModelId = ref('');
-const promptVersion = ref('');
+const editingProfile = ref<GradingProfile | null>(null);
+const profileModels = ref<ProviderModel[]>([]);
+const concurrency = ref(2);
+const defaultProfile = computed(() => profiles.value.find((item) => item.isDefault));
 const timeoutMs = ref(60000);
 const maxRetries = ref(2);
 const isDefault = ref(true);
@@ -59,6 +64,7 @@ const selected = computed(
 const verifiedModels = computed(() =>
   models.value.filter(
     (item) =>
+      selected.value?.enabled &&
       item.enabled &&
       item.verifiedConfigVersion !== null &&
       item.verifiedConfigVersion === selected.value?.configVersion,
@@ -78,15 +84,24 @@ const protocolValue = computed({
   },
 });
 const profileModelOptions = computed(() =>
-  verifiedModels.value.map((model) => ({
+  profileModels.value.map((model) => ({
     value: model.id,
-    label: `${model.displayName}（${model.modelKey}）`,
+    label: `${connections.value.find((item) => item.id === model.connectionId)?.displayName} / ${model.displayName}（${model.modelKey}）`,
   })),
 );
-const promptVersionOptions = computed(() => {
-  const adapter = adapters.value.find((item) => item.protocol === selected.value?.protocol);
-  return (adapter?.promptVersions ?? []).map((version) => ({ value: version, label: version }));
-});
+const profileFormValid = computed(
+  () =>
+    profileModels.value.some((model) => model.id === providerModelId.value) &&
+    Number.isInteger(concurrency.value) &&
+    concurrency.value >= 1 &&
+    concurrency.value <= 20 &&
+    Number.isInteger(timeoutMs.value) &&
+    timeoutMs.value >= 100 &&
+    timeoutMs.value <= 120000 &&
+    Number.isInteger(maxRetries.value) &&
+    maxRetries.value >= 0 &&
+    maxRetries.value <= 5,
+);
 const filteredDiscoveredModels = computed(() => {
   const query = discoveryFilter.value.trim().toLowerCase();
   if (!query) return discoveredModels.value;
@@ -108,8 +123,8 @@ const allFilteredDiscoveredSelected = computed(
 );
 const discoveryConfirmLabel = computed(() =>
   selectedDiscoveredKeys.value.length
-    ? `导入 ${selectedDiscoveredKeys.value.length} 个模型`
-    : '导入模型',
+    ? t('management.models.importLabel', { count: selectedDiscoveredKeys.value.length })
+    : t('management.models.importLabelPlain'),
 );
 
 async function load(initial = false) {
@@ -131,7 +146,7 @@ async function load(initial = false) {
   } catch (reason) {
     const message = errorMessage(reason);
     if (initial || !connections.value.length) error.value = message;
-    learning.notify.error('系统配置读取失败', message);
+    learning.notify.error(t('management.models.loadError'), message);
   } finally {
     loading.value = false;
   }
@@ -149,7 +164,7 @@ async function loadModels() {
     );
   } catch (reason) {
     modelLoadError.value = errorMessage(reason);
-    learning.notify.error('模型列表读取失败', modelLoadError.value);
+    learning.notify.error(t('management.models.modelListError'), modelLoadError.value);
   } finally {
     loadingModels.value = false;
   }
@@ -168,11 +183,17 @@ function openConnection(connection: ModelConnectionView | null) {
 }
 async function testConnectionForm() {
   if (!baseUrl.value.trim()) {
-    learning.notify.warning('无法测试连接', '请填写 API 地址。');
+    learning.notify.warning(
+      t('management.models.testUnavailable'),
+      t('management.models.testUnavailableUrl'),
+    );
     return;
   }
   if (!editingConnection.value && !apiKey.value) {
-    learning.notify.warning('无法测试连接', '添加连接时请填写 API 密钥。');
+    learning.notify.warning(
+      t('management.models.testUnavailable'),
+      t('management.models.testUnavailableKey'),
+    );
     return;
   }
   connectionTesting.value = true;
@@ -182,9 +203,9 @@ async function testConnectionForm() {
       ...(apiKey.value ? { apiKey: apiKey.value } : {}),
       ...(editingConnection.value ? { connectionId: editingConnection.value.id } : {}),
     });
-    learning.notify.success('连接与鉴权测试通过', '可以保存此连接。');
+    learning.notify.success(t('management.models.testOk'), t('management.models.testOkDesc'));
   } catch (reason) {
-    learning.notify.error('连接测试未通过', errorMessage(reason));
+    learning.notify.error(t('management.models.testFailed'), errorMessage(reason));
   } finally {
     connectionTesting.value = false;
   }
@@ -209,12 +230,14 @@ async function saveConnection() {
     connectionOpen.value = false;
     apiKey.value = '';
     learning.notify.success(
-      creating ? '供应商连接已创建' : '供应商连接已保存',
-      creating ? '请先测试连接，再自动获取或手动添加模型。' : '已生成新的配置版本。',
+      creating ? t('management.models.connectionCreated') : t('management.models.connectionSaved'),
+      creating
+        ? t('management.models.connectionCreatedDesc')
+        : t('management.models.connectionSavedDesc'),
     );
     await load();
   } catch (reason) {
-    learning.notify.error('保存供应商连接失败', errorMessage(reason));
+    learning.notify.error(t('management.models.connectionSaveFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -224,9 +247,12 @@ async function testConnection() {
   testing.value = `connection-${selected.value.id}`;
   try {
     await learning.post(`/admin/model-connections/${selected.value.id}/test`, {});
-    learning.notify.success('连接测试通过', '服务端已确认连接与鉴权；仍需逐模型验证评分能力。');
+    learning.notify.success(
+      t('management.models.connectionTestOk'),
+      t('management.models.connectionTestOkDesc'),
+    );
   } catch (reason) {
-    learning.notify.error('连接测试未通过', errorMessage(reason));
+    learning.notify.error(t('management.models.testFailed'), errorMessage(reason));
   } finally {
     testing.value = '';
   }
@@ -247,18 +273,21 @@ async function discoverModels() {
       .map((item) => item.modelKey);
     if (!result.models.length) {
       discoverOpen.value = false;
-      learning.notify.info('供应商没有返回可用模型', '仍可手动添加模型 ID。');
+      learning.notify.info(
+        t('management.models.noModelsReturned'),
+        t('management.models.noModelsReturnedDesc'),
+      );
     } else if (!selectedDiscoveredKeys.value.length) {
       discoverOpen.value = false;
       learning.notify.info(
-        '模型均已添加',
-        `供应商返回 ${result.models.length} 个模型，均已在当前连接中。`,
+        t('management.models.allAdded'),
+        t('management.models.allAddedDesc', { count: result.models.length }),
       );
     } else {
       discoverOpen.value = true;
     }
   } catch (reason) {
-    learning.notify.error('获取供应商模型失败', errorMessage(reason));
+    learning.notify.error(t('management.models.discoverFailed'), errorMessage(reason));
   } finally {
     discovering.value = false;
   }
@@ -293,13 +322,15 @@ async function importDiscoveredModels() {
     discoverOpen.value = false;
     await loadModels();
     learning.notify.success(
-      result.created.length ? '模型已导入' : '没有新增模型',
       result.created.length
-        ? `已添加 ${result.created.length} 个模型，请逐一运行评分测试。`
-        : '选中的模型已存在。',
+        ? t('management.models.imported')
+        : t('management.models.nothingImported'),
+      result.created.length
+        ? t('management.models.importedDesc', { count: result.created.length })
+        : t('management.models.importExists'),
     );
   } catch (reason) {
-    learning.notify.error('导入模型失败', errorMessage(reason));
+    learning.notify.error(t('management.models.importFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -316,9 +347,12 @@ async function addModel() {
     modelKey.value = '';
     modelName.value = '';
     await loadModels();
-    learning.notify.success('模型已添加', '请运行合成题得分项测试。');
+    learning.notify.success(
+      t('management.models.modelAdded'),
+      t('management.models.modelAddedDesc'),
+    );
   } catch (reason) {
-    learning.notify.error('添加模型失败', errorMessage(reason));
+    learning.notify.error(t('management.models.addModelFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -330,10 +364,13 @@ async function toggleModel(model: ProviderModel) {
       enabled: !model.enabled,
       expectedRevision: model.revision,
     });
-    learning.notify.success(model.enabled ? '模型已停用' : '模型已启用', model.displayName);
+    learning.notify.success(
+      model.enabled ? t('management.models.modelDisabled') : t('management.models.modelEnabled'),
+      model.displayName,
+    );
     await loadModels();
   } catch (reason) {
-    learning.notify.error('更新模型状态失败', errorMessage(reason));
+    learning.notify.error(t('management.models.modelStateFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -348,37 +385,123 @@ async function testModel(model: ProviderModel) {
     const testedModel = 'providerModel' in result ? result.providerModel : result;
     await loadModels();
     if (testedModel.testError) {
-      learning.notify.error('模型评分测试未通过', testedModel.testError);
+      learning.notify.error(t('management.models.modelTestFailed'), testedModel.testError);
     } else {
-      learning.notify.success('模型评分测试已完成', '请核对验证配置版本后再用于默认评分。');
+      learning.notify.success(
+        t('management.models.modelTestDone'),
+        t('management.models.modelTestDoneDesc'),
+      );
     }
   } catch (reason) {
-    learning.notify.error('模型评分测试未通过', errorMessage(reason));
+    learning.notify.error(t('management.models.modelTestFailed'), errorMessage(reason));
   } finally {
     testing.value = '';
   }
 }
-function openProfile() {
-  providerModelId.value = verifiedModels.value[0]?.id ?? '';
-  promptVersion.value = promptVersionOptions.value[0]?.value ?? '';
-  isDefault.value = !profiles.value.some((item) => item.isDefault);
-  profileOpen.value = true;
-}
-async function addProfile() {
+async function openProfile(profile: GradingProfile | null = null) {
   busy.value = true;
   try {
-    await learning.post('/admin/grading-profiles', {
+    const available = await Promise.all(
+      connections.value
+        .filter((item) => item.enabled)
+        .map(async (connection) => {
+          const items = await learning.get<ProviderModel[]>(
+            `/admin/model-connections/${connection.id}/models`,
+          );
+          return items.filter(
+            (model) => model.enabled && model.verifiedConfigVersion === connection.configVersion,
+          );
+        }),
+    );
+    profileModels.value = available.flat();
+    editingProfile.value = profile;
+    providerModelId.value =
+      profile?.providerModelId ?? verifiedModels.value[0]?.id ?? profileModels.value[0]?.id ?? '';
+    concurrency.value = profile?.concurrency ?? 2;
+    timeoutMs.value = profile?.timeoutMs ?? 60000;
+    maxRetries.value = profile?.maxRetries ?? 2;
+    isDefault.value = profile?.isDefault ?? !defaultProfile.value;
+    profileOpen.value = true;
+  } catch (reason) {
+    learning.notify.error(t('management.models.profileModelError'), errorMessage(reason));
+  } finally {
+    busy.value = false;
+  }
+}
+async function saveProfile() {
+  if (!profileFormValid.value) return;
+  busy.value = true;
+  try {
+    const body = {
       providerModelId: providerModelId.value,
-      promptVersion: promptVersion.value,
+      concurrency: concurrency.value,
       timeoutMs: timeoutMs.value,
       maxRetries: maxRetries.value,
       isDefault: isDefault.value,
-    });
+    };
+    if (editingProfile.value) {
+      await learning.patch(`/admin/grading-profiles/${editingProfile.value.id}`, {
+        ...body,
+        expectedRevision: editingProfile.value.revision,
+      });
+    } else {
+      await learning.post('/admin/grading-profiles', body);
+    }
     profileOpen.value = false;
     await load();
-    learning.notify.success('评分配置已创建', '既有评分任务仍绑定原配置，新任务将使用当前配置。');
+    learning.notify.success(
+      t('management.models.profileSaved'),
+      t('management.models.profileSavedDesc'),
+    );
   } catch (reason) {
-    learning.notify.error('创建评分配置失败', errorMessage(reason));
+    learning.notify.error(t('management.models.profileSaveFailed'), errorMessage(reason));
+  } finally {
+    busy.value = false;
+  }
+}
+async function useGradingModel(model: ProviderModel) {
+  busy.value = true;
+  try {
+    const current = defaultProfile.value;
+    if (current) {
+      await learning.patch(`/admin/grading-profiles/${current.id}`, {
+        expectedRevision: current.revision,
+        providerModelId: model.id,
+        isDefault: true,
+      });
+    } else {
+      await learning.post('/admin/grading-profiles', {
+        providerModelId: model.id,
+        concurrency: 2,
+        timeoutMs: 60000,
+        maxRetries: 2,
+        isDefault: true,
+      });
+    }
+    await load();
+    learning.notify.success(
+      t('management.models.setGradingModel'),
+      t('management.models.setGradingModelDesc'),
+    );
+  } catch (reason) {
+    learning.notify.error(t('management.models.setGradingModelFailed'), errorMessage(reason));
+  } finally {
+    busy.value = false;
+  }
+}
+async function useProfile(profile: GradingProfile) {
+  busy.value = true;
+  try {
+    await learning.post(`/admin/grading-profiles/${profile.id}/default`, {
+      expectedRevision: profile.revision,
+    });
+    await load();
+    learning.notify.success(
+      t('management.models.defaultSwitched'),
+      t('management.models.defaultSwitchedDesc'),
+    );
+  } catch (reason) {
+    learning.notify.error(t('management.models.defaultSwitchFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -389,9 +512,9 @@ onMounted(() => void load(true));
 <template>
   <div>
     <PageHeader
-      title="供应商与模型"
+      :title="t('management.models.title')"
       eyebrow="SYSTEM SETTINGS"
-      description="集中管理评分服务连接、模型标识与默认评分配置。供应商和型号不写死，密钥永不回显。"
+      :description="t('management.models.description')"
     >
       <template #actions
         ><button
@@ -400,36 +523,38 @@ onMounted(() => void load(true));
           :disabled="!adapters.length"
           @click="openConnection(null)"
         >
-          <AppIcon name="plus" :size="17" />添加供应商
+          <AppIcon name="plus" :size="17" />{{ t('management.models.addProvider') }}
         </button></template
       >
     </PageHeader>
     <div class="notice" style="margin-bottom: 18px">
       <AppIcon name="lock" />
       <div>
-        <strong>配置与评分事实分离</strong>
-        <p>
-          连接测试不携带真实用户答案；模型测试使用合成题。新配置只影响新任务，不会自动重评历史或修改成绩。
-        </p>
+        <strong>{{ t('management.models.separationTitle') }}</strong>
+        <p>{{ t('management.models.separationDesc') }}</p>
       </div>
     </div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取系统配置</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('management.models.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="系统配置读取失败"
-      description="请检查网络连接后重试。"
+      :title="t('management.models.loadFailed')"
+      :description="t('management.common.networkRetry')"
       ><button class="button button--small" type="button" @click="load(true)">
-        重试
+        {{ t('management.common.retry') }}
       </button></EmptyState
     >
     <TabsRoot v-else default-value="connections">
       <AppScrollArea class="tabs-scroll" orientation="horizontal" type="auto">
-        <TabsList class="tabs-list" aria-label="模型系统设置"
+        <TabsList class="tabs-list" :aria-label="t('management.models.tabsLabel')"
           ><TabsTrigger class="tabs-trigger" value="connections"
-            ><AppIcon name="server" :size="17" />连接与模型</TabsTrigger
+            ><AppIcon name="server" :size="17" />{{
+              t('management.models.tabConnections')
+            }}</TabsTrigger
           ><TabsTrigger class="tabs-trigger" value="profiles"
-            ><AppIcon name="model" :size="17" />评分配置
+            ><AppIcon name="model" :size="17" />{{ t('management.models.tabProfiles') }}
             <span class="badge">{{ profiles.length }}</span></TabsTrigger
           ></TabsList
         >
@@ -437,19 +562,22 @@ onMounted(() => void load(true));
       <TabsContent class="tabs-content" value="connections">
         <EmptyState
           v-if="!connections.length"
-          title="还没有评分供应商"
-          description="添加服务器已实现的协议适配器、受控 API 地址和密钥引用。保存后先测试连接，再逐模型验证得分项输出。"
+          :title="t('management.models.emptyProviders')"
+          :description="t('management.models.emptyProvidersDesc')"
           ><button
             class="button button--primary"
             type="button"
             :disabled="!adapters.length"
             @click="openConnection(null)"
           >
-            添加供应商连接
+            {{ t('management.models.addConnection') }}
           </button></EmptyState
         >
         <div v-else class="model-layout">
-          <aside class="paper-panel model-sidebar" aria-label="供应商连接">
+          <aside
+            class="paper-panel model-sidebar"
+            :aria-label="t('management.models.sidebarLabel')"
+          >
             <button
               v-for="connection in connections"
               :key="connection.id"
@@ -483,34 +611,41 @@ onMounted(() => void load(true));
                   :disabled="testing === `connection-${selected.id}`"
                   @click="testConnection"
                 >
-                  <span
-                    v-if="testing === `connection-${selected.id}`"
-                    class="spinner"
-                  />测试连接</button
+                  <span v-if="testing === `connection-${selected.id}`" class="spinner" />{{
+                    t('management.models.testConnection')
+                  }}</button
                 ><button
                   class="button button--small"
                   type="button"
                   @click="openConnection(selected)"
                 >
-                  编辑
+                  {{ t('management.models.edit') }}
                 </button>
               </div>
             </header>
             <div class="tag-list" style="margin-bottom: 20px">
               <span class="badge" :class="selected.enabled ? 'badge--green' : 'badge--red'">{{
-                selected.enabled ? '已启用' : '已停用'
+                selected.enabled
+                  ? t('management.models.state.enabled')
+                  : t('management.models.state.disabled')
               }}</span
-              ><span class="badge">配置版本 {{ selected.configVersion }}</span
+              ><span class="badge">{{
+                t('management.models.configVersion', { version: selected.configVersion })
+              }}</span
               ><span
                 class="badge"
                 :class="selected.apiKeyConfigured ? 'badge--teal' : 'badge--amber'"
-                >{{ selected.apiKeyConfigured ? '密钥已配置' : '未配置密钥' }}</span
+                >{{
+                  selected.apiKeyConfigured
+                    ? t('management.models.keyConfigured')
+                    : t('management.models.keyMissing')
+                }}</span
               >
             </div>
             <div class="section-heading section-heading--models">
               <div>
-                <h3>模型</h3>
-                <p>优先从供应商 /models 接口自动获取，也可手动维护模型 ID，并逐模型运行评分测试</p>
+                <h3>{{ t('management.models.modelsHeading') }}</h3>
+                <p>{{ t('management.models.modelsDesc') }}</p>
               </div>
               <div class="button-row">
                 <button
@@ -523,24 +658,24 @@ onMounted(() => void load(true));
                     v-else
                     name="refresh"
                     :size="15"
-                  />自动获取
+                  />{{ t('management.models.discover') }}
                 </button>
                 <button class="button button--small" type="button" @click="modelOpen = true">
-                  <AppIcon name="plus" :size="15" />添加模型
+                  <AppIcon name="plus" :size="15" />{{ t('management.models.addModel') }}
                 </button>
               </div>
             </div>
             <div v-if="loadingModels" class="loading-block" style="min-height: 120px">
-              <span class="spinner" />读取模型
+              <span class="spinner" />{{ t('management.models.loadingModels') }}
             </div>
             <EmptyState
               v-else-if="modelLoadError"
               compact
               icon="alert"
-              title="模型列表读取失败"
-              description="请检查网络连接后重试。"
+              :title="t('management.models.modelLoadFailed')"
+              :description="t('management.common.networkRetry')"
               ><button class="button button--small" type="button" @click="loadModels">
-                重试
+                {{ t('management.common.retry') }}
               </button></EmptyState
             >
             <AppScrollArea
@@ -550,32 +685,71 @@ onMounted(() => void load(true));
               type="hover"
             >
               <div class="list-stack">
-                <article v-for="model in models" :key="model.id" class="card list-card">
+                <article
+                  v-for="model in models"
+                  :key="model.id"
+                  class="card list-card provider-model-card"
+                >
                   <span class="list-card__icon"><AppIcon name="model" /></span>
                   <div class="list-card__body">
                     <h3>{{ model.displayName }}</h3>
                     <p>{{ model.modelKey }}</p>
                     <div class="list-card__meta">
-                      <span>{{ model.enabled ? '已启用' : '已停用' }}</span
-                      ><span>验证版本 {{ model.verifiedConfigVersion ?? '未验证' }}</span
-                      ><span v-if="model.testError" class="badge badge--red">评分测试未通过</span>
+                      <span
+                        v-if="defaultProfile?.providerModelId === model.id"
+                        class="badge badge--green"
+                        >{{ t('management.models.gradingModel') }}</span
+                      >
+                      <span>{{
+                        model.enabled
+                          ? t('management.models.state.enabled')
+                          : t('management.models.state.disabled')
+                      }}</span
+                      ><span>{{
+                        model.verifiedConfigVersion !== null
+                          ? t('management.models.verifiedVersion', {
+                              version: model.verifiedConfigVersion,
+                            })
+                          : t('management.models.notVerified')
+                      }}</span
+                      ><span v-if="model.testError" class="badge badge--red">{{
+                        t('management.models.gradingTestFailed')
+                      }}</span>
                     </div>
                   </div>
                   <div class="list-card__aside">
                     <button
                       class="button button--small"
                       type="button"
-                      :disabled="testing === model.id"
+                      :disabled="
+                        busy ||
+                        testing !== '' ||
+                        !verifiedModels.some((item) => item.id === model.id)
+                      "
+                      @click="useGradingModel(model)"
+                    >
+                      {{ t('management.models.useAsGrading') }}
+                    </button>
+                    <button
+                      class="button button--small"
+                      type="button"
+                      :disabled="busy || testing !== ''"
                       @click="testModel(model)"
                     >
-                      <span v-if="testing === model.id" class="spinner" />评分测试</button
+                      <span v-if="testing === model.id" class="spinner" />{{
+                        t('management.models.gradingTest')
+                      }}</button
                     ><button
                       class="button button--small"
                       type="button"
                       :disabled="busy"
                       @click="toggleModel(model)"
                     >
-                      {{ model.enabled ? '停用' : '启用' }}
+                      {{
+                        model.enabled
+                          ? t('management.models.action.disable')
+                          : t('management.models.action.enable')
+                      }}
                     </button>
                   </div>
                 </article>
@@ -584,8 +758,8 @@ onMounted(() => void load(true));
             <EmptyState
               v-else
               compact
-              title="尚未添加模型"
-              description="可从供应商 /models 接口自动获取，也可手动填写模型 ID；添加后需逐模型运行评分测试。"
+              :title="t('management.models.noModels')"
+              :description="t('management.models.noModelsDesc')"
             />
           </section>
         </div>
@@ -593,16 +767,16 @@ onMounted(() => void load(true));
       <TabsContent class="tabs-content" value="profiles">
         <div class="section-heading">
           <div>
-            <h2>评分配置版本</h2>
-            <p>选择经过验证的模型，设置提示词版本、超时和重试；默认配置只应用于新任务</p>
+            <h2>{{ t('management.models.profilesTitle') }}</h2>
+            <p>{{ t('management.models.profilesDesc') }}</p>
           </div>
           <button
             class="button button--primary"
             type="button"
-            :disabled="!verifiedModels.length"
-            @click="openProfile"
+            :disabled="busy || !verifiedModels.length"
+            @click="openProfile()"
           >
-            <AppIcon name="plus" :size="16" />新建配置
+            <AppIcon name="plus" :size="16" />{{ t('management.models.newProfile') }}
           </button>
         </div>
         <AppScrollArea
@@ -614,27 +788,57 @@ onMounted(() => void load(true));
           <table class="data-table responsive-table">
             <thead>
               <tr>
-                <th>模型快照</th>
-                <th>提示词版本</th>
-                <th>超时</th>
-                <th>最大重试</th>
-                <th>创建时间</th>
-                <th>用途</th>
+                <th>{{ t('management.models.col.snapshot') }}</th>
+                <th>{{ t('management.models.col.concurrency') }}</th>
+                <th>{{ t('management.models.col.timeout') }}</th>
+                <th>{{ t('management.models.col.maxRetries') }}</th>
+                <th>{{ t('management.models.col.createdAt') }}</th>
+                <th>{{ t('management.models.col.usage') }}</th>
+                <th>{{ t('management.common.actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="profile in profiles" :key="profile.id">
-                <td data-label="模型快照">
+                <td :data-label="t('management.models.col.snapshot')">
                   <span class="table-primary">{{ profile.modelIdSnapshot }}</span
                   ><span class="table-secondary">{{ profile.providerModelId }}</span>
                 </td>
-                <td data-label="提示词版本">{{ profile.promptVersion }}</td>
-                <td data-label="超时">{{ profile.timeoutMs }} ms</td>
-                <td data-label="最大重试">{{ profile.maxRetries }}</td>
-                <td data-label="创建时间">{{ formatDate(profile.createdAt) }}</td>
-                <td data-label="用途">
-                  <span v-if="profile.isDefault" class="badge badge--green">默认评分</span
-                  ><span v-else class="badge">历史版本</span>
+                <td :data-label="t('management.models.col.concurrency')">
+                  {{ profile.concurrency }}
+                </td>
+                <td :data-label="t('management.models.col.timeout')">{{ profile.timeoutMs }} ms</td>
+                <td :data-label="t('management.models.col.maxRetries')">
+                  {{ profile.maxRetries }}
+                </td>
+                <td :data-label="t('management.models.col.createdAt')">
+                  {{ formatDate(profile.createdAt) }}
+                </td>
+                <td :data-label="t('management.models.col.usage')">
+                  <span v-if="profile.isDefault" class="badge badge--green">{{
+                    t('management.models.defaultGrading')
+                  }}</span
+                  ><span v-else class="badge">{{ t('management.models.nonDefault') }}</span>
+                </td>
+                <td :data-label="t('management.common.actions')">
+                  <div class="button-row">
+                    <button
+                      class="button button--small"
+                      type="button"
+                      :disabled="busy"
+                      @click="openProfile(profile)"
+                    >
+                      {{ t('management.models.edit') }}
+                    </button>
+                    <button
+                      v-if="!profile.isDefault"
+                      class="button button--small"
+                      type="button"
+                      :disabled="busy"
+                      @click="useProfile(profile)"
+                    >
+                      {{ t('management.models.setDefault') }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -642,19 +846,23 @@ onMounted(() => void load(true));
         </AppScrollArea>
         <EmptyState
           v-else
-          title="还没有评分配置"
-          description="先在当前供应商下添加并验证模型，再创建默认评分配置。未配置时学习与交卷仍可进行，模型题保持待评分。"
+          :title="t('management.models.noProfiles')"
+          :description="t('management.models.noProfilesDesc')"
         />
         <div v-if="!verifiedModels.length" class="notice notice--pending" style="margin-top: 14px">
-          <AppIcon name="alert" />当前连接没有已启用且通过验证的模型，不能新建默认评分配置。
+          <AppIcon name="alert" />{{ t('management.models.noVerifiedModels') }}
         </div>
       </TabsContent>
     </TabsRoot>
     <ConfirmDialog
       :open="connectionOpen"
-      :title="editingConnection ? '编辑供应商连接' : '添加供应商连接'"
-      description="可先测试当前填写的地址与密钥，测试不会保存配置；旧密钥不会回显，留空表示不更换。"
-      confirm-label="保存连接"
+      :title="
+        editingConnection
+          ? t('management.models.connectionTitle')
+          : t('management.models.connectionTitleNew')
+      "
+      :description="t('management.models.connectionDesc')"
+      :confirm-label="t('management.models.connectionConfirm')"
       :busy="busy"
       @update:open="connectionOpen = $event"
       @confirm="saveConnection"
@@ -666,16 +874,18 @@ onMounted(() => void load(true));
           :disabled="busy || connectionTesting"
           @click="testConnectionForm"
         >
-          <span v-if="connectionTesting" class="spinner" />测试连接
+          <span v-if="connectionTesting" class="spinner" />{{
+            t('management.models.testConnection')
+          }}
         </button>
       </template>
       <div class="form-grid">
         <div class="form-field form-field--full">
-          <label for="connection-name">供应商显示名称</label
+          <label for="connection-name">{{ t('management.models.field.connectionName') }}</label
           ><input id="connection-name" v-model="connectionName" class="input" required />
         </div>
         <div class="form-field form-field--full">
-          <label for="connection-protocol">协议适配器</label
+          <label for="connection-protocol">{{ t('management.models.field.protocol') }}</label
           ><AppSelect
             id="connection-protocol"
             v-model="protocolValue"
@@ -684,7 +894,7 @@ onMounted(() => void load(true));
           />
         </div>
         <div class="form-field form-field--full">
-          <label for="connection-url">API 地址</label
+          <label for="connection-url">{{ t('management.models.field.apiUrl') }}</label
           ><input
             id="connection-url"
             v-model="baseUrl"
@@ -693,10 +903,10 @@ onMounted(() => void load(true));
             required
             placeholder="https://provider.example.com/v1"
           />
-          <p class="field-hint">服务端会执行出站地址策略，不能用于探测任意内网服务。</p>
+          <p class="field-hint">{{ t('management.models.field.apiUrlHint') }}</p>
         </div>
         <div class="form-field form-field--full">
-          <label for="connection-key">API 密钥</label
+          <label for="connection-key">{{ t('management.models.field.apiKey') }}</label
           ><input
             id="connection-key"
             v-model="apiKey"
@@ -705,39 +915,46 @@ onMounted(() => void load(true));
             autocomplete="new-password"
             :required="!editingConnection"
           />
-          <p class="field-hint">密钥不会回显，也不会出现在公共 server-info 或学习页面。</p>
+          <p class="field-hint">{{ t('management.models.field.apiKeyHint') }}</p>
         </div>
       </div>
     </ConfirmDialog>
     <ConfirmDialog
       v-model:open="discoverOpen"
-      title="自动获取模型"
-      description="从供应商 /models 接口读取模型；已存在的模型不会重复创建，导入后仍需逐模型运行评分测试。"
+      :title="t('management.models.discoverTitle')"
+      :description="t('management.models.discoverDesc')"
       :confirm-label="discoveryConfirmLabel"
       :confirm-disabled="!selectedDiscoveredKeys.length"
       :busy="busy"
       @confirm="importDiscoveredModels"
     >
       <div class="form-field">
-        <label for="discovery-filter">筛选模型</label
+        <label for="discovery-filter">{{ t('management.models.field.discoveryFilter') }}</label
         ><input
           id="discovery-filter"
           v-model="discoveryFilter"
           class="input"
-          placeholder="按模型名称或 ID 筛选"
+          :placeholder="t('management.models.field.discoveryFilterPlaceholder')"
         />
       </div>
       <div class="model-discovery-toolbar">
-        <span class="field-hint"
-          >共 {{ discoveredModels.length }} 个模型，已选
-          {{ selectedDiscoveredKeys.length }} 个</span
+        <span class="field-hint">{{
+          t('management.models.discoveryCount', {
+            total: discoveredModels.length,
+            selected: selectedDiscoveredKeys.length,
+          })
+        }}</span
         ><button
           class="button button--small"
           type="button"
           :disabled="!selectableDiscoveredModels.length"
           @click="toggleAllDiscovered"
         >
-          {{ allFilteredDiscoveredSelected ? '取消全选' : '全选可导入' }}
+          {{
+            allFilteredDiscoveredSelected
+              ? t('management.models.clearAll')
+              : t('management.models.selectAll')
+          }}
         </button>
       </div>
       <AppScrollArea
@@ -766,7 +983,7 @@ onMounted(() => void load(true));
               </span>
             </AppCheckbox>
             <template v-else>
-              <span class="badge">已添加</span>
+              <span class="badge">{{ t('management.models.alreadyAdded') }}</span>
               <span class="model-discovery-row__text">
                 <strong>{{ item.displayName || item.modelKey }}</strong>
                 <code v-if="item.displayName && item.displayName !== item.modelKey">{{
@@ -777,44 +994,61 @@ onMounted(() => void load(true));
           </div>
         </div>
       </AppScrollArea>
-      <p v-else class="field-hint">没有匹配的模型。</p>
+      <p v-else class="field-hint">{{ t('management.models.noMatch') }}</p>
     </ConfirmDialog>
     <ConfirmDialog
       v-model:open="modelOpen"
-      title="添加模型 ID"
-      description="请填写供应商实际支持的模型标识；添加后还需通过合成题得分项测试。"
-      confirm-label="添加模型"
+      :title="t('management.models.modelIdTitle')"
+      :description="t('management.models.modelIdDesc')"
+      :confirm-label="t('management.models.modelIdConfirm')"
       :busy="busy"
       @confirm="addModel"
       ><div class="form-grid">
         <div class="form-field form-field--full">
-          <label for="model-key">模型 ID</label
+          <label for="model-key">{{ t('management.models.field.modelKey') }}</label
           ><input id="model-key" v-model="modelKey" class="input" required autocomplete="off" />
         </div>
         <div class="form-field form-field--full">
-          <label for="model-name">显示名称</label
+          <label for="model-name">{{ t('management.models.field.modelName') }}</label
           ><input id="model-name" v-model="modelName" class="input" required />
         </div></div
     ></ConfirmDialog>
     <ConfirmDialog
       v-model:open="profileOpen"
-      title="新建评分配置版本"
-      description="只能使用当前连接中已启用且通过验证的模型。创建版本不会修改既有任务。"
-      confirm-label="创建配置"
+      :title="
+        editingProfile
+          ? t('management.models.profileTitleEdit')
+          : t('management.models.profileTitleNew')
+      "
+      :description="t('management.models.profileDesc')"
+      :confirm-label="
+        editingProfile
+          ? t('management.models.profileConfirmEdit')
+          : t('management.models.profileConfirmNew')
+      "
       :busy="busy"
-      @confirm="addProfile"
+      :confirm-disabled="!profileFormValid"
+      @confirm="saveProfile"
       ><div class="form-grid">
         <div class="form-field form-field--full">
-          <label for="profile-model">评分模型</label
+          <label for="profile-model">{{ t('management.models.field.profileModel') }}</label
           ><AppSelect id="profile-model" v-model="providerModelId" :items="profileModelOptions" />
         </div>
-        <div class="form-field form-field--full">
-          <label for="prompt-version">提示词版本</label
-          ><AppSelect id="prompt-version" v-model="promptVersion" :items="promptVersionOptions" />
+        <div class="form-field">
+          <label for="profile-concurrency">{{ t('management.models.field.concurrency') }}</label>
+          <input
+            id="profile-concurrency"
+            v-model.number="concurrency"
+            class="input"
+            type="number"
+            min="1"
+            max="20"
+            required
+          />
         </div>
         <div class="form-field">
-          <label for="timeout-ms">超时（毫秒）</label
-          ><input
+          <label for="timeout-ms">{{ t('management.models.field.timeoutMs') }}</label>
+          <input
             id="timeout-ms"
             v-model.number="timeoutMs"
             class="input"
@@ -825,8 +1059,8 @@ onMounted(() => void load(true));
           />
         </div>
         <div class="form-field">
-          <label for="max-retries">最大重试</label
-          ><input
+          <label for="max-retries">{{ t('management.models.field.maxRetries') }}</label>
+          <input
             id="max-retries"
             v-model.number="maxRetries"
             class="input"
@@ -837,7 +1071,9 @@ onMounted(() => void load(true));
           />
         </div>
         <div class="form-field--full">
-          <AppCheckbox v-model="isDefault">设为新的默认评分配置</AppCheckbox>
+          <AppCheckbox v-model="isDefault" :disabled="editingProfile?.isDefault">{{
+            t('management.models.field.setDefaultProfile')
+          }}</AppCheckbox>
         </div>
       </div></ConfirmDialog
     >
@@ -900,7 +1136,22 @@ onMounted(() => void load(true));
   font-size: 11px;
   overflow-wrap: anywhere;
 }
+.provider-model-card .list-card__body h3,
+.provider-model-card .list-card__body p {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 640px) {
+  .provider-model-card {
+    flex-wrap: wrap;
+  }
+  .provider-model-card .list-card__body {
+    flex: 1 1 calc(100% - 58px);
+  }
+  .provider-model-card .list-card__aside {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
   .section-heading--models {
     align-items: flex-start;
     flex-wrap: wrap;

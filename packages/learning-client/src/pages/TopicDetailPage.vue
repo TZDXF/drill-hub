@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type { Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
@@ -9,6 +10,7 @@ import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 
+const { t, n } = useI18n();
 const learning = useLearning();
 const route = useRoute();
 const topic = ref<Topic | null>(null);
@@ -32,22 +34,34 @@ function syncCompactCategories() {
     learning.platform.kind === 'android' || (compactLayoutQuery?.matches ?? false);
 }
 const categories = computed(() => [
-  { value: 'plans', label: '学习计划', icon: 'plan', count: plans.value.length, unit: '个计划' },
+  {
+    value: 'plans',
+    label: t('learning.topicDetail.categories.plans'),
+    icon: 'plan',
+    count: plans.value.length,
+    unit: t('learning.topicDetail.units.plans'),
+  },
   {
     value: 'contents',
-    label: '阅读内容',
+    label: t('learning.topicDetail.categories.contents'),
     icon: 'content',
     count: contents.value.length,
-    unit: '篇内容',
+    unit: t('learning.topicDetail.units.contents'),
   },
   {
     value: 'practices',
-    label: '练习',
+    label: t('learning.topicDetail.categories.practices'),
     icon: 'wrong',
     count: practices.value.length,
-    unit: '份练习',
+    unit: t('learning.topicDetail.units.practices'),
   },
-  { value: 'exams', label: '考试', icon: 'lock', count: exams.value.length, unit: '场考试' },
+  {
+    value: 'exams',
+    label: t('learning.topicDetail.categories.exams'),
+    icon: 'lock',
+    count: exams.value.length,
+    unit: t('learning.topicDetail.units.exams'),
+  },
 ]);
 
 async function load() {
@@ -66,7 +80,7 @@ async function load() {
     assessments.value = assessmentResult;
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('主题内容读取失败', error.value);
+    learning.notify.error(t('learning.topicDetail.loadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -85,34 +99,40 @@ watch(topicId, load);
 
 <template>
   <div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在整理主题内容</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.topicDetail.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="主题读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.topicDetail.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
     <template v-else-if="topic">
       <PageHeader :title="topic.title" eyebrow="LEARNING TOPIC" :description="topic.goalText">
         <template #back
           ><RouterLink class="back-link" :to="{ name: 'topics' }"
-            ><AppIcon name="back" :size="16" />全部主题</RouterLink
+            ><AppIcon name="back" :size="16" />{{
+              t('learning.topicDetail.backToTopics')
+            }}</RouterLink
           ></template
         >
       </PageHeader>
       <div v-if="topic.archivedAt" class="notice notice--pending" style="margin-bottom: 18px">
         <AppIcon name="archive" />
         <div>
-          <strong>主题已归档</strong>
-          <p>可阅读既有记录，但不能开始新的任务。</p>
+          <strong>{{ t('learning.topicDetail.archivedTitle') }}</strong>
+          <p>{{ t('learning.topicDetail.archivedDescription') }}</p>
         </div>
       </div>
       <TabsRoot default-value="plans">
         <TabsList
           class="tabs-list topic-categories"
           :class="{ 'topic-categories--compact': compactCategories }"
-          aria-label="主题内容分类"
+          :aria-label="t('learning.topicDetail.categoriesLabel')"
         >
           <TabsTrigger
             v-for="category in categories"
@@ -139,11 +159,17 @@ watch(topicId, load);
               <div class="list-card__body">
                 <h3>{{ plan.title }}</h3>
                 <p>
-                  {{ plan.phases.length }} 个阶段 ·
-                  {{ plan.phases.reduce((sum, phase) => sum + phase.tasks.length, 0) }} 项任务
+                  {{
+                    t('learning.topicDetail.planSummary', {
+                      phases: n(plan.phases.length),
+                      tasks: n(plan.phases.reduce((sum, phase) => sum + phase.tasks.length, 0)),
+                    })
+                  }}
                 </p>
                 <div class="list-card__meta">
-                  <span>更新于 {{ formatDate(plan.updatedAt) }}</span>
+                  <span>{{
+                    t('learning.common.updatedAt', { date: formatDate(plan.updatedAt) })
+                  }}</span>
                 </div>
               </div>
               <AppIcon name="chevron" :size="18" class="subtle" />
@@ -151,8 +177,8 @@ watch(topicId, load);
           </div>
           <EmptyState
             v-else
-            title="还没有学习计划"
-            description="让 Agent 根据主题目标创建阶段与任务，计划会真实保存在服务器。"
+            :title="t('learning.topicDetail.emptyPlansTitle')"
+            :description="t('learning.topicDetail.emptyPlansDescription')"
           />
         </TabsContent>
         <TabsContent class="tabs-content" value="contents">
@@ -166,9 +192,11 @@ watch(topicId, load);
               <span class="list-card__icon"><AppIcon name="content" /></span>
               <div class="list-card__body">
                 <h3>{{ content.title }}</h3>
-                <p>纯文本阅读材料</p>
+                <p>{{ t('learning.topicDetail.contentKind') }}</p>
                 <div class="list-card__meta">
-                  <span>更新于 {{ formatDate(content.updatedAt) }}</span>
+                  <span>{{
+                    t('learning.common.updatedAt', { date: formatDate(content.updatedAt) })
+                  }}</span>
                 </div>
               </div>
               <AppIcon name="chevron" :size="18" class="subtle" />
@@ -176,8 +204,8 @@ watch(topicId, load);
           </div>
           <EmptyState
             v-else
-            title="还没有阅读内容"
-            description="可让 Agent 围绕当前目标撰写纯文本学习内容。"
+            :title="t('learning.topicDetail.emptyContentsTitle')"
+            :description="t('learning.topicDetail.emptyContentsDescription')"
           />
         </TabsContent>
         <TabsContent
@@ -199,21 +227,31 @@ watch(topicId, load);
               <div class="list-card__body">
                 <h3>{{ assessment.title }}</h3>
                 <div class="list-card__meta">
-                  <span>{{ assessment.items.length }} 题</span
-                  ><span>满分 {{ formatScore(totalScore(assessment)) }}</span
+                  <span>{{
+                    t('learning.common.questionCount', { count: n(assessment.items.length) })
+                  }}</span
+                  ><span>{{
+                    t('learning.topicDetail.fullScore', {
+                      score: formatScore(totalScore(assessment)),
+                    })
+                  }}</span
                   ><span>{{ formatDuration(assessment.durationSeconds) }}</span>
                 </div>
               </div>
               <span class="badge" :class="kind === 'exams' ? 'badge--amber' : 'badge--teal'">{{
-                kind === 'exams' ? '考试' : '练习'
+                kind === 'exams' ? t('learning.common.exam') : t('learning.common.practice')
               }}</span
               ><AppIcon name="chevron" :size="18" class="subtle" />
             </RouterLink>
           </div>
           <EmptyState
             v-else
-            :title="kind === 'exams' ? '还没有考试' : '还没有练习'"
-            description="让 Agent 创建带明确评分规则的题目与组卷；空库不会显示假成绩。"
+            :title="
+              kind === 'exams'
+                ? t('learning.topicDetail.emptyExamsTitle')
+                : t('learning.topicDetail.emptyPracticesTitle')
+            "
+            :description="t('learning.topicDetail.emptyAssessmentsDescription')"
           />
         </TabsContent>
       </TabsRoot>

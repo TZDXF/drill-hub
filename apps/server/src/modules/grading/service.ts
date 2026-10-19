@@ -25,7 +25,6 @@ import {
   callChatCompletions,
   listChatCompletionsModels,
   ProviderError,
-  PROMPT_VERSION,
   testChatCompletionsConnection,
 } from './chat-completions.js';
 import {
@@ -71,7 +70,6 @@ const CONFIG_ERROR_CODES = new Set([
   'PROVIDER_DISABLED',
   'MODEL_DISABLED',
   'STALE_MODEL_VERIFICATION',
-  'UNSUPPORTED_PROMPT_VERSION',
   'SECRET_UNAVAILABLE',
 ]);
 
@@ -231,11 +229,38 @@ export class GradingServiceImpl implements GradingService {
 
   private async drainQueue(): Promise<void> {
     await this.recoverExpiredLeases();
-    for (let count = 0; count < this.maxJobsPerRun; count += 1) {
-      const claimed = await this.claimNextJob();
-      if (!claimed) return;
-      await this.executeClaimedJob(claimed);
+    const running = new Set<Promise<void>>();
+    let failure: { error: unknown } | undefined;
+    try {
+      for (let count = 0; count < this.maxJobsPerRun;) {
+        const claimed = await this.claimNextJob();
+        if (claimed) {
+          count += 1;
+          const execution = this.executeClaimedJob(claimed);
+          // Attach a handler immediately while the scheduler is claiming other jobs.
+          void execution.catch(() => undefined);
+          running.add(execution);
+        } else if (!running.size) {
+          break;
+        }
+        if (!claimed || count === this.maxJobsPerRun) {
+          const completed = await Promise.race(
+            [...running].map(async (execution) => {
+              await execution;
+              return { execution };
+            }),
+          );
+          running.delete(completed.execution);
+        }
+      }
+    } catch (error) {
+      failure = { error };
     }
+    // Do not release activeRun until all already-claimed calls have settled.
+    const results = await Promise.allSettled(running);
+    if (failure) throw failure.error;
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
   }
 
   private async cancelVoidedJob(
@@ -323,6 +348,11 @@ export class GradingServiceImpl implements GradingService {
         const profile = candidate.profileId
           ? await tx.get('gradingProfiles', candidate.profileId)
           : undefined;
+        // Claims are serialized in the DB transaction; no model call holds the lock.
+        const runningCount = jobs.filter(
+          (job) => job.status === 'running' && job.profileId === candidate.profileId,
+        ).length;
+        if (runningCount >= (profile?.concurrency ?? 2)) continue;
         const leaseDuration = Math.max(this.leaseMs, (profile?.timeoutMs ?? 0) + 10_000);
         const claimedJob = await tx.update('gradingJobs', candidate.id, candidate.revision, {
           status: 'running',
@@ -349,7 +379,6 @@ export class GradingServiceImpl implements GradingService {
     if (!profileId) configError('DEFAULT_PROFILE_NOT_CONFIGURED');
     const profile = await this.ctx.db.get('gradingProfiles', profileId);
     if (!profile) configError('GRADING_PROFILE_NOT_FOUND');
-    if (profile.promptVersion !== PROMPT_VERSION) configError('UNSUPPORTED_PROMPT_VERSION');
     const providerModel = await this.ctx.db.get('providerModels', profile.providerModelId);
     if (!providerModel) configError('PROVIDER_MODEL_NOT_FOUND');
     const version = await this.ctx.db.get('modelConnectionVersions', profile.connectionVersionId);

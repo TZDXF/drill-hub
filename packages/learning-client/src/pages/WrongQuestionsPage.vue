@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { AttemptView, WrongQuestionListItem } from '@drill-hub/contracts';
@@ -11,6 +13,8 @@ import EmptyState from '../components/EmptyState.vue';
 import AttemptPurposeSelect from '../components/AttemptPurposeSelect.vue';
 import AppSelect from '../components/AppSelect.vue';
 
+const { t } = useI18n();
+
 const purpose = ref<AttemptView['purpose']>('learning');
 const learning = useLearning();
 const router = useRouter();
@@ -19,13 +23,17 @@ const mastery = ref('all');
 const loading = ref(true);
 const starting = ref('');
 const error = ref('');
-const labels = { pending: '待复习', reviewing: '复习中', mastered: '已掌握' };
-const masteryOptions = [
-  { value: 'all', label: '全部状态' },
-  { value: 'pending', label: '待复习' },
-  { value: 'reviewing', label: '复习中' },
-  { value: 'mastered', label: '已掌握' },
-];
+const labels = computed(() => ({
+  pending: t('learning.common.mastery.pending'),
+  reviewing: t('learning.common.mastery.reviewing'),
+  mastered: t('learning.common.mastery.mastered'),
+}));
+const masteryOptions = computed(() => [
+  { value: 'all', label: t('learning.history.filter.statusAll') },
+  { value: 'pending', label: t('learning.common.mastery.pending') },
+  { value: 'reviewing', label: t('learning.common.mastery.reviewing') },
+  { value: 'mastered', label: t('learning.common.mastery.mastered') },
+]);
 async function load() {
   loading.value = true;
   error.value = '';
@@ -35,7 +43,7 @@ async function load() {
     );
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('错题读取失败', error.value);
+    learning.notify.error(t('learning.wrongQuestions.loadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -52,7 +60,7 @@ async function practice(questionId: string) {
     const attempt = asAttemptView(result);
     await router.push({ name: 'attempt', params: { attemptId: attempt.id } });
   } catch (reason) {
-    learning.notify.error('开始重练失败', errorMessage(reason));
+    learning.notify.error(t('learning.wrongQuestions.notifyPracticeError'), errorMessage(reason));
   } finally {
     starting.value = '';
   }
@@ -63,38 +71,46 @@ onMounted(load);
 <template>
   <div>
     <PageHeader
-      title="错题集"
+      :title="t('learning.wrongQuestions.title')"
       eyebrow="REVIEW & MASTERY"
-      description="只收录已评分且未得满分的题目；部分得分也值得回顾，待评分不会误入错题。"
+      :description="t('learning.wrongQuestions.description')"
     />
     <form class="card filter-bar" @submit.prevent="load">
       <div class="form-field">
-        <label for="mastery-filter">掌握状态</label
+        <label for="mastery-filter">{{ t('learning.wrongQuestions.filterLabel') }}</label
         ><AppSelect id="mastery-filter" v-model="mastery" :items="masteryOptions" />
       </div>
-      <button class="button" type="submit">应用筛选</button>
+      <button class="button" type="submit">{{ t('learning.wrongQuestions.applyFilter') }}</button>
     </form>
-    <section class="card" aria-label="错题重练用途" style="margin-bottom: 16px">
+    <section
+      class="card"
+      :aria-label="t('learning.wrongQuestions.purposeLabel')"
+      style="margin-bottom: 16px"
+    >
       <AttemptPurposeSelect
         id="wrong-practice-purpose"
         v-model="purpose"
         :disabled="Boolean(starting)"
       />
     </section>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取错题</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.wrongQuestions.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="错题读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.wrongQuestions.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
     <div v-else-if="items.length" class="list-stack">
       <article v-for="item in items" :key="item.id" class="card list-card">
         <RouterLink
           class="list-card__icon"
           :to="{ name: 'wrong-question-detail', params: { questionId: item.questionId } }"
-          aria-label="查看错题详情"
+          :aria-label="t('learning.wrongQuestions.detailLabel')"
           ><AppIcon name="wrong"
         /></RouterLink>
         <div class="list-card__body">
@@ -104,12 +120,19 @@ onMounted(load);
               >{{ item.stem }}</RouterLink
             >
           </h3>
-          <p>累计答错 {{ item.wrongCount }} 次 · 最近于 {{ formatDate(item.lastWrongAt) }}</p>
+          <p>
+            {{
+              t('learning.wrongQuestions.wrongCount', {
+                count: item.wrongCount,
+                date: formatDate(item.lastWrongAt),
+              })
+            }}
+          </p>
           <div class="list-card__meta">
             <span>{{ item.topicTitle }}</span
-            ><span v-if="item.lastPracticedAt"
-              >最近重练 {{ formatDate(item.lastPracticedAt) }}</span
-            >
+            ><span v-if="item.lastPracticedAt">{{
+              t('learning.wrongQuestions.lastPracticed', { date: formatDate(item.lastPracticedAt) })
+            }}</span>
           </div>
         </div>
         <div class="list-card__aside">
@@ -123,16 +146,20 @@ onMounted(load);
             :disabled="starting === item.questionId"
             @click="practice(item.questionId)"
           >
-            <span v-if="starting === item.questionId" class="spinner" />重练
+            <span v-if="starting === item.questionId" class="spinner" />{{
+              t('learning.wrongQuestions.retryAction')
+            }}
           </button>
         </div>
       </article>
     </div>
     <EmptyState
       v-else
-      title="当前没有错题"
-      description="完成真实评分后，未得满分的题目会按服务端规则进入这里。没有记录时不显示虚构的正确率。"
-      ><RouterLink class="button" :to="{ name: 'topics' }">前往学习主题</RouterLink></EmptyState
+      :title="t('learning.wrongQuestions.emptyTitle')"
+      :description="t('learning.wrongQuestions.emptyDescription')"
+      ><RouterLink class="button" :to="{ name: 'topics' }">{{
+        t('learning.wrongQuestions.goTopics')
+      }}</RouterLink></EmptyState
     >
   </div>
 </template>

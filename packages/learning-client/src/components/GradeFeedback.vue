@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { AttemptItemView } from '@drill-hub/contracts';
 import { formatScore } from '../utils';
 import AppIcon from './AppIcon.vue';
+
+const { t } = useI18n();
 
 withDefaults(
   defineProps<{
@@ -24,8 +27,12 @@ withDefaults(
     >
       <AppIcon name="clock" />
       <div>
-        <strong>{{ item.gradingStatus === 'running' ? '正在评分' : '等待评分' }}</strong>
-        <p>答案已锁定，待评分不会按 0 分计算。</p>
+        <strong>{{
+          item.gradingStatus === 'running'
+            ? t('components.gradeFeedback.grading')
+            : t('components.gradeFeedback.waiting')
+        }}</strong>
+        <p>{{ t('components.gradeFeedback.pendingDescription') }}</p>
       </div>
     </div>
     <div
@@ -35,14 +42,16 @@ withDefaults(
     >
       <AppIcon name="alert" />
       <div>
-        <strong>本次评分未完成</strong>
-        <p>这不是 0 分。已有有效成绩会被保留，请稍后查看报告。</p>
+        <strong>{{ t('components.gradeFeedback.failedTitle') }}</strong>
+        <p>{{ t('components.gradeFeedback.failedDescription') }}</p>
       </div>
     </div>
     <template v-if="item.grade">
-      <p v-if="item.grade.source === 'system'" class="badge">系统判空 · 未作答</p>
+      <p v-if="item.grade.source === 'system'" class="badge">
+        {{ t('components.gradeFeedback.systemEmpty') }}
+      </p>
       <div v-if="showScore" class="grade-feedback__summary">
-        <span>本题得分</span>
+        <span>{{ t('components.gradeFeedback.scoreLabel') }}</span>
         <strong
           >{{ formatScore(item.grade.score) }}
           <small>/ {{ formatScore(item.maxScore) }}</small></strong
@@ -62,8 +71,14 @@ withDefaults(
         >
           <div class="criterion-item__heading">
             <div>
-              <span class="meta-label">得分项：{{ criterion.criterionDescription }}</span
-              ><strong>等级：{{ criterion.levelDescription }}</strong>
+              <span class="meta-label">{{
+                t('components.gradeFeedback.criterionLabel', {
+                  criterion: criterion.criterionDescription,
+                })
+              }}</span
+              ><strong>{{
+                t('components.gradeFeedback.levelLabel', { level: criterion.levelDescription })
+              }}</strong>
             </div>
             <b>{{ formatScore(criterion.score) }} / {{ formatScore(criterion.maxScore) }}</b>
           </div>
@@ -75,11 +90,12 @@ withDefaults(
       </div>
     </template>
     <div v-if="showReference && item.referenceAnswer" class="reference-answer">
-      <span class="meta-label">参考答案</span>
+      <span class="meta-label">{{ t('components.gradeFeedback.referenceAnswer') }}</span>
       <p>{{ item.referenceAnswer }}</p>
     </div>
     <p v-if="showReference && item.explanation" class="explanation">
-      <strong>解析：</strong>{{ item.explanation }}
+      <strong>{{ t('components.gradeFeedback.explanationLabel') }}</strong
+      >{{ item.explanation }}
     </p>
   </section>
 </template>

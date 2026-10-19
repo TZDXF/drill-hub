@@ -4,6 +4,7 @@ import { createLearningContext } from './context';
 import { learningContextKey } from './injection';
 import { createLearningRouter } from './router';
 import type { ClientPlatform } from '@drill-hub/contracts';
+import { i18n, initializeLocale } from './i18n';
 import './style.css';
 
 export interface CreateLearningAppOptions {
@@ -11,11 +12,13 @@ export interface CreateLearningAppOptions {
 }
 
 export function createLearningApp({ platform }: CreateLearningAppOptions): VueApp {
+  initializeLocale(platform);
   const context = createLearningContext(platform);
   const ready = context.initialize();
   const router = createLearningRouter(context, ready);
   const app = createApp(App);
   app.provide(learningContextKey, context);
+  app.use(i18n);
   app.use(router);
 
   watch(

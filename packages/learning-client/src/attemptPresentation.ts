@@ -1,24 +1,49 @@
 import type { Answer, AttemptItemView, AttemptView } from '@drill-hub/contracts';
 import { isAnswerEmpty } from './types';
+import { localizedRecord, translate } from './utils';
 
-export const attemptPurposeOptions: { value: AttemptView['purpose']; label: string }[] = [
-  { value: 'learning', label: '正式作答' },
-  { value: 'test', label: '测试作答' },
+export interface AttemptPurposeOption {
+  value: AttemptView['purpose'];
+  label: string;
+}
+
+const attemptPurposeLabelKeys: Record<AttemptView['purpose'], string> = {
+  learning: 'core.attempt.purpose.learning',
+  test: 'core.attempt.purpose.test',
+};
+
+/** 用途选项的 label 每次读取都按当前语言解析，切换语言后即时生效。 */
+export const attemptPurposeOptions: AttemptPurposeOption[] = [
+  {
+    value: 'learning',
+    get label() {
+      return translate(attemptPurposeLabelKeys.learning);
+    },
+  },
+  {
+    value: 'test',
+    get label() {
+      return translate(attemptPurposeLabelKeys.test);
+    },
+  },
 ];
 
-export const answerStatusLabels: Record<AttemptItemView['answerStatus'], string> = {
-  unanswered: '未作答',
-  partial: '部分作答',
-  answered: '已作答',
-};
+export const answerStatusLabels: Record<AttemptItemView['answerStatus'], string> = localizedRecord<
+  AttemptItemView['answerStatus']
+>({
+  unanswered: 'core.attempt.answerStatus.unanswered',
+  partial: 'core.attempt.answerStatus.partial',
+  answered: 'core.attempt.answerStatus.answered',
+});
 
-export const gradingStatusLabels: Record<AttemptItemView['gradingStatus'], string> = {
-  not_started: '尚未评分',
-  pending: '待评分',
-  running: '正在评分',
-  failed: '评分失败',
-  completed: '已评分',
-};
+export const gradingStatusLabels: Record<AttemptItemView['gradingStatus'], string> =
+  localizedRecord<AttemptItemView['gradingStatus']>({
+    not_started: 'core.attempt.gradingStatus.not_started',
+    pending: 'core.attempt.gradingStatus.pending',
+    running: 'core.attempt.gradingStatus.running',
+    failed: 'core.attempt.gradingStatus.failed',
+    completed: 'core.attempt.gradingStatus.completed',
+  });
 
 export function draftAnswerStatus(
   item: AttemptItemView,

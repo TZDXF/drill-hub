@@ -5,7 +5,6 @@ import type {
   ModelTokenUsage,
 } from '@drill-hub/contracts';
 
-export const PROMPT_VERSION = 'rubric-v1';
 export const MAX_PROVIDER_RESPONSE_BYTES = 1_048_576;
 export const MAX_PROVIDER_MODEL_LIST_BYTES = 4_194_304;
 export const DEFAULT_MAX_COMPLETION_TOKENS = 6_000;

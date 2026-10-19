@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   DialogClose,
@@ -13,6 +14,8 @@ import type { Answer, AttemptItemView } from '@drill-hub/contracts';
 import AppIcon from './AppIcon.vue';
 import AppScrollArea from './AppScrollArea.vue';
 import QuestionNav from './QuestionNav.vue';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -160,7 +163,7 @@ onBeforeUnmount(() => {
           : undefined
       "
       type="button"
-      aria-label="打开答题卡"
+      :aria-label="t('components.attemptNav.fabLabel')"
       aria-haspopup="dialog"
       :aria-expanded="open"
       :disabled="disabled"
@@ -172,7 +175,7 @@ onBeforeUnmount(() => {
       @click="openCard"
     >
       <AppIcon name="content" :size="19" />
-      <span>答题卡</span>
+      <span>{{ t('components.attemptNav.fabText') }}</span>
     </button>
     <DialogPortal>
       <DialogOverlay class="dialog-overlay" />
@@ -180,15 +183,30 @@ onBeforeUnmount(() => {
         <div class="question-nav-sheet__handle" aria-hidden="true" />
         <div class="dialog-heading">
           <div>
-            <DialogTitle class="dialog-title">选择题号</DialogTitle>
+            <DialogTitle class="dialog-title">{{
+              t('components.attemptNav.sheetTitle')
+            }}</DialogTitle>
             <DialogDescription class="dialog-description">
-              <template v-if="currentIndex < 0">评分总览 · 共 {{ items.length }} 题</template>
-              <template v-else>第 {{ currentIndex + 1 }} / {{ items.length }} 题</template
-              ><template v-if="marksEnabled"> · 已标记 {{ markedIds.length }} 题</template>
+              {{
+                t(
+                  currentIndex < 0
+                    ? marksEnabled
+                      ? 'components.attemptNav.overviewMarked'
+                      : 'components.attemptNav.overview'
+                    : marksEnabled
+                      ? 'components.attemptNav.positionMarked'
+                      : 'components.attemptNav.position',
+                  { current: currentIndex + 1, total: items.length, count: markedIds.length },
+                )
+              }}
             </DialogDescription>
           </div>
           <DialogClose as-child>
-            <button class="icon-button" type="button" aria-label="关闭题号导航">
+            <button
+              class="icon-button"
+              type="button"
+              :aria-label="t('components.attemptNav.closeLabel')"
+            >
               <AppIcon name="close" />
             </button>
           </DialogClose>

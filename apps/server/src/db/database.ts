@@ -6,11 +6,21 @@ import type { EntityManager, FindOptionsWhere } from 'typeorm';
 import type { DatabaseTables, TableName } from './records.js';
 import {
   schemas,
+  definitions,
   InitialSchema1792195200000,
   AddAnswerLinks1792195200001,
   AddModelUsage1792368000000,
+  AddAccessLogs1792368000001,
 } from './schema.js';
-import type { TokenUsageTotals, TokenUsageReport } from '@drill-hub/contracts';
+import type {
+  AuditLogView,
+  ApiLogView,
+  LoginLogView,
+  LogPage,
+  LogFilters,
+  TokenUsageTotals,
+  TokenUsageReport,
+} from '@drill-hub/contracts';
 import { AppError } from '../core/errors.js';
 interface Queue {
   tail: Promise<void>;
@@ -32,6 +42,7 @@ export class Database {
         InitialSchema1792195200000,
         AddAnswerLinks1792195200001,
         AddModelUsage1792368000000,
+        AddAccessLogs1792368000001,
       ],
       synchronize: false,
       logging: false,
@@ -179,6 +190,81 @@ export class Database {
         .addOrderBy('u.modelKey', 'ASC')
         .getRawMany<TokenUsageReport['models'][number]>();
       return { totals: totals!, daily, models };
+    });
+  }
+  async queryLogs<K extends 'auditLogs' | 'apiLogs' | 'loginLogs'>(
+    table: K,
+    filters: LogFilters,
+  ): Promise<
+    LogPage<{ auditLogs: AuditLogView; apiLogs: ApiLogView; loginLogs: LoginLogView }[K]>
+  > {
+    return this.locked(async () => {
+      const query = this.manager
+        .getRepository(table)
+        .createQueryBuilder('l')
+        .leftJoin('users', 'u', 'u.id = l.ownerId');
+      const fields =
+        table === 'auditLogs'
+          ? [
+              'id',
+              'createdAt',
+              'updatedAt',
+              'revision',
+              'ownerId',
+              'actorId',
+              'action',
+              'resourceType',
+              'resourceId',
+            ]
+          : Object.keys({
+              id: '',
+              createdAt: '',
+              updatedAt: '',
+              revision: '',
+              ...definitions[table],
+            });
+      query.select(fields.map((field) => `l.${field} AS "${field}"`));
+      if (table !== 'loginLogs') query.addSelect('u.username', 'username');
+      if (filters.from) query.andWhere('l.createdAt >= :from', { from: filters.from });
+      if (filters.until) query.andWhere('l.createdAt < :until', { until: filters.until });
+      if (filters.q) {
+        const columns =
+          table === 'auditLogs'
+            ? ['l.action', 'l.resourceType', 'l.resourceId', 'l.ownerId', 'l.actorId', 'u.username']
+            : table === 'apiLogs'
+              ? [
+                  'l.route',
+                  'l.requestId',
+                  'l.ownerId',
+                  'l.actorId',
+                  'u.username',
+                  'l.ip',
+                  'l.errorCode',
+                ]
+              : ['l.username', 'l.ownerId', 'l.requestId', 'l.ip', 'l.errorCode'];
+        query.andWhere(
+          '(' +
+            columns.map((column) => `instr(lower(${column}), lower(:q)) > 0`).join(' OR ') +
+            ')',
+          { q: filters.q },
+        );
+      }
+      if (table !== 'auditLogs' && filters.channel)
+        query.andWhere('l.channel = :channel', { channel: filters.channel });
+      if (table !== 'auditLogs' && filters.statusCode)
+        query.andWhere('l.statusCode = :status', { status: filters.statusCode });
+      if (table === 'apiLogs' && filters.method)
+        query.andWhere('l.method = :method', { method: filters.method });
+      if (table === 'loginLogs' && filters.outcome)
+        query.andWhere('l.outcome = :outcome', { outcome: filters.outcome });
+      const total = await query.getCount();
+      const items = await query
+        .orderBy('l.createdAt', 'DESC')
+        .addOrderBy('l.id', 'DESC')
+        .offset((filters.page - 1) * filters.pageSize)
+        .limit(filters.pageSize)
+        .getRawMany<{ auditLogs: AuditLogView; apiLogs: ApiLogView; loginLogs: LoginLogView }[K]>();
+      return { items, total, page: filters.page, pageSize: filters.pageSize };
     });
   }
   async close() {

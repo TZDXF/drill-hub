@@ -22,6 +22,7 @@ import AgentTokensPage from './pages/AgentTokensPage.vue';
 import AdminUsersPage from './pages/AdminUsersPage.vue';
 import AdminModelsPage from './pages/AdminModelsPage.vue';
 import AdminGradingPage from './pages/AdminGradingPage.vue';
+import AdminAuditPage from './pages/AdminAuditPage.vue';
 
 export function createLearningRouter(context: LearningContext, ready: Promise<void>): Router {
   const router = createRouter({
@@ -97,6 +98,12 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
             path: 'admin/settings/models',
             name: 'admin-models',
             component: AdminModelsPage,
+            meta: { admin: true },
+          },
+          {
+            path: 'admin/audit',
+            name: 'admin-audit',
+            component: AdminAuditPage,
             meta: { admin: true },
           },
           {

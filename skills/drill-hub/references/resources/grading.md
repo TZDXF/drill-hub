@@ -195,3 +195,4 @@ POST /api/v1/agent/attempt-items/{itemId}/regrade
 - 同一作答项已有活动评分任务时返回 409 `GRADING_ALREADY_ACTIVE`。
 - 返回 202 和新 `GradingJob`；不会立即返回新分数，也不能附带替代答案、分数或新 rubric。
 - 若没有默认评分模型，任务可能是 `blocked_config`；不要改用外部评分绕过。
+- 默认评分模型由管理员在供应商与模型页面管理；配置并发数默认 2。更换模型或编辑配置只影响使用新配置的任务，既有任务仍使用原快照；配置不记录提示词版本。Agent 不能修改模型或评分配置。

@@ -1,19 +1,22 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed } from 'vue';
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui';
 import type { AttemptItemView } from '@drill-hub/contracts';
 import { formatOptionLabel } from '../utils';
 import AppCheckbox from './AppCheckbox.vue';
 
+const { t } = useI18n();
+
 const props = defineProps<{ item: AttemptItemView }>();
 
-const trueFalseOptions = [
-  { id: 'true', text: '正确' },
-  { id: 'false', text: '错误' },
-];
+const trueFalseOptions = computed(() => [
+  { id: 'true', text: t('learning.attempt.choiceTrue') },
+  { id: 'false', text: t('learning.attempt.choiceFalse') },
+]);
 const singleChoiceOptions = computed(() => {
   if (props.item.type === 'single_choice') return props.item.options ?? [];
-  if (props.item.type === 'true_false') return trueFalseOptions;
+  if (props.item.type === 'true_false') return trueFalseOptions.value;
   return [];
 });
 const selectedOptionIds = computed(() => {
@@ -59,7 +62,11 @@ function optionClasses(optionId: string) {
     class="answer-options review-choices"
     :model-value="singleValue"
     disabled
-    :aria-label="item.type === 'true_false' ? '判断题选项' : '单选题选项'"
+    :aria-label="
+      item.type === 'true_false'
+        ? t('components.choiceReview.trueFalseLabel')
+        : t('components.choiceReview.singleChoiceLabel')
+    "
   >
     <label
       v-for="(option, index) in singleChoiceOptions"
@@ -84,7 +91,7 @@ function optionClasses(optionId: string) {
     v-else-if="item.type === 'multiple_choice' && item.options?.length"
     class="answer-options review-choices"
     role="group"
-    aria-label="多选题选项"
+    :aria-label="t('components.choiceReview.multipleChoiceLabel')"
   >
     <AppCheckbox
       v-for="(option, index) in item.options"
@@ -99,12 +106,12 @@ function optionClasses(optionId: string) {
       <span
         v-if="isSelected(option.id) && !correctOptionIds.has(option.id) && correctOptionIds.size"
         class="answer-option__status"
-        >错选</span
+        >{{ t('components.choiceReview.wrongSelection') }}</span
       >
       <span
         v-else-if="correctOptionIds.has(option.id) && !isSelected(option.id)"
         class="answer-option__status"
-        >漏选</span
+        >{{ t('components.choiceReview.missedSelection') }}</span
       >
     </AppCheckbox>
   </div>

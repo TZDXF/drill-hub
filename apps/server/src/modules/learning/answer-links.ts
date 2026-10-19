@@ -77,6 +77,7 @@ async function resolveAnswerLink(request: FastifyRequest, db: Database): Promise
     '答题链接当前不可用，请联系发布者',
     403,
   );
+  request.auditActor = publicActor(link, link.ownerId);
   return link;
 }
 

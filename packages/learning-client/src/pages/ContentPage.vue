@@ -3,6 +3,7 @@ const readingPositions = new Map<string, number>();
 </script>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Content, LearningPlan } from '@drill-hub/contracts';
@@ -12,6 +13,8 @@ import { errorMessage, formatDate } from '../utils';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import MessageResponse from '../components/ai-elements/message/MessageResponse.vue';
+
+const { t } = useI18n();
 
 const learning = useLearning();
 const route = useRoute();
@@ -39,7 +42,7 @@ async function load() {
     await completeReadingTask();
   } catch (reason) {
     loadError.value = errorMessage(reason);
-    learning.notify.error('内容读取失败', loadError.value);
+    learning.notify.error(t('learning.content.loadFailed'), loadError.value);
   } finally {
     loading.value = false;
   }
@@ -69,7 +72,7 @@ async function completeReadingTask() {
     await learning.post(`/tasks/${task.id}/complete`, { expectedRevision: plan.revision });
   } catch (reason) {
     completionError.value = errorMessage(reason);
-    learning.notify.error('阅读任务自动完成失败', completionError.value);
+    learning.notify.error(t('learning.content.notifyCompletionError'), completionError.value);
   } finally {
     completing.value = false;
   }
@@ -97,37 +100,43 @@ onBeforeUnmount(() => {
 
 <template>
   <div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在打开阅读内容</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.content.loading') }}
+    </div>
     <EmptyState
       v-else-if="loadError"
       icon="alert"
-      title="内容读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.content.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
-    <EmptyState v-else-if="!content" title="内容不存在" />
+    <EmptyState v-else-if="!content" :title="t('learning.content.missingTitle')" />
     <template v-else>
       <RouterLink
         class="back-link"
         :to="planReturn ?? { name: 'topic-detail', params: { topicId: content.topicId } }"
         ><AppIcon name="back" :size="16" />{{
-          planReturn ? '返回学习计划' : '返回主题'
+          planReturn ? t('learning.content.backToPlan') : t('learning.plan.backToTopic')
         }}</RouterLink
       >
       <div v-if="completionError" class="notice notice--pending" role="alert">
-        <p>阅读内容已打开，但任务未能自动标记完成：{{ completionError }}</p>
+        <p>{{ t('learning.content.completionError', { error: completionError }) }}</p>
         <button
           class="button button--small"
           type="button"
           :disabled="completing"
           @click="completeReadingTask"
         >
-          <span v-if="completing" class="spinner" />重试
+          <span v-if="completing" class="spinner" />{{ t('learning.common.retry') }}
         </button>
       </div>
       <article class="paper-panel reading-paper">
         <h1>{{ content.title }}</h1>
-        <div class="reading-meta">Markdown 内容 · 更新于 {{ formatDate(content.updatedAt) }}</div>
+        <div class="reading-meta">
+          {{ t('learning.content.meta', { date: formatDate(content.updatedAt) }) }}
+        </div>
         <MessageResponse
           class="reading-body"
           :content="content.bodyText"

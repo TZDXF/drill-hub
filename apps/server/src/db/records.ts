@@ -14,6 +14,8 @@ import type {
   GradingProfile,
   GradingJob,
   ModelTokenUsage,
+  ApiLogView,
+  LoginLogView,
 } from '@drill-hub/contracts';
 export interface UserRecord extends UserView {
   passwordHash: string;
@@ -94,7 +96,11 @@ export interface ModelUsageRecord extends BaseRecord {
   status: 'succeeded' | 'failed';
   usage: ModelTokenUsage | null;
 }
+export type ApiLogRecord = Omit<ApiLogView, 'username'>;
+export type LoginLogRecord = LoginLogView;
 export interface DatabaseTables {
+  apiLogs: ApiLogRecord;
+  loginLogs: LoginLogRecord;
   modelUsage: ModelUsageRecord;
   users: UserRecord;
   sessions: SessionRecord;

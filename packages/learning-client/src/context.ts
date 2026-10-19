@@ -10,7 +10,7 @@ import {
   type UserView,
 } from '@drill-hub/contracts';
 import type { CsrfResult } from './types';
-import { abortError, errorMessage, isApiError } from './utils';
+import { abortError, errorMessage, isApiError, translate } from './utils';
 
 type Method = 'get' | 'post' | 'patch' | 'put';
 
@@ -78,7 +78,7 @@ export function createLearningContext(platform: ClientPlatform) {
   }
 
   function requireClient(): ApiClient {
-    if (!client) throw new Error('尚未连接学习服务器');
+    if (!client) throw new Error(translate('core.connection.notConnected'));
     return client;
   }
 
@@ -167,7 +167,7 @@ export function createLearningContext(platform: ClientPlatform) {
 
   async function refreshMobileSession(ticket = generation): Promise<void> {
     if (platform.kind !== 'android' || !state.connection || !refreshToken) {
-      throw new ApiError('UNAUTHORIZED', '登录已过期，请重新登录', 401);
+      throw new ApiError('UNAUTHORIZED', translate('core.session.expired'), 401);
     }
     if (refreshPromise) return refreshPromise;
     const connection = state.connection;
@@ -180,7 +180,7 @@ export function createLearningContext(platform: ClientPlatform) {
           { refreshToken: oldRefreshToken },
           ticket,
         );
-        if (!result.accessToken) throw new Error('服务器未返回访问令牌');
+        if (!result.accessToken) throw new Error(translate('core.connection.missingAccessToken'));
         accessToken = result.accessToken;
         refreshToken = result.refreshToken ?? oldRefreshToken;
         state.user = result.user;
@@ -188,7 +188,7 @@ export function createLearningContext(platform: ClientPlatform) {
         await platform.setSession(connection, session);
       } catch (error) {
         if (isApiError(error, 401) && ticket === generation)
-          await expireSession('移动会话已失效，请重新登录');
+          await expireSession(translate('core.session.mobileExpired'));
         throw error;
       } finally {
         refreshPromise = null;
@@ -220,18 +220,24 @@ export function createLearningContext(platform: ClientPlatform) {
         return request<T>(method, path, body, { ...options, retryAuth: false });
       }
       if (isApiError(error, 401) && !isAuthEndpoint && !options.public) {
-        await expireSession('登录状态已过期，请重新登录');
+        await expireSession(translate('core.session.stateExpired'));
       }
       throw error;
     }
   }
 
   function validateServerInfo(info: ServerInfo) {
-    if (info.service !== 'drill-hub') throw new Error('该地址不是 Drill Hub 学习服务器');
+    if (info.service !== 'drill-hub') throw new Error(translate('core.connection.notDrillHub'));
     if (info.apiMajor !== API_VERSION) {
-      throw new Error(`服务器 API 主版本为 ${info.apiMajor}，当前客户端仅支持 ${API_VERSION}`);
+      throw new Error(
+        translate('core.connection.apiMajorMismatch', {
+          major: info.apiMajor,
+          current: API_VERSION,
+        }),
+      );
     }
-    if (!info.instanceId || !info.displayName) throw new Error('服务器身份信息不完整，已停止连接');
+    if (!info.instanceId || !info.displayName)
+      throw new Error(translate('core.connection.identityIncomplete'));
   }
 
   async function initialize(): Promise<void> {
@@ -350,7 +356,8 @@ export function createLearningContext(platform: ClientPlatform) {
   }
 
   async function login(username: string, password: string): Promise<UserView> {
-    if (!state.connection || !state.serverInfo) throw new Error('请先验证并确认学习服务器');
+    if (!state.connection || !state.serverInfo)
+      throw new Error(translate('core.connection.verifyFirst'));
     const path = platform.kind === 'web' ? '/auth/web/login' : '/auth/mobile/login';
     const result = await request<LoginResult>(
       'post',
@@ -360,7 +367,7 @@ export function createLearningContext(platform: ClientPlatform) {
     );
     if (platform.kind === 'android') {
       if (!result.accessToken || !result.refreshToken)
-        throw new Error('服务器未返回完整的移动会话凭据');
+        throw new Error(translate('core.connection.missingMobileCredentials'));
       accessToken = result.accessToken;
       refreshToken = result.refreshToken;
       await platform.setSession(state.connection, {

@@ -108,6 +108,20 @@ function copySession(value: StoredMobileSession): StoredMobileSession {
 export const androidPlatform: ClientPlatform = {
   kind: 'android',
   sessionPersistence: 'memory',
+  getLocale() {
+    try {
+      return globalThis.localStorage.getItem('drill-hub.locale');
+    } catch {
+      return null;
+    }
+  },
+  setLocale(locale) {
+    try {
+      globalThis.localStorage.setItem('drill-hub.locale', locale);
+    } catch {
+      // Language switching remains available when preference storage is blocked.
+    }
+  },
 
   async getConnection() {
     if (!connectionLoaded) {

@@ -95,3 +95,9 @@ Tauri 配置中的 `frontendDist` 为 `../dist`，正式包只嵌入本地前端
 - `pnpm --filter @drill-hub/mobile build`：通过。Vite 转换 750 个模块，生产资源成功写入 `dist`（HTML 0.53 kB、CSS 33.48 kB、JS 372.20 kB），耗时约 746 ms。
 
 Android SDK、Java、NDK、Android Rust target、签名和商店发布仍是缺项；本轮不代办这些事项。Tauri 图标工具顺带生成了静态 `icons/ios` 与 ICNS 资源，但没有生成或初始化任何 iOS 工程。
+
+## 界面语言
+
+共享界面使用 `vue-i18n`，首次默认中文，在“我的”页面切换中文 / English。
+语言偏好通过 `ClientPlatform.getLocale` / `setLocale` 保存到设备本地的 `drill-hub.locale`，不含会话或用户敏感数据；存储不可用时仍可在当前进程切换。
+学习内容、题目、答案及其他服务端业务数据保持原文，不做自动翻译。

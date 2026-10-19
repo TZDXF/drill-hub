@@ -243,3 +243,31 @@ describe('mobile platform in-memory sessions', () => {
     expect(await reloaded.getSession(connection)).toBeNull();
   });
 });
+
+describe('mobile platform language preferences', () => {
+  it('persists only the selected language and restores it on restart', async () => {
+    const platform = await loadPlatform();
+    expect(platform.getLocale()).toBeNull();
+    platform.setLocale('en');
+    expect(storage.getItem('drill-hub.locale')).toBe('en');
+    vi.resetModules();
+    const restarted = await loadPlatform();
+    expect(restarted.getLocale()).toBe('en');
+    restarted.setLocale('zh-CN');
+    expect(storage.getItem('drill-hub.locale')).toBe('zh-CN');
+  });
+
+  it('allows startup and switching when local storage is unavailable', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem() {
+        throw new Error('storage blocked');
+      },
+      setItem() {
+        throw new Error('storage blocked');
+      },
+    });
+    const platform = await loadPlatform();
+    expect(platform.getLocale()).toBeNull();
+    expect(() => platform.setLocale('en')).not.toThrow();
+  });
+});

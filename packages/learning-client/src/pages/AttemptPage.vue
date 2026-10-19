@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui';
@@ -20,6 +21,8 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
 import AppCheckbox from '../components/AppCheckbox.vue';
+
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<{ publicAccess?: boolean }>(), { publicAccess: false });
 const learning = useLearning();
@@ -204,7 +207,7 @@ async function load(forceAnswers = false) {
     let value: AttemptView;
     if (props.publicAccess) {
       publicToken.value = captureAnswerLinkToken(route.hash);
-      if (!publicToken.value) throw new Error('答题链接缺少临时秘钥');
+      if (!publicToken.value) throw new Error(t('core.errors.ANSWER_LINK_REQUIRED'));
       const context = await learning.publicGet<PublicAnswerContext>(
         '/public/answer',
         publicToken.value,
@@ -257,7 +260,7 @@ async function load(forceAnswers = false) {
       );
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('作答会话读取失败', error.value);
+    learning.notify.error(t('learning.attempt.notifySessionError'), error.value);
   } finally {
     loading.value = false;
   }
@@ -288,7 +291,7 @@ async function saveItem(itemId: string) {
           );
       const updatedItem =
         'items' in updated ? updated.items.find((entry) => entry.id === itemId) : updated;
-      if (!updatedItem) throw new Error('服务器保存响应缺少当前题目');
+      if (!updatedItem) throw new Error(t('learning.attempt.missingSaveItem'));
       const target = attempt.value?.items.find((entry) => entry.id === itemId);
       if (target) {
         target.answerRevision = updatedItem.answerRevision;
@@ -303,10 +306,10 @@ async function saveItem(itemId: string) {
       }
     } catch (reason) {
       saveErrors.value[itemId] = isApiError(reason, 409)
-        ? '答案版本冲突，请重新载入会话，不要覆盖其他设备的修改'
+        ? t('learning.attempt.saveConflict')
         : errorMessage(reason);
       dirty.value[itemId] = true;
-      learning.notify.error('答案保存失败', saveErrors.value[itemId]);
+      learning.notify.error(t('learning.attempt.notifySaveError'), saveErrors.value[itemId]);
     } finally {
       saving.value[itemId] = false;
     }
@@ -535,7 +538,10 @@ async function openSubmit() {
     return;
   await flushAll();
   if (saveErrorCount.value || unsavedCount.value) {
-    learning.notify.warning('暂时不能交卷', '仍有答案未成功保存，请先处理保存错误。');
+    learning.notify.warning(
+      t('learning.attempt.notifyCannotSubmitTitle'),
+      t('learning.attempt.notifyCannotSubmitBody'),
+    );
     return;
   }
   submitOpen.value = true;
@@ -552,7 +558,10 @@ async function submitAttempt() {
   try {
     await flushAll();
     if (saveErrorCount.value || unsavedCount.value) {
-      learning.notify.warning('暂时不能交卷', '仍有答案未成功保存，请先处理保存错误。');
+      learning.notify.warning(
+        t('learning.attempt.notifyCannotSubmitTitle'),
+        t('learning.attempt.notifyCannotSubmitBody'),
+      );
       return;
     }
     if (props.publicAccess) {
@@ -565,7 +574,10 @@ async function submitAttempt() {
       await learning.post(`/attempts/${attempt.value.id}/submit`, {});
     }
     submitOpen.value = false;
-    learning.notify.success('试卷已提交', '答案已冻结并进入评分流程。');
+    learning.notify.success(
+      t('learning.attempt.notifySubmittedTitle'),
+      t('learning.attempt.notifySubmittedBody'),
+    );
     await router.replace(
       props.publicAccess
         ? { name: 'public-report', hash: routeHash.value }
@@ -576,7 +588,7 @@ async function submitAttempt() {
           },
     );
   } catch (reason) {
-    learning.notify.error('交卷失败', errorMessage(reason));
+    learning.notify.error(t('learning.attempt.notifySubmitError'), errorMessage(reason));
     submitOpen.value = false;
     if (isApiError(reason, 409)) await load(true);
   } finally {
@@ -642,16 +654,18 @@ function confirmLeave() {
   <div class="attempt-layout">
     <div v-if="publicAccess && publicPurpose === 'test'" class="notice notice--pending">
       <AppIcon name="alert" />
-      <p>测试作答：可正常答题、交卷与评分，不计入学习统计、错题及计划进度。</p>
+      <p>{{ t('learning.attempt.publicTestNotice') }}</p>
     </div>
     <div v-if="loading" class="loading-block" style="min-height: 100vh">
-      <span class="spinner" />正在恢复服务端作答会话
+      <span class="spinner" />{{ t('learning.attempt.loading') }}
     </div>
     <div v-else-if="error && !attempt" class="boot-screen boot-screen--error">
       <AppIcon name="alert" :size="30" />
-      <h1>无法打开作答会话</h1>
-      <p>请检查网络连接后重试；失败原因已显示在通知中。</p>
-      <button class="button button--primary" @click="load(true)">重试</button>
+      <h1>{{ t('learning.attempt.errorTitle') }}</h1>
+      <p>{{ t('learning.attempt.errorDescription') }}</p>
+      <button class="button button--primary" @click="load(true)">
+        {{ t('learning.common.retry') }}
+      </button>
     </div>
     <template v-else-if="attempt">
       <header class="attempt-topbar">
@@ -659,15 +673,23 @@ function confirmLeave() {
           v-if="!publicAccess"
           class="icon-button"
           :to="planReturn ?? { name: 'topic-detail', params: { topicId: attempt.topicId } }"
-          :aria-label="planReturn ? '保存并返回学习计划' : '保存并返回主题'"
+          :aria-label="
+            planReturn
+              ? t('learning.attempt.backToPlanLabel')
+              : t('learning.attempt.backToTopicLabel')
+          "
           ><AppIcon name="back"
         /></RouterLink>
-        <span v-else class="badge">免登录</span>
+        <span v-else class="badge">{{ t('learning.attempt.guestBadge') }}</span>
         <div class="attempt-topbar__title">
           <strong>{{ attempt.title }}</strong
           ><span
-            >{{ attempt.kind === 'exam' ? '考试 · 整体交卷' : '练习 · 简答题交卷后评分' }} ·
-            答案仅保存到当前服务器</span
+            >{{
+              attempt.kind === 'exam'
+                ? t('learning.attempt.kindExam')
+                : t('learning.attempt.kindPractice')
+            }}
+            · {{ t('learning.attempt.answerSavedToServer') }}</span
           >
         </div>
         <RouterLink
@@ -678,13 +700,13 @@ function confirmLeave() {
             params: { attemptId: attempt.id },
             query: planNavigationQuery(route.query),
           }"
-          >作答详情</RouterLink
+          >{{ t('learning.attempt.attemptDetails') }}</RouterLink
         >
         <div
           v-if="remainingSeconds !== null"
           class="attempt-timer"
           role="timer"
-          aria-label="剩余作答时间"
+          :aria-label="t('learning.attempt.timerLabel')"
         >
           <AppIcon name="clock" :size="17" />{{ timeText }}
         </div>
@@ -694,7 +716,7 @@ function confirmLeave() {
           :disabled="Boolean(attempt.voidedAt) || expired || submitting"
           @click="openSubmit"
         >
-          交卷
+          {{ t('learning.attempt.submit') }}
         </button>
       </header>
       <div v-if="publicAccess" class="notice">
@@ -702,14 +724,14 @@ function confirmLeave() {
         <p>
           {{
             attempt.purpose === 'test'
-              ? '持链接者的作答会记到链接所属用户名下；测试作答不计入学习统计、错题和计划进度。请勿转发给他人。'
-              : '持链接者的作答会记到链接所属用户名下，并计入该用户的学习统计、错题和计划进度。请勿转发给他人。'
+              ? t('learning.attempt.publicNoticeTest')
+              : t('learning.attempt.publicNoticeFormal')
           }}
         </p>
       </div>
       <div v-if="!publicAccess && attempt.purpose === 'test'" class="notice notice--pending">
         <AppIcon name="alert" />
-        <p>测试作答：可正常答题、交卷与评分，不计入学习统计、错题及计划进度。</p>
+        <p>{{ t('learning.attempt.publicTestNotice') }}</p>
       </div>
       <main class="attempt-container">
         <AttemptQuestionNav
@@ -736,8 +758,8 @@ function confirmLeave() {
           <div v-if="expired" class="notice notice--pending" style="margin-bottom: 16px">
             <AppIcon name="clock" />
             <div>
-              <strong>已到服务端截止时间</strong>
-              <p>正在刷新交卷事实；设备时间不会改变截止状态。</p>
+              <strong>{{ t('learning.attempt.expiredTitle') }}</strong>
+              <p>{{ t('learning.attempt.expiredDescription') }}</p>
             </div>
           </div>
           <div
@@ -767,7 +789,8 @@ function confirmLeave() {
               <header class="question-heading">
                 <div>
                   <span class="question-number"
-                    >第 {{ slide.index + 1 }} 题 · {{ questionTypeLabels[slide.item.type] }}</span
+                    >{{ t('learning.attempt.questionNumber', { index: slide.index + 1 }) }} ·
+                    {{ questionTypeLabels[slide.item.type] }}</span
                   >
                   <h1
                     :id="`question-${slide.item.id}`"
@@ -778,14 +801,16 @@ function confirmLeave() {
                     {{ slide.item.stem }}
                   </h1>
                 </div>
-                <span class="badge">{{ slide.item.maxScore }} 分</span>
+                <span class="badge">{{
+                  t('learning.common.points', { score: slide.item.maxScore })
+                }}</span>
               </header>
               <RadioGroupRoot
                 v-if="slide.item.type === 'single_choice'"
                 class="answer-options"
                 :model-value="radioOptionValue(slide.item)"
                 :disabled="isLocked(slide.item) || submitting"
-                aria-label="请选择一个答案"
+                :aria-label="t('learning.attempt.chooseOne')"
                 @update:model-value="setSingleValue(slide.item, $event)"
               >
                 <label
@@ -814,7 +839,7 @@ function confirmLeave() {
                 v-else-if="slide.item.type === 'multiple_choice'"
                 class="answer-options"
                 role="group"
-                aria-label="请选择所有正确答案"
+                :aria-label="t('learning.attempt.chooseAll')"
               >
                 <AppCheckbox
                   v-for="(option, index) in slide.item.options"
@@ -838,13 +863,13 @@ function confirmLeave() {
                 class="answer-options"
                 :model-value="radioBooleanValue(slide.item)"
                 :disabled="isLocked(slide.item) || submitting"
-                aria-label="请判断正误"
+                :aria-label="t('learning.attempt.trueFalse')"
                 @update:model-value="setBoolean(slide.item, $event === 'true')"
               >
                 <label
                   v-for="choice in [
-                    { value: 'true', label: '正确' },
-                    { value: 'false', label: '错误' },
+                    { value: 'true', label: t('learning.attempt.choiceTrue') },
+                    { value: 'false', label: t('learning.attempt.choiceFalse') },
                   ]"
                   :key="choice.value"
                   :for="`choice-${slide.item.id}-${choice.value}`"
@@ -866,8 +891,9 @@ function confirmLeave() {
               </RadioGroupRoot>
               <div v-else-if="slide.item.type === 'fill_blank'" class="fill-slots">
                 <div v-for="(slot, index) in slide.item.slots" :key="slot.id" class="fill-slot">
-                  <label :for="`slot-${slide.item.id}-${slot.id}`" class="field-label"
-                    >第 {{ index + 1 }} 空</label
+                  <label :for="`slot-${slide.item.id}-${slot.id}`" class="field-label">{{
+                    t('learning.attempt.blankNumber', { index: index + 1 })
+                  }}</label
                   ><input
                     :id="`slot-${slide.item.id}-${slot.id}`"
                     class="input"
@@ -879,14 +905,16 @@ function confirmLeave() {
                 </div>
               </div>
               <div v-else class="form-field">
-                <label :for="`answer-${slide.item.id}`">你的答案</label
+                <label :for="`answer-${slide.item.id}`">{{
+                  t('learning.attempt.yourAnswer')
+                }}</label
                 ><textarea
                   :id="`answer-${slide.item.id}`"
                   class="textarea"
                   style="min-height: 220px"
                   :value="textValue(slide.item)"
                   :disabled="isLocked(slide.item) || submitting"
-                  placeholder="请用自己的话完整作答…"
+                  :placeholder="t('learning.attempt.answerPlaceholder')"
                   @input="setText(slide.item, ($event.target as HTMLTextAreaElement).value)"
                 />
               </div>
@@ -899,8 +927,8 @@ function confirmLeave() {
                 >
                   <AppIcon :name="saveErrors[slide.item.id] ? 'alert' : 'clock'" :size="15" /><span
                     v-if="saving[slide.item.id]"
-                    >正在保存到服务器…</span
-                  ><span v-else>保存失败，请检查通知</span>
+                    >{{ t('learning.attempt.saving') }}</span
+                  ><span v-else>{{ t('learning.attempt.saveFailed') }}</span>
                 </div>
                 <div class="button-row">
                   <button
@@ -912,7 +940,9 @@ function confirmLeave() {
                     @click="slide.index === currentIndex && toggleMark()"
                   >
                     <AppIcon name="flag" :size="16" />{{
-                      markedIds.includes(slide.item.id) ? '取消标记' : '标记'
+                      markedIds.includes(slide.item.id)
+                        ? t('learning.attempt.unmark')
+                        : t('learning.attempt.mark')
                     }}
                   </button>
                   <button
@@ -921,7 +951,7 @@ function confirmLeave() {
                     :disabled="slide.index === 0 || navigationDisabled"
                     @click="slide.index === currentIndex && goTo(slide.index - 1)"
                   >
-                    <AppIcon name="back" :size="16" />上一题</button
+                    <AppIcon name="back" :size="16" />{{ t('learning.attempt.previous') }}</button
                   ><button
                     v-if="slide.index < attempt.items.length - 1"
                     class="button"
@@ -929,7 +959,7 @@ function confirmLeave() {
                     :disabled="navigationDisabled"
                     @click="slide.index === currentIndex && goTo(slide.index + 1)"
                   >
-                    下一题<AppIcon name="arrow" :size="16" /></button
+                    {{ t('learning.attempt.next') }}<AppIcon name="arrow" :size="16" /></button
                   ><button
                     v-if="slide.index === attempt.items.length - 1"
                     class="button button--primary"
@@ -937,7 +967,7 @@ function confirmLeave() {
                     :disabled="Boolean(attempt.voidedAt) || expired || submitting"
                     @click="slide.index === currentIndex && openSubmit()"
                   >
-                    检查并交卷
+                    {{ t('learning.attempt.reviewAndSubmit') }}
                   </button>
                 </div>
               </div>
@@ -952,52 +982,52 @@ function confirmLeave() {
       </main>
       <ConfirmDialog
         v-model:open="submitOpen"
-        title="确认提交整份试卷？"
-        description="交卷后答案将冻结并进入评分，不能继续修改。"
-        confirm-label="确认交卷"
+        :title="t('learning.attempt.submitDialogTitle')"
+        :description="t('learning.attempt.submitDialogDescription')"
+        :confirm-label="t('learning.attempt.submitDialogConfirm')"
         :busy="submitting"
         @confirm="submitAttempt"
       >
         <p v-if="attempt.taskId" class="muted small">
           {{
             attempt.purpose === 'test'
-              ? '测试作答不会完成计划任务。'
+              ? t('learning.attempt.submitNoteTest')
               : attempt.kind === 'exam'
-                ? '正式考试交卷即满足作答任务完成条件，全部留空也可完成。'
-                : '正式练习全部留空不会完成计划任务。'
+                ? t('learning.attempt.submitNoteExam')
+                : t('learning.attempt.submitNotePractice')
           }}
         </p>
         <div class="definition-list">
           <div>
-            <dt>题目总数</dt>
+            <dt>{{ t('learning.attempt.statTotal') }}</dt>
             <dd>{{ attempt.items.length }}</dd>
           </div>
           <div>
-            <dt>未作答</dt>
-            <dd>{{ unansweredCount }} 题</dd>
+            <dt>{{ t('learning.attempt.statUnanswered') }}</dt>
+            <dd>{{ t('learning.common.questionCount', { count: unansweredCount }) }}</dd>
           </div>
           <div>
-            <dt>部分作答</dt>
-            <dd>{{ partialCount }} 题</dd>
+            <dt>{{ t('learning.attempt.statPartial') }}</dt>
+            <dd>{{ t('learning.common.questionCount', { count: partialCount }) }}</dd>
           </div>
           <div>
-            <dt>未保存</dt>
-            <dd>{{ unsavedCount }} 项</dd>
+            <dt>{{ t('learning.attempt.statUnsaved') }}</dt>
+            <dd>{{ t('learning.attempt.itemCount', { count: unsavedCount }) }}</dd>
           </div>
         </div>
         <p class="field-hint" style="margin-top: 14px">
-          提交成功即表示答案已交卷；模型题随后可能显示待评分，不会因此变成 0 分。
+          {{ t('learning.attempt.submitHint') }}
         </p>
       </ConfirmDialog>
       <ConfirmDialog
         v-model:open="leaveOpen"
-        title="仍有答案未成功保存"
-        description="离开后这些内容不会被视为服务端已保存。是否仍然离开？"
-        confirm-label="仍然离开"
+        :title="t('learning.attempt.leaveDialogTitle')"
+        :description="t('learning.attempt.leaveDialogDescription')"
+        :confirm-label="t('learning.attempt.leaveDialogConfirm')"
         danger
         @confirm="confirmLeave"
       >
-        <p class="muted small">建议留在此页重试保存，避免丢失本次修改。</p>
+        <p class="muted small">{{ t('learning.attempt.leaveDialogHint') }}</p>
       </ConfirmDialog>
     </template>
   </div>

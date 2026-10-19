@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Assessment, AttemptView } from '@drill-hub/contracts';
@@ -10,6 +11,8 @@ import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AttemptPurposeSelect from '../components/AttemptPurposeSelect.vue';
+
+const { t } = useI18n();
 
 const learning = useLearning();
 const route = useRoute();
@@ -39,7 +42,7 @@ async function load() {
     );
   } catch (reason) {
     error.value = errorMessage(reason);
-    learning.notify.error('参与说明读取失败', error.value);
+    learning.notify.error(t('learning.assessment.loadFailed'), error.value);
   } finally {
     loading.value = false;
   }
@@ -61,7 +64,7 @@ async function start() {
       query: planNavigationQuery(route.query),
     });
   } catch (reason) {
-    learning.notify.error('无法开始作答', errorMessage(reason));
+    learning.notify.error(t('learning.assessment.notifyStartError'), errorMessage(reason));
   } finally {
     starting.value = false;
   }
@@ -71,13 +74,17 @@ onMounted(load);
 
 <template>
   <div>
-    <div v-if="loading" class="loading-block"><span class="spinner" />正在读取参与说明</div>
+    <div v-if="loading" class="loading-block">
+      <span class="spinner" />{{ t('learning.assessment.loading') }}
+    </div>
     <EmptyState
       v-else-if="error"
       icon="alert"
-      title="参与说明读取失败"
-      description="请检查网络连接后重试。"
-      ><button class="button button--small" type="button" @click="load">重试</button></EmptyState
+      :title="t('learning.assessment.loadFailed')"
+      :description="t('learning.common.networkHint')"
+      ><button class="button button--small" type="button" @click="load">
+        {{ t('learning.common.retry') }}
+      </button></EmptyState
     >
     <template v-else-if="assessment">
       <PageHeader
@@ -85,8 +92,8 @@ onMounted(load);
         :eyebrow="assessment.kind === 'exam' ? 'EXAM BRIEFING' : 'PRACTICE BRIEFING'"
         :description="
           assessment.kind === 'exam'
-            ? '请在开始前确认时间与网络；考试以服务端截止时间和交卷事实为准。'
-            : '练习可逐题提交并查看评分反馈，模型题可能需要等待。'
+            ? t('learning.assessment.examDescription')
+            : t('learning.assessment.practiceDescription')
         "
       >
         <template #back
@@ -94,7 +101,7 @@ onMounted(load);
             class="back-link"
             :to="planReturn ?? { name: 'topic-detail', params: { topicId: assessment.topicId } }"
             ><AppIcon name="back" :size="16" />{{
-              planReturn ? '返回学习计划' : '返回主题'
+              planReturn ? t('learning.content.backToPlan') : t('learning.plan.backToTopic')
             }}</RouterLink
           ></template
         >
@@ -102,8 +109,8 @@ onMounted(load);
       <div v-if="assessment.archivedAt" class="notice notice--pending" style="margin-bottom: 16px">
         <AppIcon name="archive" />
         <div>
-          <strong>已归档</strong>
-          <p>不能开始新会话，已有作答与报告不受影响。</p>
+          <strong>{{ t('learning.assessment.archivedTitle') }}</strong>
+          <p>{{ t('learning.assessment.archivedDescription') }}</p>
         </div>
       </div>
       <section class="paper-panel assessment-hero" aria-labelledby="assessment-overview">
@@ -111,28 +118,32 @@ onMounted(load);
           <span
             class="badge"
             :class="assessment.kind === 'exam' ? 'badge--amber' : 'badge--teal'"
-            >{{ assessment.kind === 'exam' ? '限时 / 整体交卷' : '逐题提交 / 即时规则反馈' }}</span
+            >{{
+              assessment.kind === 'exam'
+                ? t('learning.assessment.badgeExam')
+                : t('learning.assessment.badgePractice')
+            }}</span
           >
-          <h2 id="assessment-overview">参与说明</h2>
+          <h2 id="assessment-overview">{{ t('learning.assessment.overviewTitle') }}</h2>
           <div class="assessment-facts">
             <div class="assessment-fact">
               <strong>{{ assessment.items.length }}</strong
-              ><span>题目数量</span>
+              ><span>{{ t('learning.assessment.factQuestionCount') }}</span>
             </div>
             <div class="assessment-fact">
               <strong>{{ formatScore(totalScore(assessment.items)) }}</strong
-              ><span>试卷满分</span>
+              ><span>{{ t('learning.assessment.factFullScore') }}</span>
             </div>
             <div class="assessment-fact">
               <strong>{{ formatDuration(assessment.durationSeconds) }}</strong
-              ><span>作答时限</span>
+              ><span>{{ t('learning.assessment.factDuration') }}</span>
             </div>
           </div>
           <p>
             {{
               assessment.kind === 'exam'
-                ? '考试开始前不会启动考试题评分，也不会展示标准答案或得分项。整体交卷后，已作答内容才会进入评分流程。'
-                : '单题锁定后不能修改该题答案。规则题可立即评分；模型题与外部评分题会明确显示等待状态。'
+                ? t('learning.assessment.rulesExam')
+                : t('learning.assessment.rulesPractice')
             }}
           </p>
           <AttemptPurposeSelect
@@ -147,17 +158,17 @@ onMounted(load);
             @click="start"
           >
             <span v-if="starting" class="spinner" /><AppIcon v-else name="arrow" :size="18" />{{
-              starting ? '正在准备会话' : '开始或继续'
+              starting ? t('learning.assessment.preparing') : t('learning.assessment.start')
             }}
           </button>
         </div>
         <aside class="assessment-side">
-          <h3>作答前请了解</h3>
+          <h3>{{ t('learning.assessment.sideTitle') }}</h3>
           <ul>
-            <li>答案保存成功后才计入服务端会话。</li>
-            <li>断网、切换应用或修改设备时间不会延长服务端时限。</li>
-            <li>模型评分题的答案可能发送给管理员配置的评分模型。</li>
-            <li>待评分与评分失败都不是 0 分。</li>
+            <li>{{ t('learning.assessment.sideItem1') }}</li>
+            <li>{{ t('learning.assessment.sideItem2') }}</li>
+            <li>{{ t('learning.assessment.sideItem3') }}</li>
+            <li>{{ t('learning.assessment.sideItem4') }}</li>
           </ul>
         </aside>
       </section>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { UserView } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
+import { useLocale } from '../i18n';
 import type { SessionView } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
@@ -10,6 +12,9 @@ import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
 
+const { t } = useI18n();
+
+const { locale, toggleLocale } = useLocale();
 const learning = useLearning();
 const router = useRouter();
 const displayName = ref(learning.state.user?.displayName ?? '');
@@ -45,7 +50,7 @@ async function loadSessions() {
     sessions.value = await learning.get<SessionView[]>('/me/sessions');
   } catch (reason) {
     sessionsError.value = errorMessage(reason);
-    learning.notify.error('登录会话读取失败', sessionsError.value);
+    learning.notify.error(t('components.settings.sessionsErrorTitle'), sessionsError.value);
   } finally {
     loadingSessions.value = false;
   }
@@ -61,10 +66,16 @@ async function saveProfile() {
     learning.state.user = user;
     displayName.value = user.displayName;
     editingProfile.value = false;
-    learning.notify.success(isMobile.value ? '个人信息已更新' : '个人设置已保存');
+    learning.notify.success(
+      isMobile.value
+        ? t('components.settings.notifyProfileUpdatedMobile')
+        : t('components.settings.notifyProfileSaved'),
+    );
   } catch (reason) {
     learning.notify.error(
-      isMobile.value ? '保存个人信息失败' : '保存个人设置失败',
+      isMobile.value
+        ? t('components.settings.notifyProfileSaveFailedMobile')
+        : t('components.settings.notifyProfileSaveFailed'),
       errorMessage(reason),
     );
   } finally {
@@ -73,18 +84,18 @@ async function saveProfile() {
 }
 function sessionLabel(session: SessionView) {
   const channel = session.kind ?? session.channel;
-  return channel === 'web' ? 'Web 浏览器' : 'Android';
+  return channel === 'web' ? t('components.settings.sessionWeb') : 'Android';
 }
 async function revokeSession() {
   if (!selectedSession.value) return;
   revoking.value = true;
   try {
     await learning.post(`/me/sessions/${selectedSession.value.id}/revoke`, {});
-    learning.notify.success('登录会话已撤销');
+    learning.notify.success(t('components.settings.notifySessionRevoked'));
     selectedSession.value = null;
     await loadSessions();
   } catch (reason) {
-    learning.notify.error('撤销登录会话失败', errorMessage(reason));
+    learning.notify.error(t('components.settings.notifySessionRevokeFailed'), errorMessage(reason));
   } finally {
     revoking.value = false;
   }
@@ -93,7 +104,7 @@ async function logout() {
   try {
     await learning.logout();
   } catch (reason) {
-    learning.notify.error('退出登录未完成', errorMessage(reason));
+    learning.notify.error(t('components.shell.logoutFailed'), errorMessage(reason));
   } finally {
     await router.replace({ name: 'login' });
   }
@@ -104,7 +115,7 @@ async function switchServer() {
     await learning.disconnect();
     await router.replace({ name: 'connect' });
   } catch (reason) {
-    learning.notify.error('切换服务器失败', errorMessage(reason));
+    learning.notify.error(t('components.settings.notifySwitchServerFailed'), errorMessage(reason));
   } finally {
     switching.value = false;
     switchOpen.value = false;
@@ -128,25 +139,33 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
 <template>
   <div>
     <PageHeader
-      :title="isMobile ? '我的' : '我的设置'"
+      :title="
+        isMobile ? t('components.shell.navMobile.settings') : t('components.shell.titles.settings')
+      "
       :eyebrow="isMobile ? 'MY PROFILE' : 'PERSONAL SETTINGS'"
       :description="
         isMobile
-          ? '查看个人信息，管理账号与安全设置。'
-          : '管理个人资料、登录会话与服务器连接。凭据不会写入 localStorage。'
+          ? t('components.settings.descriptionMobile')
+          : t('components.settings.descriptionDesktop')
       "
     />
     <div class="settings-grid" :class="{ 'settings-grid--mobile': isMobile }">
       <section class="card settings-card" aria-labelledby="profile-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="user" /></span>
-          <h2 id="profile-title">{{ isMobile ? '个人信息' : '个人资料' }}</h2>
+          <h2 id="profile-title">
+            {{
+              isMobile
+                ? t('components.settings.profileTitleMobile')
+                : t('components.settings.profileTitleDesktop')
+            }}
+          </h2>
         </div>
         <div v-if="isMobile && !editingProfile">
           <button
             class="profile-display"
             type="button"
-            aria-label="编辑个人信息"
+            :aria-label="t('components.settings.profileEditLabel')"
             @click="startProfileEdit"
           >
             <span class="avatar profile-display__avatar">{{
@@ -156,23 +175,37 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
               <strong>{{ learning.state.user?.displayName }}</strong>
               <small>@{{ learning.state.user?.username }}</small>
             </span>
-            <span class="profile-display__action">编辑<AppIcon name="chevron" :size="16" /></span>
+            <span class="profile-display__action"
+              >{{ t('components.settings.profileEditAction') }}<AppIcon name="chevron" :size="16"
+            /></span>
           </button>
           <dl class="definition-list">
             <div>
-              <dt>角色</dt>
-              <dd>{{ learning.state.user?.role === 'admin' ? '管理员' : '学习者' }}</dd>
+              <dt>{{ t('components.settings.fieldRole') }}</dt>
+              <dd>
+                {{
+                  learning.state.user?.role === 'admin'
+                    ? t('components.shell.roleAdmin')
+                    : t('components.shell.roleLearner')
+                }}
+              </dd>
             </div>
             <div>
-              <dt>账号状态</dt>
-              <dd>{{ learning.state.user?.status === 'active' ? '正常' : '已停用' }}</dd>
+              <dt>{{ t('components.settings.fieldStatus') }}</dt>
+              <dd>
+                {{
+                  learning.state.user?.status === 'active'
+                    ? t('components.settings.statusActive')
+                    : t('components.settings.statusDisabled')
+                }}
+              </dd>
             </div>
           </dl>
         </div>
         <form v-else @submit.prevent="saveProfile">
           <div class="form-grid">
             <div class="form-field form-field--full">
-              <label for="profile-name">显示名称</label>
+              <label for="profile-name">{{ t('components.settings.displayName') }}</label>
               <input
                 id="profile-name"
                 v-model="displayName"
@@ -180,18 +213,20 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
                 required
                 autocomplete="name"
               />
-              <p class="field-hint">时间会按当前设备的时区显示，无需单独设置。</p>
+              <p class="field-hint">{{ t('components.settings.displayNameHint') }}</p>
             </div>
           </div>
           <div class="form-actions">
             <button v-if="isMobile" class="button" type="button" @click="cancelProfileEdit">
-              取消
+              {{ t('components.settings.cancel') }}
             </button>
             <RouterLink v-else class="button" :to="{ name: 'change-password' }">
-              修改密码
+              {{ t('components.settings.changePassword') }}
             </RouterLink>
             <button class="button button--primary" type="submit" :disabled="saving">
-              <span v-if="saving" class="spinner" />{{ isMobile ? '保存' : '保存资料' }}
+              <span v-if="saving" class="spinner" />{{
+                isMobile ? t('components.settings.save') : t('components.settings.saveProfile')
+              }}
             </button>
           </div>
         </form>
@@ -200,36 +235,65 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
       <section class="card settings-card" aria-labelledby="security-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="lock" /></span>
-          <h2 id="security-title">{{ isMobile ? '账号与安全' : '账号与授权' }}</h2>
+          <h2 id="security-title">
+            {{
+              isMobile
+                ? t('components.settings.securityTitleMobile')
+                : t('components.settings.securityTitleDesktop')
+            }}
+          </h2>
         </div>
         <dl v-if="!isMobile" class="definition-list">
           <div>
-            <dt>用户名</dt>
+            <dt>{{ t('components.settings.fieldUsername') }}</dt>
             <dd>{{ learning.state.user?.username }}</dd>
           </div>
           <div>
-            <dt>角色</dt>
-            <dd>{{ learning.state.user?.role === 'admin' ? '管理员' : '学习者' }}</dd>
+            <dt>{{ t('components.settings.fieldRole') }}</dt>
+            <dd>
+              {{
+                learning.state.user?.role === 'admin'
+                  ? t('components.shell.roleAdmin')
+                  : t('components.shell.roleLearner')
+              }}
+            </dd>
           </div>
           <div>
-            <dt>账号状态</dt>
-            <dd>{{ learning.state.user?.status === 'active' ? '正常' : '已停用' }}</dd>
+            <dt>{{ t('components.settings.fieldStatus') }}</dt>
+            <dd>
+              {{
+                learning.state.user?.status === 'active'
+                  ? t('components.settings.statusActive')
+                  : t('components.settings.statusDisabled')
+              }}
+            </dd>
           </div>
         </dl>
         <div v-if="isMobile" class="mobile-setting-list">
+          <button
+            class="mobile-setting-link"
+            type="button"
+            data-testid="settings-language-toggle"
+            :aria-label="t('components.language.switch')"
+            @click="toggleLocale"
+          >
+            <AppIcon name="settings" :size="18" />
+            <span>{{ t('components.language.label') }}</span>
+            <span class="language-current">{{ locale === 'zh-CN' ? '中文' : 'English' }}</span>
+          </button>
           <RouterLink class="mobile-setting-link" :to="{ name: 'change-password' }">
             <AppIcon name="lock" :size="18" />
-            <span>修改密码</span>
+            <span>{{ t('components.settings.changePassword') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
           <RouterLink class="mobile-setting-link" :to="{ name: 'agent-tokens' }">
             <AppIcon name="token" :size="18" />
-            <span>Agent 授权</span>
+            <span>{{ t('components.shell.titles.agentTokens') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
           <RouterLink class="mobile-setting-link" :to="{ name: 'token-usage' }">
             <AppIcon name="usage" :size="18" />
-            <span>Token 用量</span>
+            <span>{{ t('components.shell.titles.tokenUsage') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
           <button
@@ -239,19 +303,19 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             @click="switchOpen = true"
           >
             <AppIcon name="server" :size="18" />
-            <span>切换服务器</span>
+            <span>{{ t('components.settings.switchServer') }}</span>
             <AppIcon name="chevron" :size="17" />
           </button>
         </div>
         <div v-else class="button-row settings-account-actions">
           <RouterLink class="button" :to="{ name: 'token-usage' }">
-            <AppIcon name="usage" :size="16" />Token 用量
+            <AppIcon name="usage" :size="16" />{{ t('components.shell.titles.tokenUsage') }}
           </RouterLink>
           <RouterLink class="button" :to="{ name: 'agent-tokens' }">
-            <AppIcon name="token" :size="16" />Agent 授权
+            <AppIcon name="token" :size="16" />{{ t('components.shell.titles.agentTokens') }}
           </RouterLink>
           <button class="button button--danger" type="button" @click="logout">
-            <AppIcon name="logout" :size="16" />退出登录
+            <AppIcon name="logout" :size="16" />{{ t('components.shell.menuLogout') }}
           </button>
         </div>
         <button
@@ -260,26 +324,28 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           type="button"
           @click="logout"
         >
-          <AppIcon name="logout" :size="17" />退出登录
+          <AppIcon name="logout" :size="17" />{{ t('components.shell.menuLogout') }}
         </button>
       </section>
 
       <section v-if="!isMobile" class="card settings-card" aria-labelledby="sessions-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="history" /></span>
-          <h2 id="sessions-title">登录会话</h2>
+          <h2 id="sessions-title">{{ t('components.settings.sessionsTitle') }}</h2>
         </div>
         <div v-if="loadingSessions" class="loading-block settings-loading">
-          <span class="spinner" />读取会话
+          <span class="spinner" />{{ t('components.settings.sessionsLoading') }}
         </div>
         <EmptyState
           v-else-if="sessionsError"
           compact
           icon="alert"
-          title="登录会话读取失败"
-          description="请检查网络连接后重试。"
+          :title="t('components.settings.sessionsErrorTitle')"
+          :description="t('components.settings.sessionsErrorDescription')"
         >
-          <button class="button button--small" type="button" @click="loadSessions">重试</button>
+          <button class="button button--small" type="button" @click="loadSessions">
+            {{ t('components.settings.retry') }}
+          </button>
         </EmptyState>
         <div v-else-if="sessions.length" class="list-stack">
           <article
@@ -290,9 +356,15 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <div class="task-row__body">
               <strong>
                 {{ sessionLabel(session) }}
-                <span v-if="session.current" class="badge badge--green">当前</span>
+                <span v-if="session.current" class="badge badge--green">{{
+                  t('components.settings.sessionCurrent')
+                }}</span>
               </strong>
-              <span>最近使用 {{ formatDate(session.lastUsedAt ?? session.createdAt) }}</span>
+              <span>{{
+                t('components.settings.sessionLastUsed', {
+                  date: formatDate(session.lastUsedAt ?? session.createdAt),
+                })
+              }}</span>
             </div>
             <button
               class="button button--small button--danger"
@@ -300,33 +372,33 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
               :disabled="session.current"
               @click="selectedSession = session"
             >
-              撤销
+              {{ t('components.settings.sessionRevoke') }}
             </button>
           </article>
         </div>
-        <p v-else class="muted small">没有可显示的其他会话。</p>
+        <p v-else class="muted small">{{ t('components.settings.sessionsEmpty') }}</p>
       </section>
 
       <section v-if="!isMobile" class="card settings-card" aria-labelledby="server-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="server" /></span>
-          <h2 id="server-title">学习服务器</h2>
+          <h2 id="server-title">{{ t('components.settings.serverTitle') }}</h2>
         </div>
         <dl class="definition-list">
           <div>
-            <dt>名称</dt>
+            <dt>{{ t('components.settings.serverName') }}</dt>
             <dd>{{ learning.state.serverInfo?.displayName }}</dd>
           </div>
           <div>
-            <dt>地址</dt>
+            <dt>{{ t('components.settings.serverAddress') }}</dt>
             <dd>{{ learning.state.connection?.baseUrl }}</dd>
           </div>
           <div>
-            <dt>实例</dt>
+            <dt>{{ t('components.settings.serverInstance') }}</dt>
             <dd>{{ learning.state.connection?.instanceId }}</dd>
           </div>
           <div>
-            <dt>API 主版本</dt>
+            <dt>{{ t('components.settings.serverApiMajor') }}</dt>
             <dd>{{ learning.state.serverInfo?.apiMajor }}</dd>
           </div>
         </dl>
@@ -336,10 +408,10 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           type="button"
           @click="switchOpen = true"
         >
-          切换服务器
+          {{ t('components.settings.switchServer') }}
         </button>
         <p v-else class="field-hint settings-server-action">
-          Web 始终使用当前部署来源与基础路径，通过 HttpOnly Cookie 维持会话。
+          {{ t('components.settings.serverWebHint') }}
         </p>
       </section>
     </div>
@@ -347,9 +419,9 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
     <ConfirmDialog
       v-if="!isMobile"
       :open="Boolean(selectedSession)"
-      title="撤销这个会话？"
-      description="目标设备需要重新登录，撤销不会删除学习记录。"
-      confirm-label="撤销会话"
+      :title="t('components.settings.revokeTitle')"
+      :description="t('components.settings.revokeDescription')"
+      :confirm-label="t('components.settings.revokeConfirm')"
       danger
       :busy="revoking"
       @update:open="!$event && (selectedSession = null)"
@@ -357,14 +429,21 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
     />
     <ConfirmDialog
       v-model:open="switchOpen"
-      title="切换学习服务器？"
-      description="将中止旧连接的全部在途请求并清除当前会话；原服务器上的考试不会暂停。"
-      confirm-label="切换服务器"
+      :title="t('components.settings.switchTitle')"
+      :description="t('components.settings.switchDescription')"
+      :confirm-label="t('components.settings.switchServer')"
       danger
       :busy="switching"
       @confirm="switchServer"
     >
-      <p class="muted small">未保存答案和草稿不会迁移，也不会自动上传。</p>
+      <p class="muted small">{{ t('components.settings.switchNotice') }}</p>
     </ConfirmDialog>
   </div>
 </template>
+
+<style scoped>
+.language-current {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+</style>

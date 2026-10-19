@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { useId } from 'vue';
 import type { Answer, AttemptItemView } from '@drill-hub/contracts';
 import { answerStatusLabels, draftAnswerStatus, gradingStatusLabels } from '../attemptPresentation';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -26,24 +29,28 @@ function reviewResult(item: AttemptItemView): 'correct' | 'wrong' | '' {
   return '';
 }
 function reviewLabel(item: AttemptItemView): string {
-  if (item.answerStatus === 'unanswered') return '未作答';
+  if (item.answerStatus === 'unanswered') return t('learning.attempt.statUnanswered');
   const result = reviewResult(item);
-  if (result === 'correct') return '回答正确';
-  if (result === 'wrong') return '回答错误';
+  if (result === 'correct') return t('components.questionNav.reviewCorrect');
+  if (result === 'wrong') return t('components.questionNav.reviewWrong');
   return gradingStatusLabels[item.gradingStatus];
 }
 </script>
 
 <template>
-  <nav class="paper-panel question-nav" aria-label="题号导航" :aria-describedby="descriptionId">
-    <h2 class="question-nav-title">题号</h2>
+  <nav
+    class="paper-panel question-nav"
+    :aria-label="t('components.questionNav.navLabel')"
+    :aria-describedby="descriptionId"
+  >
+    <h2 class="question-nav-title">{{ t('components.questionNav.title') }}</h2>
     <p :id="descriptionId" class="question-nav-description">
       {{
         mode === 'review'
-          ? '绿色表示回答正确，红色表示回答错误，未作答及尚未出分的题目保持中性色。'
+          ? t('components.questionNav.descriptionReview')
           : marksEnabled
-            ? '绿色表示已作答，浅黄色表示部分作答，琥珀色边框表示当前题，✓ 表示已锁定，右上角三角表示已标记。'
-            : '绿色表示已作答，浅黄色表示部分作答，琥珀色边框表示当前题，✓ 表示已锁定。'
+            ? t('components.questionNav.descriptionMarked')
+            : t('components.questionNav.descriptionPlain')
       }}
     </p>
     <button
@@ -54,7 +61,7 @@ function reviewLabel(item: AttemptItemView): string {
       :disabled="disabled"
       @click="emit('select', -1)"
     >
-      评分总览
+      {{ t('components.questionNav.overview') }}
     </button>
     <div class="question-nav-grid">
       <button
@@ -77,8 +84,23 @@ function reviewLabel(item: AttemptItemView): string {
         :aria-current="index === currentIndex ? 'step' : undefined"
         :aria-label="
           mode === 'review'
-            ? `第 ${index + 1} 题，${reviewLabel(item)}`
-            : `第 ${index + 1} 题，${answerStatusLabels[draftAnswerStatus(item, answers[item.id])]}${item.lockedAt ? '，已锁定' : ''}${marksEnabled && markedIds.includes(item.id) ? '，已标记' : ''}`
+            ? t('components.questionNav.ariaAnswer', {
+                index: index + 1,
+                status: reviewLabel(item),
+              })
+            : t(
+                item.lockedAt
+                  ? marksEnabled && markedIds.includes(item.id)
+                    ? 'components.questionNav.ariaAnswerLockedMarked'
+                    : 'components.questionNav.ariaAnswerLocked'
+                  : marksEnabled && markedIds.includes(item.id)
+                    ? 'components.questionNav.ariaAnswerMarked'
+                    : 'components.questionNav.ariaAnswer',
+                {
+                  index: index + 1,
+                  status: answerStatusLabels[draftAnswerStatus(item, answers[item.id])],
+                },
+              )
         "
         @click="emit('select', index)"
       >

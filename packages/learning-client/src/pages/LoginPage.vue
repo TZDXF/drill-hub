@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
@@ -7,6 +8,7 @@ import AuthLayout from '../components/AuthLayout.vue';
 import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 
+const { t } = useI18n();
 const learning = useLearning();
 const route = useRoute();
 const router = useRouter();
@@ -29,7 +31,7 @@ async function submit() {
         : '/';
     await router.replace(redirect);
   } catch (reason) {
-    learning.notify.error('登录失败', errorMessage(reason));
+    learning.notify.error(t('management.login.loginFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -41,7 +43,7 @@ async function switchServer() {
     await learning.disconnect();
     await router.replace({ name: 'connect' });
   } catch (reason) {
-    learning.notify.error('切换服务器失败', errorMessage(reason));
+    learning.notify.error(t('management.login.switchFailed'), errorMessage(reason));
   } finally {
     switching.value = false;
     switchOpen.value = false;
@@ -50,17 +52,20 @@ async function switchServer() {
 
 onMounted(() => {
   if (learning.state.authNotice) {
-    learning.notify.warning('登录状态已失效', learning.state.authNotice);
+    learning.notify.warning(t('management.login.sessionExpired'), learning.state.authNotice);
     learning.state.authNotice = '';
   }
   if (route.query.changed === '1') {
-    learning.notify.success('密码已修改', '请使用新密码重新登录。');
+    learning.notify.success(
+      t('management.login.passwordChanged'),
+      t('management.login.passwordChangedNote'),
+    );
   }
 });
 </script>
 
 <template>
-  <AuthLayout title="欢迎回来" description="登录后继续你的学习计划与作答记录。">
+  <AuthLayout :title="t('management.login.title')" :description="t('management.login.description')">
     <div class="server-chip">
       <AppIcon name="server" :size="19" />
       <div>
@@ -69,11 +74,11 @@ onMounted(() => {
         }}</strong
         ><span>{{ learning.state.connection?.baseUrl }}</span>
       </div>
-      <span class="badge badge--green">已验证</span>
+      <span class="badge badge--green">{{ t('management.login.verified') }}</span>
     </div>
     <form class="auth-form" @submit.prevent="submit">
       <div class="form-field">
-        <label for="username">用户名</label>
+        <label for="username">{{ t('management.login.username') }}</label>
         <input
           id="username"
           v-model="username"
@@ -85,7 +90,7 @@ onMounted(() => {
         />
       </div>
       <div class="form-field">
-        <label for="password">密码</label>
+        <label for="password">{{ t('management.login.password') }}</label>
         <input
           id="password"
           v-model="password"
@@ -97,22 +102,27 @@ onMounted(() => {
         />
       </div>
       <button class="button button--primary button--large" type="submit" :disabled="busy">
-        <span v-if="busy" class="spinner" />{{ busy ? '正在登录…' : '登录' }}
+        <span v-if="busy" class="spinner" />{{
+          busy ? t('management.login.submitting') : t('management.login.submit')
+        }}
       </button>
     </form>
     <div v-if="learning.platform.kind === 'android'" class="auth-secondary">
-      不是这台服务器？<button type="button" @click="switchOpen = true">切换连接</button>
+      {{ t('management.login.otherServer')
+      }}<button type="button" @click="switchOpen = true">
+        {{ t('management.login.switchConnection') }}
+      </button>
     </div>
     <ConfirmDialog
       v-model:open="switchOpen"
-      title="切换学习服务器？"
-      description="将中止当前连接的全部在途请求并清除本机当前会话；原服务器上的考试不会暂停。"
-      confirm-label="切换服务器"
+      :title="t('management.login.switchTitle')"
+      :description="t('management.login.switchDescription')"
+      :confirm-label="t('management.login.switchConfirm')"
       danger
       :busy="switching"
       @confirm="switchServer"
     >
-      <p class="muted small">未成功保存的答案不会转移到新服务器，也不会自动上传到原服务器。</p>
+      <p class="muted small">{{ t('management.login.switchNote') }}</p>
     </ConfirmDialog>
   </AuthLayout>
 </template>

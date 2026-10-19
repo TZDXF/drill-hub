@@ -344,7 +344,7 @@ export interface GradingProfile extends BaseRecord {
   providerModelId: string;
   connectionVersionId: string;
   modelIdSnapshot: string;
-  promptVersion: string;
+  concurrency: number;
   timeoutMs: number;
   maxRetries: number;
   isDefault: boolean;
@@ -378,9 +378,13 @@ export interface StoredMobileSession {
   user: UserView;
   refreshToken: string;
 }
+export type ClientLocale = 'zh-CN' | 'en';
+
 export interface ClientPlatform {
   kind: 'web' | 'android';
   sessionPersistence: 'memory' | 'secure';
+  getLocale(): string | null;
+  setLocale(locale: ClientLocale): void;
   getConnection(): Promise<ServerConnection | null>;
   setConnection(value: ServerConnection | null): Promise<void>;
   getSession(connection: ServerConnection): Promise<StoredMobileSession | null>;
@@ -413,4 +417,55 @@ export interface TokenUsageReport {
   totals: TokenUsageTotals;
   daily: (TokenUsageTotals & { date: string })[];
   models: (TokenUsageTotals & { connectionId: string; modelKey: string })[];
+}
+
+/** 管理员只读审计视图，不包含业务正文、凭据或自由文本摘要。 */
+export interface AuditLogView extends BaseRecord {
+  ownerId: string | null;
+  username: string | null;
+  actorId: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+}
+export type LogChannel = 'web' | 'mobile' | 'agent' | 'public' | 'anonymous';
+export interface ApiLogView extends BaseRecord {
+  requestId: string;
+  ownerId: string | null;
+  username: string | null;
+  actorId: string | null;
+  channel: LogChannel;
+  method: string;
+  route: string;
+  statusCode: number;
+  durationMs: number;
+  ip: string;
+  errorCode: string | null;
+}
+export interface LoginLogView extends BaseRecord {
+  requestId: string;
+  ownerId: string | null;
+  username: string | null;
+  channel: 'web' | 'mobile';
+  outcome: 'succeeded' | 'failed';
+  statusCode: number;
+  ip: string;
+  errorCode: string | null;
+}
+export interface LogPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+export interface LogFilters {
+  page: number;
+  pageSize: number;
+  q?: string;
+  from?: string;
+  until?: string;
+  channel?: LogChannel;
+  method?: string;
+  statusCode?: number;
+  outcome?: LoginLogView['outcome'];
 }

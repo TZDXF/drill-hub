@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { computed } from 'vue';
 import { CalendarDateTime, parseDateTime, type DateValue } from '@internationalized/date';
 import {
@@ -23,6 +24,8 @@ import {
 } from 'reka-ui';
 import AppIcon from './AppIcon.vue';
 
+const { t, locale } = useI18n();
+
 const props = defineProps<{ id: string; labelledBy: string; disabled?: boolean }>();
 const model = defineModel<string>({ required: true });
 const dateValue = computed({
@@ -41,7 +44,7 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
     v-model="dateValue"
     :disabled="disabled"
     :default-placeholder="placeholder"
-    locale="zh-CN"
+    :locale="locale"
     granularity="minute"
     :hour-cycle="24"
     :week-starts-on="1"
@@ -64,7 +67,11 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
               </DatePickerInput>
             </template>
           </div>
-          <DatePickerTrigger class="icon-button" type="button" aria-label="选择到期日期">
+          <DatePickerTrigger
+            class="icon-button"
+            type="button"
+            :aria-label="t('components.dateTime.triggerLabel')"
+          >
             <AppIcon name="topics" :size="18" />
           </DatePickerTrigger>
         </DatePickerField>
@@ -72,7 +79,7 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
           v-if="model"
           class="icon-button"
           type="button"
-          aria-label="清空到期时间"
+          :aria-label="t('components.dateTime.clearLabel')"
           :disabled="disabled"
           @click="model = ''"
         >
@@ -85,15 +92,15 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
       :side-offset="6"
       :collision-padding="12"
       align="start"
-      aria-label="选择到期日期"
+      :aria-label="t('components.dateTime.triggerLabel')"
     >
       <DatePickerCalendar v-slot="{ grid, weekDays }">
         <DatePickerHeader class="date-time-picker-header">
-          <DatePickerPrev class="icon-button" aria-label="上个月">
+          <DatePickerPrev class="icon-button" :aria-label="t('components.dateTime.previousMonth')">
             <AppIcon name="back" :size="16" />
           </DatePickerPrev>
           <DatePickerHeading class="date-time-picker-heading" />
-          <DatePickerNext class="icon-button" aria-label="下个月">
+          <DatePickerNext class="icon-button" :aria-label="t('components.dateTime.nextMonth')">
             <AppIcon name="arrow" :size="16" />
           </DatePickerNext>
         </DatePickerHeader>
@@ -126,7 +133,7 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
           </DatePickerGridBody>
         </DatePickerGrid>
       </DatePickerCalendar>
-      <p class="field-hint">时间可在输入框中调整，使用当前设备时区。</p>
+      <p class="field-hint">{{ t('components.dateTime.hint') }}</p>
     </DatePickerContent>
   </DatePickerRoot>
 </template>

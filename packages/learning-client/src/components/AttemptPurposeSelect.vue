@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { AttemptView } from '@drill-hub/contracts';
 import { attemptPurposeOptions } from '../attemptPresentation';
 import AppSelect from './AppSelect.vue';
+
+const { t } = useI18n();
 
 const purpose = defineModel<AttemptView['purpose']>({ required: true });
 defineProps<{ id: string; disabled?: boolean }>();
@@ -12,7 +15,7 @@ function setPurpose(value: string) {
 
 <template>
   <div class="form-field">
-    <label :for="id">作答用途</label>
+    <label :for="id">{{ t('components.purposeSelect.label') }}</label>
     <AppSelect
       :id="id"
       :model-value="purpose"
@@ -21,7 +24,7 @@ function setPurpose(value: string) {
       :disabled="disabled"
     />
     <p class="muted small">
-      正式作答计入学习统计、错题与计划进度；测试作答仍可答题、交卷及评分，但不计入这些统计。
+      {{ t('components.purposeSelect.hint') }}
     </p>
   </div>
 </template>

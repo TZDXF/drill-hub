@@ -13,21 +13,21 @@
 
 ## 2. 账号、连接与模型配置
 
-| 实体/存储                 | 核心字段与约束                                                                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| server_settings           | instance_id（持久保留）、API 兼容版本、default_grading_profile_version_id；默认评分配置可为空                                |
-| users                     | username 唯一、password_hash、role、status、timezone；不强制首次登录改密                                                     |
-| auth_sessions             | user_id、channel、凭据摘要、轮换关联、过期与撤销、设备信息                                                                   |
-| agent_tokens              | owner_id、token_hash、prefix、name、scopes、expires_at、last_used_at                                                         |
-| model_connections         | 管理域；供应商显示名、current_version_id、status、revision                                                                   |
-| model_connection_versions | 不可变连接版本；connection_id、version_no、受支持的协议标识、base_url、密钥版本引用、created_at                              |
-| provider_models           | connection_id、model_key、显示名、enabled、已验证能力、验证所用配置版本、revision；同连接内 model_key 唯一                   |
-| grading_profile_versions  | 不可变评分配置；connection_version_id、provider_model_id、model_id_snapshot、提示词版本、超时/重试/并发/用量限制、created_at |
-| Android 本地连接配置      | 规范化服务地址、instanceId、展示名称、兼容版本；不放密码或令牌                                                               |
-| Android 受保护凭据        | 以服务地址 + instanceId + userId 为命名空间的刷新凭据                                                                        |
-| Android 临时草稿          | 相同命名空间 + attemptId + itemId，与上传状态隔离                                                                            |
+| 实体/存储                 | 核心字段与约束                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| server_settings           | instance_id（持久保留）、API 兼容版本、default_grading_profile_version_id；默认评分配置可为空                                          |
+| users                     | username 唯一、password_hash、role、status、timezone；不强制首次登录改密                                                               |
+| auth_sessions             | user_id、channel、凭据摘要、轮换关联、过期与撤销、设备信息                                                                             |
+| agent_tokens              | owner_id、token_hash、prefix、name、scopes、expires_at、last_used_at                                                                   |
+| model_connections         | 管理域；供应商显示名、current_version_id、status、revision                                                                             |
+| model_connection_versions | 不可变连接版本；connection_id、version_no、受支持的协议标识、base_url、密钥版本引用、created_at                                        |
+| provider_models           | connection_id、model_key、显示名、enabled、已验证能力、验证所用配置版本、revision；同连接内 model_key 唯一                             |
+| grading_profile_versions  | 不可变评分配置；connection_version_id、provider_model_id、model_id_snapshot、超时/重试/并发配置（并发数默认 2，范围 1–20）、created_at |
+| Android 本地连接配置      | 规范化服务地址、instanceId、展示名称、兼容版本；不放密码或令牌                                                                         |
+| Android 受保护凭据        | 以服务地址 + instanceId + userId 为命名空间的刷新凭据                                                                                  |
+| Android 临时草稿          | 相同命名空间 + attemptId + itemId，与上传状态隔离                                                                                      |
 
-模型密钥原文不进入配置快照；连接版本保留受保护的密钥版本引用。评分任务绑定不可变连接/模型/提示词版本，修改默认项不影响既有任务与历史成绩。停用供应商不再发起新调用，未执行任务标记待配置；恢复或改绑当前默认配置必须显式操作并审计，不自动换模型。配置连接/模型测试结果关联版本，连接地址、协议、凭据或模型改变后重新验证。
+模型密钥原文不进入配置快照；连接版本保留受保护的密钥版本引用。评分任务绑定不可变连接/模型/评分配置版本，修改默认项不影响既有任务与历史成绩。停用供应商不再发起新调用，未执行任务标记待配置；恢复或改绑当前默认配置必须显式操作并审计，不自动换模型。配置连接/模型测试结果关联版本，连接地址、协议、凭据或模型改变后重新验证。
 
 ## 3. 学习组织
 
