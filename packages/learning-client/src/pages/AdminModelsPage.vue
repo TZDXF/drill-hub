@@ -855,9 +855,15 @@ onMounted(() => void load(true));
 .model-list-scroll {
   max-height: 560px;
 }
+.model-list-scroll :deep(.app-scroll-area__viewport) {
+  max-height: inherit;
+}
 .model-discovery-scroll {
   max-height: 340px;
   margin-top: 12px;
+}
+.model-discovery-scroll :deep(.app-scroll-area__viewport) {
+  max-height: inherit;
 }
 .model-discovery-list {
   display: grid;
