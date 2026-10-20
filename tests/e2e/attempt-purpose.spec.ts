@@ -89,7 +89,12 @@ async function seed(page: Page, kind: 'practice' | 'exam' = 'practice') {
   };
   const start = async (purpose: AttemptView['purpose'] = 'learning') => {
     await page.goto(`/assessments/${assessment.id}?taskId=${taskId}&planId=${plan.id}`);
-    await expect(page.getByLabel('作答用途', { exact: true })).toContainText('正式作答');
+    if (kind === 'practice') {
+      expect(purpose).toBe('learning');
+      await expect(page.getByLabel('作答用途', { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByLabel('作答用途', { exact: true })).toContainText('正式作答');
+    }
     if (purpose === 'test') {
       await page.getByLabel('作答用途', { exact: true }).click();
       await page.getByRole('option', { name: '测试作答', exact: true }).click();
@@ -125,8 +130,8 @@ async function submit(page: Page) {
   await expect(page.getByRole('region', { name: '成绩摘要' })).toBeVisible();
 }
 
-test('测试作答可继续答题、交卷并评分，但不增加学习统计、错题和计划完成度', async ({ page }) => {
-  const { start, readReport, readPlan, questionId } = await seed(page);
+test('测试考试可继续答题、交卷并评分，但不增加学习统计、错题和计划完成度', async ({ page }) => {
+  const { start, readReport, readPlan, questionId } = await seed(page, 'exam');
   const before = (
     (await (await page.request.get('/api/v1/dashboard')).json()) as ApiResponse<Dashboard>
   ).data;
@@ -176,6 +181,40 @@ test('测试作答可继续答题、交卷并评分，但不增加学习统计�
   await expect(entry).toHaveCount(0);
 });
 
+test('普通练习无需选择用途，每次完成作答均计入学习统计', async ({ page }) => {
+  const { start, readReport, readPlan, questionId } = await seed(page);
+  const before = (
+    (await (await page.request.get('/api/v1/dashboard')).json()) as ApiResponse<Dashboard>
+  ).data;
+  const attemptIds = new Set<string>();
+  for (let count = 1; count <= 2; count += 1) {
+    const attempt = await start();
+    expect(attempt.purpose).toBe('learning');
+    expect(attemptIds.has(attempt.id)).toBe(false);
+    attemptIds.add(attempt.id);
+    await page.getByLabel('B. 普通文本文件', { exact: true }).check();
+    await submit(page);
+    await expect(page.getByRole('button', { name: '作废作答', exact: true })).toHaveCount(0);
+    const report = await readReport(attempt.id);
+    expect(report.attempt).toMatchObject({
+      purpose: 'learning',
+      status: 'completed',
+      voidedAt: null,
+    });
+    const after = (
+      (await (await page.request.get('/api/v1/dashboard')).json()) as ApiResponse<Dashboard>
+    ).data;
+    expect(after.completedAttempts).toBe(before.completedAttempts + count);
+    const wrong = (
+      (await (await page.request.get('/api/v1/wrong-questions')).json()) as ApiResponse<
+        WrongQuestionListItem[]
+      >
+    ).data.find((item) => item.questionId === questionId);
+    expect(wrong?.wrongCount).toBe(count);
+    expect((await readPlan()).phases[0]!.tasks[0]!.status).toBe('completed');
+  }
+});
+
 for (const kind of ['practice', 'exam'] as const) {
   test(`正式${kind === 'exam' ? '考试' : '练习'}全空交卷：系统判空且${kind === 'exam' ? '完成' : '不完成'}计划任务`, async ({
     page,
@@ -214,48 +253,28 @@ for (const kind of ['practice', 'exam'] as const) {
   });
 }
 
-test('作废需要原因与当前版本，冲突后重新确认；作废记录只读且可筛选', async ({ page }) => {
-  const { start, readReport } = await seed(page);
+test('报告不提供作废入口，已有作废记录仍只读且可筛选', async ({ page }) => {
+  const { start, readReport, post } = await seed(page);
   const attempt = await start();
   await page.getByRole('link', { name: '作答详情', exact: true }).click();
-  await page.getByRole('button', { name: '作废作答', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '确认作废本次作答？', exact: true });
-  const confirm = dialog.getByRole('button', { name: '确认作废', exact: true });
-  await expect(confirm).toBeDisabled();
-  await dialog.getByLabel('作废原因（必填，最多 4000 字）').fill('   ');
-  await expect(confirm).toBeDisabled();
-  await expect(dialog.getByRole('textbox')).toHaveAttribute('maxlength', '4000');
-  await dialog.getByRole('textbox').fill('  误开练习，保留作废历史  ');
-  const voidPath = `**/api/v1/attempts/${attempt.id}/void`;
-  await page.route(
-    voidPath,
-    (route) =>
-      route.fulfill({
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          error: { code: 'REVISION_CONFLICT', message: '记录已更新，请重新确认' },
-          meta: {},
-        }),
-      }),
-    { times: 1 },
+  await expect(page.getByRole('button', { name: '作废作答', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '确认作废本次作答？', exact: true })).toHaveCount(
+    0,
   );
-  await confirm.click();
-  await expect(dialog).not.toBeVisible();
-  await expect(page.getByText('作废失败', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '作废作答', exact: true }).click();
-  const voided = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      response.url().endsWith(`/attempts/${attempt.id}/void`),
+  const csrf = (
+    (await (await page.request.get('/api/v1/auth/csrf')).json()) as ApiResponse<{
+      csrfToken: string;
+    }>
+  ).data.csrfToken;
+  await post(
+    `/attempts/${attempt.id}/void`,
+    {
+      expectedRevision: attempt.revision,
+      reason: '误开练习，保留作废历史',
+    },
+    { 'X-CSRF-Token': csrf },
   );
-  await confirm.click();
-  const response = await voided;
-  expect(response.ok()).toBe(true);
-  expect(response.request().postDataJSON()).toEqual({
-    expectedRevision: expect.any(Number),
-    reason: '误开练习，保留作废历史',
-  });
+  await page.reload();
   await expect(page.getByText('已作废 · 只读', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '继续作答', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '作废作答', exact: true })).toHaveCount(0);
@@ -361,14 +380,18 @@ test('评分运维展示作废取消状态，不能恢复已取消任务', async
 });
 
 for (const fromDetail of [false, true]) {
-  test(`错题${fromDetail ? '详情' : '列表'}可选择测试用途重练`, async ({ page }) => {
+  test(`错题${fromDetail ? '详情' : '列表'}重练无需选择用途，作答计入学习统计`, async ({
+    page,
+  }) => {
     const { start, questionId } = await seed(page);
     await start();
     await page.getByLabel('B. 普通文本文件', { exact: true }).check();
     await submit(page);
     await page.goto(fromDetail ? `/wrong-questions/${questionId}` : '/wrong-questions');
-    await page.getByLabel('作答用途', { exact: true }).click();
-    await page.getByRole('option', { name: '测试作答', exact: true }).click();
+    await expect(page.getByLabel('作答用途', { exact: true })).toHaveCount(0);
+    const before = (
+      (await (await page.request.get('/api/v1/dashboard')).json()) as ApiResponse<Dashboard>
+    ).data;
     const started = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
@@ -385,10 +408,23 @@ for (const fromDetail of [false, true]) {
     }
     const response = await started;
     expect(response.ok()).toBe(true);
-    expect(response.request().postDataJSON()).toMatchObject({ purpose: 'test' });
+    expect(response.request().postDataJSON()).toMatchObject({ purpose: 'learning' });
     const attempt = ((await response.json()) as ApiResponse<AttemptView>).data;
-    expect(attempt.purpose).toBe('test');
+    expect(attempt.purpose).toBe('learning');
     await expect(page.getByRole('heading', { name: '用途回归：选择数据库' })).toBeVisible();
     await expect(page.getByLabel('A. SQLite', { exact: true })).toBeEnabled();
+    await page.getByLabel('B. 普通文本文件', { exact: true }).check();
+    await submit(page);
+    await expect(page.getByRole('button', { name: '作废作答', exact: true })).toHaveCount(0);
+    const after = (
+      (await (await page.request.get('/api/v1/dashboard')).json()) as ApiResponse<Dashboard>
+    ).data;
+    expect(after.completedAttempts).toBe(before.completedAttempts + 1);
+    const wrong = (
+      (await (await page.request.get('/api/v1/wrong-questions')).json()) as ApiResponse<
+        WrongQuestionListItem[]
+      >
+    ).data.find((item) => item.questionId === questionId);
+    expect(wrong?.wrongCount).toBe(2);
   });
 }

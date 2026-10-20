@@ -16,11 +16,9 @@ import AppIcon from '../components/AppIcon.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
 import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
 import EmptyState from '../components/EmptyState.vue';
-import AttemptPurposeSelect from '../components/AttemptPurposeSelect.vue';
 
 const { t } = useI18n();
 
-const purpose = ref<AttemptView['purpose']>('learning');
 const learning = useLearning();
 const route = useRoute();
 const router = useRouter();
@@ -79,7 +77,7 @@ async function practice() {
   try {
     const result = await learning.post<AttemptView | { attempt: AttemptView }>(
       '/wrong-question-practices',
-      { ...wrongPracticeRequest(detail.value), purpose: purpose.value },
+      { ...wrongPracticeRequest(detail.value), purpose: 'learning' },
     );
     await router.push({ name: 'attempt', params: { attemptId: asAttemptView(result).id } });
   } catch (reason) {
@@ -144,13 +142,6 @@ onMounted(load);
           </button></template
         >
       </PageHeader>
-      <section
-        class="card"
-        :aria-label="t('learning.wrongQuestions.purposeLabel')"
-        style="margin-bottom: 16px"
-      >
-        <AttemptPurposeSelect id="wrong-detail-purpose" v-model="purpose" :disabled="busy" />
-      </section>
       <section
         class="card card--padded"
         style="margin-bottom: 18px"

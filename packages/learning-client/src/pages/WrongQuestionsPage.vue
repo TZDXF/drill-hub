@@ -10,12 +10,10 @@ import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
-import AttemptPurposeSelect from '../components/AttemptPurposeSelect.vue';
 import AppSelect from '../components/AppSelect.vue';
 
 const { t } = useI18n();
 
-const purpose = ref<AttemptView['purpose']>('learning');
 const learning = useLearning();
 const router = useRouter();
 const items = ref<WrongQuestionListItem[]>([]);
@@ -55,7 +53,7 @@ async function practice(questionId: string) {
     const detail = await learning.get<WrongQuestionDetailView>(`/wrong-questions/${questionId}`);
     const result = await learning.post<AttemptView | { attempt: AttemptView }>(
       '/wrong-question-practices',
-      { ...wrongPracticeRequest(detail), purpose: purpose.value },
+      { ...wrongPracticeRequest(detail), purpose: 'learning' },
     );
     const attempt = asAttemptView(result);
     await router.push({ name: 'attempt', params: { attemptId: attempt.id } });
@@ -82,17 +80,6 @@ onMounted(load);
       </div>
       <button class="button" type="submit">{{ t('learning.wrongQuestions.applyFilter') }}</button>
     </form>
-    <section
-      class="card"
-      :aria-label="t('learning.wrongQuestions.purposeLabel')"
-      style="margin-bottom: 16px"
-    >
-      <AttemptPurposeSelect
-        id="wrong-practice-purpose"
-        v-model="purpose"
-        :disabled="Boolean(starting)"
-      />
-    </section>
     <div v-if="loading" class="loading-block">
       <span class="spinner" />{{ t('learning.wrongQuestions.loading') }}
     </div>

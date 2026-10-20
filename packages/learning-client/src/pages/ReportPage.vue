@@ -14,8 +14,7 @@ import {
   gradingStatusLabels,
 } from '../attemptPresentation';
 import { planNavigationQuery } from '../planNavigation';
-import { errorMessage, formatDate, formatScore, isApiError } from '../utils';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
+import { errorMessage, formatDate, formatScore } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
@@ -36,12 +35,6 @@ const planReturn = computed(() =>
 );
 const loading = ref(true);
 const refreshing = ref(false);
-const voidOpen = ref(false);
-const voiding = ref(false);
-const voidReason = ref('');
-const validVoidReason = computed(
-  () => voidReason.value.trim().length > 0 && voidReason.value.trim().length <= 4000,
-);
 const currentIndex = computed(() =>
   route.query.question && report.value
     ? questionIndexFromQuery(route.query.question, report.value.attempt.items.length)
@@ -93,38 +86,6 @@ async function load(background = false, notifyFailure = true) {
   } finally {
     loading.value = false;
     refreshing.value = false;
-  }
-}
-async function voidAttempt() {
-  if (
-    !report.value ||
-    props.publicAccess ||
-    report.value.attempt.voidedAt ||
-    voiding.value ||
-    !validVoidReason.value
-  )
-    return;
-  voiding.value = true;
-  try {
-    await learning.post(`/attempts/${report.value.attempt.id}/void`, {
-      expectedRevision: report.value.attempt.revision,
-      reason: voidReason.value.trim(),
-    });
-    voidOpen.value = false;
-    voidReason.value = '';
-    learning.notify.success(
-      t('learning.report.notifyVoidedTitle'),
-      t('learning.report.notifyVoidedBody'),
-    );
-    await load(true);
-  } catch (reason) {
-    learning.notify.error(t('learning.report.notifyVoidError'), errorMessage(reason));
-    if (isApiError(reason, 409)) {
-      voidOpen.value = false;
-      await load(true);
-    }
-  } finally {
-    voiding.value = false;
   }
 }
 async function goTo(index: number) {
@@ -193,21 +154,7 @@ onBeforeUnmount(() => {
               }"
               >{{ t('learning.home.continueAttempt') }}</RouterLink
             >
-            <button
-              v-if="!publicAccess && !report.attempt.voidedAt"
-              class="button button--danger"
-              type="button"
-              :disabled="voiding || refreshing"
-              @click="voidOpen = true"
-            >
-              {{ t('learning.report.voidAction') }}
-            </button>
-            <button
-              class="button"
-              type="button"
-              :disabled="refreshing || voiding"
-              @click="load(true)"
-            >
+            <button class="button" type="button" :disabled="refreshing" @click="load(true)">
               <span v-if="refreshing" class="spinner" /><AppIcon
                 v-else
                 name="refresh"
@@ -439,30 +386,6 @@ onBeforeUnmount(() => {
             />
           </div>
         </div>
-        <ConfirmDialog
-          v-model:open="voidOpen"
-          :title="t('learning.report.voidDialogTitle')"
-          :description="t('learning.report.voidDialogDescription')"
-          :confirm-label="t('learning.report.voidDialogConfirm')"
-          :busy="voiding"
-          :confirm-disabled="!validVoidReason"
-          danger
-          @confirm="voidAttempt"
-        >
-          <div class="form-field">
-            <label for="attempt-void-reason">{{ t('learning.report.voidReasonLabel') }}</label>
-            <textarea
-              id="attempt-void-reason"
-              v-model="voidReason"
-              class="textarea"
-              rows="4"
-              maxlength="4000"
-              :disabled="voiding"
-              required
-            />
-            <p class="muted small">{{ t('learning.report.voidReasonHint') }}</p>
-          </div>
-        </ConfirmDialog>
       </template>
     </main>
   </div>

@@ -55,7 +55,10 @@ async function start() {
     const taskId = typeof route.query.taskId === 'string' ? route.query.taskId : undefined;
     const result = await learning.post<AttemptView | { attempt: AttemptView }>(
       `/assessments/${assessment.value.id}/attempts`,
-      { purpose: purpose.value, ...(taskId ? { taskId } : {}) },
+      {
+        purpose: assessment.value.kind === 'practice' ? 'learning' : purpose.value,
+        ...(taskId ? { taskId } : {}),
+      },
     );
     const attempt = asAttemptView(result);
     await router.push({
@@ -147,6 +150,7 @@ onMounted(load);
             }}
           </p>
           <AttemptPurposeSelect
+            v-if="assessment.kind === 'exam'"
             id="assessment-purpose"
             v-model="purpose"
             :disabled="starting || Boolean(assessment.archivedAt)"
