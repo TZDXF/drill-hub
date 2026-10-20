@@ -289,6 +289,9 @@
     display: grid;
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
+  .app-layout--focused {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .sidebar {
     position: sticky;
     top: 0;
@@ -2895,6 +2898,9 @@
     }
     .page-container {
       padding: 25px 16px calc(92px + env(safe-area-inset-bottom));
+    }
+    .app-layout--focused .page-container {
+      padding-bottom: calc(32px + env(safe-area-inset-bottom));
     }
     .bottom-nav {
       position: fixed;

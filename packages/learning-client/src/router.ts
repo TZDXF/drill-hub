@@ -63,8 +63,18 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
           { path: 'topics', name: 'topics', component: TopicsPage },
           { path: 'topics/:topicId', name: 'topic-detail', component: TopicDetailPage },
           { path: 'topics/:topicId/plans/:planId', name: 'plan', component: PlanPage },
-          { path: 'contents/:contentId', name: 'content', component: ContentPage },
-          { path: 'assessments/:assessmentId', name: 'assessment', component: AssessmentPage },
+          {
+            path: 'contents/:contentId',
+            name: 'content',
+            component: ContentPage,
+            meta: { focus: true },
+          },
+          {
+            path: 'assessments/:assessmentId',
+            name: 'assessment',
+            component: AssessmentPage,
+            meta: { focus: true },
+          },
           {
             path: 'attempts/:attemptId',
             name: 'attempt',

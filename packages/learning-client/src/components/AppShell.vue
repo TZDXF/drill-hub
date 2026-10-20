@@ -28,6 +28,7 @@ const learning = useLearning();
 const route = useRoute();
 const router = useRouter();
 const immersive = computed(() => Boolean(route.meta.immersive));
+const focused = computed(() => Boolean(route.meta.focus));
 const title = computed(() => {
   const names: Record<string, string> = {
     home: t('components.shell.titles.home'),
@@ -129,9 +130,9 @@ async function logout() {
 
 <template>
   <RouterView v-if="immersive" />
-  <div v-else class="app-layout">
+  <div v-else class="app-layout" :class="{ 'app-layout--focused': focused }">
     <a class="skip-link" href="#main-content">{{ t('components.shell.skipToContent') }}</a>
-    <aside class="sidebar">
+    <aside v-if="!focused" class="sidebar">
       <RouterLink
         class="brand"
         :to="{ name: 'home' }"
@@ -281,7 +282,7 @@ async function logout() {
       <main id="main-content" class="page-container" tabindex="-1"><RouterView /></main>
     </div>
 
-    <nav class="bottom-nav" :aria-label="t('components.shell.mobileNav')">
+    <nav v-if="!focused" class="bottom-nav" :aria-label="t('components.shell.mobileNav')">
       <RouterLink
         v-for="item in mobileNav"
         :key="item.name"
