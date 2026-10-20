@@ -28,7 +28,7 @@ import {
   startAnswerLinkAttempt,
   submitAttempt,
   submitPracticeItem,
-  validateAssessmentTask,
+  resolveAssessmentTaskId,
 } from './attempts.js';
 import { toAttemptItemView, toAttemptReport, toAttemptView } from './projections.js';
 
@@ -119,37 +119,44 @@ export function registerAnswerLinkRoutes(app: FastifyInstance, ctx: AppContext):
     const input = body(request, true);
     rejectClientFacts(input);
     const purpose = attemptPurpose(input);
-    const taskId = input.taskId === undefined ? null : input.taskId;
+    const requestedTaskId = input.taskId === undefined ? null : input.taskId;
     assert(
-      taskId === null || (typeof taskId === 'string' && taskId.length > 0),
+      requestedTaskId === null ||
+        (typeof requestedTaskId === 'string' && requestedTaskId.length > 0),
       'INVALID_TASK',
       'taskId 无效',
     );
-    if (taskId !== null) await validateAssessmentTask(ctx.db, actor.userId, assessment, taskId);
     const ttl = linkTtl(input, assessment.durationSeconds);
     const token = randomSecret();
-    const link: AnswerLinkRecord = {
-      ...baseRecord(),
-      ownerId: actor.userId,
-      purpose,
-      taskId,
-      assessmentId: assessment.id,
-      secretHash: hashSecret(token),
-      expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
-      revokedAt: null,
-      attemptId: null,
-    };
-    await ctx.db.transaction(async (tx) => {
-      if (taskId !== null) await validateAssessmentTask(tx, actor.userId, assessment, taskId);
+    const link = await ctx.db.transaction(async (tx) => {
+      const taskId = await resolveAssessmentTaskId(
+        tx,
+        actor.userId,
+        assessment,
+        purpose,
+        requestedTaskId,
+      );
+      const link: AnswerLinkRecord = {
+        ...baseRecord(),
+        ownerId: actor.userId,
+        purpose,
+        taskId,
+        assessmentId: assessment.id,
+        secretHash: hashSecret(token),
+        expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+        revokedAt: null,
+        attemptId: null,
+      };
       await tx.insert('answerLinks', link);
       await ctx.audit(
         actor,
         'answer-link.create',
         'assessment',
         assessment.id,
-        { answerLinkId: link.id, expiresAt: link.expiresAt },
+        { answerLinkId: link.id, expiresAt: link.expiresAt, taskId: link.taskId },
         tx,
       );
+      return link;
     });
     const base = resolvePublicUrl(request, ctx.config.publicUrl).publicBaseUrl;
     const created: AnswerLinkCreated = {

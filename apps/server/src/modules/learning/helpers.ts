@@ -131,7 +131,7 @@ export async function refreshAttempt(tx: Database, attempt: Attempt): Promise<At
   });
 }
 
-/** Rebuild only the explicitly linked task, using valid learning attempts as evidence. */
+/** Rebuild only the persisted task association, using valid learning attempts as evidence. */
 export async function syncLinkedTask(db: Database, attempt: Attempt): Promise<void> {
   if (attempt.purpose === 'test' || !attempt.taskId || !attempt.assessmentId) return;
   const attempts = (await db.list('attempts', { ownerId: attempt.ownerId })).filter(

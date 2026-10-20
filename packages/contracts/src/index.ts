@@ -178,6 +178,7 @@ export interface Assessment extends BaseRecord {
 }
 export interface AnswerLinkCreated {
   purpose: Attempt['purpose'];
+  /** Resolved single task: explicit or uniquely matched for learning; null means unassociated. */
   taskId: string | null;
   id: string;
   assessmentId: string;
@@ -253,6 +254,7 @@ export interface Attempt extends BaseRecord {
   /** 链接作答同样归属 ownerId；保留入口来源供追溯。 */
   answerLinkId: string | null;
   purpose: 'learning' | 'test';
+  /** Resolved single task: explicit or uniquely matched for learning; null means unassociated. */
   taskId: string | null;
   voidedAt: string | null;
   voidedBy: string | null;

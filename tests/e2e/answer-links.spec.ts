@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import type { AnswerLinkCreated, ApiResponse, Assessment, Topic } from '@drill-hub/contracts';
+import type {
+  AnswerLinkCreated,
+  ApiResponse,
+  Assessment,
+  LearningPlan,
+  Topic,
+} from '@drill-hub/contracts';
 import { login } from './helpers';
 
 async function post<T>(
@@ -66,12 +72,28 @@ test('Agent 临时答题链接可在未登录浏览器中直接作答和查看�
     },
     headers,
   );
+  const plan = await post<LearningPlan>(
+    page.request,
+    `/agent/topics/${topic.id}/plans`,
+    {
+      title: '临时链接学习计划',
+      phases: [
+        {
+          title: '练习阶段',
+          tasks: [{ title: '完成免登录练习', kind: 'practice', targetId: assessment.id }],
+        },
+      ],
+    },
+    headers,
+  );
   const link = await post<AnswerLinkCreated>(
     page.request,
     `/agent/assessments/${assessment.id}/answer-links`,
     { expiresInSeconds: 3600 },
     headers,
   );
+
+  expect(link.taskId).toBe(plan.phases[0]!.tasks[0]!.id);
 
   const anonymous = await browser.newContext();
   try {
@@ -151,6 +173,12 @@ test('Agent 临时答题链接可在未登录浏览器中直接作答和查看�
     ).toBeVisible();
     await page.reload();
     await expect(page.getByText('最终得分')).toBeVisible();
+    // Link submission must also complete the owner's uniquely matching plan task.
+    await page.goto(`/topics/${topic.id}/plans/${plan.id}`);
+    const taskRow = page.locator('.task-row').filter({ hasText: '完成免登录练习' });
+    await expect(taskRow.getByText('已完成', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(taskRow.getByText('已完成', { exact: true })).toBeVisible();
   } finally {
     await anonymous.close();
   }

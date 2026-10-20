@@ -41,7 +41,7 @@
 - 学习者从计划打开阅读内容并成功加载后，客户端自动完成该来源阅读任务；不要求停留时长或滚动到底。
 - 直接打开内容（未携带来源计划与任务）不更新任务；同一内容被多个计划引用时，不会连带完成其他任务。
 - 已完成任务不重复写入；已归档计划仅供查看，不自动更新。普通任务仍由用户手动标记。
-- 练习/考试只根据明确关联的单一 `taskId` 更新；任务与作答须同属用户、类型匹配，任务目标为该评估。不传 `taskId` 不影响任务；不会批量完成其他引用同一评估的任务。
+- 练习/考试只根据已关联的单一 `taskId`（显式指定或唯一匹配）更新；任务与作答须同属用户、类型匹配，任务目标为该评估。正式学习未指定时，仅自动关联同一用户、同一主题下未归档计划中唯一匹配的任务；无匹配或多项匹配时不关联，测试不自动关联；不会批量完成其他引用同一评估的任务。
 - 正式有效练习至少有一项非空作答才可在交卷后完成关联任务，全空交卷不完成。正式有效考试交卷或超时可完成关联任务，包括全空交卷。
 - `purpose: "test"` 或已作废的作答不作为任务完成依据，测试即使指定 `taskId` 也不影响任务。`source: personal|answer_link` 只追溯来源，不决定完成资格；免登录正式作答遵循相同规则。详见[副作用表](results.md#副作用表)。
 
@@ -136,4 +136,4 @@ PATCH /api/v1/agent/tasks/{taskId}
 - `expectedRevision` 是父计划 revision。
 - 可更新 `title`、`scheduledDate`、`estimatedMinutes`、`status`。
 - 要移动时必须提供 `phaseId`；`position` 可选，必须落在目标阶段的可插入范围内。只给 `position` 不给 `phaseId` 会失败。
-- 状态只能是 `todo`、`in_progress`、`completed`。`practice`/`exam` 任务只能按上述规则由明确关联的正式有效作答交卷或考试超时自动完成，Agent 直接将未完成此类任务改为 `completed` 会返回 `409 TASK_KIND_NOT_COMPLETABLE`；改回其他状态会清空 `completedAt`。
+- 状态只能是 `todo`、`in_progress`、`completed`。`practice`/`exam` 任务只能按上述规则由已关联的正式有效作答交卷或考试超时自动完成，Agent 直接将未完成此类任务改为 `completed` 会返回 `409 TASK_KIND_NOT_COMPLETABLE`；改回其他状态会清空 `completedAt`。

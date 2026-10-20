@@ -135,10 +135,10 @@ export async function startAssessment(
     );
     const reusable = existing.find((attempt) => attempt.answerLinkId === null && !expired(attempt));
 
-    const taskLocation =
-      typeof taskId === 'string'
-        ? await validateAssessmentTask(tx, actor.userId, assessment, taskId)
-        : undefined;
+    const resolvedTaskId =
+      taskId === undefined && reusable?.taskId
+        ? reusable.taskId
+        : await resolveAssessmentTaskId(tx, actor.userId, assessment, purpose, taskId);
 
     const recordStart = async (attempt: Attempt) => {
       await syncLinkedTask(tx, attempt);
@@ -147,23 +147,23 @@ export async function startAssessment(
         'attempt.start',
         'attempt',
         attempt.id,
-        { assessmentId, taskId: taskId ?? null },
+        { assessmentId, taskId: attempt.taskId },
         tx,
       );
     };
 
     if (reusable) {
       let current = reusable;
-      if (taskLocation) {
+      if (resolvedTaskId !== null) {
         assert(
-          reusable.taskId === null || reusable.taskId === taskLocation.task.id,
+          reusable.taskId === null || reusable.taskId === resolvedTaskId,
           'ATTEMPT_TASK_CONFLICT',
           '当前作答已关联其他计划任务',
           409,
         );
         if (reusable.taskId === null) {
           current = await tx.update('attempts', reusable.id, reusable.revision, {
-            taskId: taskLocation.task.id,
+            taskId: resolvedTaskId,
           });
           await recordStart(current);
         }
@@ -190,7 +190,7 @@ export async function startAssessment(
       assessment.durationSeconds,
       await assessmentSnapshots(assessment, actor.userId, tx),
       purpose,
-      typeof taskId === 'string' ? taskId : null,
+      resolvedTaskId,
     );
     await tx.insert('attempts', attempt);
     await recordStart(attempt);
@@ -237,6 +237,13 @@ export async function startAnswerLinkAttempt(
       409,
     );
     await ownedTopic(tx, assessment.topicId, link.ownerId, true);
+    const taskId = await resolveAssessmentTaskId(
+      tx,
+      link.ownerId,
+      assessment,
+      link.purpose,
+      link.taskId,
+    );
     const attempt = newAttempt(
       link.ownerId,
       assessment.topicId,
@@ -247,13 +254,11 @@ export async function startAnswerLinkAttempt(
       assessment.durationSeconds,
       await assessmentSnapshots(assessment, link.ownerId, tx),
       link.purpose,
-      link.taskId,
+      taskId,
     );
-    if (link.taskId !== null)
-      await validateAssessmentTask(tx, link.ownerId, assessment, link.taskId);
     await tx.insert('attempts', attempt);
     await syncLinkedTask(tx, attempt);
-    await tx.update('answerLinks', link.id, link.revision, { attemptId: attempt.id });
+    await tx.update('answerLinks', link.id, link.revision, { taskId, attemptId: attempt.id });
     await ctx.audit(
       {
         id: 'answer-link:' + link.id,
@@ -265,7 +270,7 @@ export async function startAnswerLinkAttempt(
       'answer-link.attempt.start',
       'attempt',
       attempt.id,
-      { answerLinkId: link.id, assessmentId: assessment.id },
+      { answerLinkId: link.id, assessmentId: assessment.id, taskId: attempt.taskId },
       tx,
     );
     return attempt;
@@ -549,6 +554,27 @@ export async function startWrongQuestionPractice(
     );
     return attempt;
   });
+}
+
+/** Resolve one task, never guess between multiple matching learning-plan tasks. */
+export async function resolveAssessmentTaskId(
+  db: AppContext['db'],
+  ownerId: string,
+  assessment: Assessment,
+  purpose: Attempt['purpose'],
+  taskId: string | null | undefined,
+): Promise<string | null> {
+  if (taskId != null) {
+    await validateAssessmentTask(db, ownerId, assessment, taskId);
+    return taskId;
+  }
+  if (purpose !== 'learning') return null;
+  const plans = await db.list('plans', { ownerId });
+  const matches = plans
+    .filter((plan) => plan.archivedAt === null && plan.topicId === assessment.topicId)
+    .flatMap((plan) => plan.phases.flatMap((phase) => phase.tasks))
+    .filter((task) => task.targetId === assessment.id && task.kind === assessment.kind);
+  return matches.length === 1 ? matches[0].id : null;
 }
 
 /** Validate an explicit task association at both link creation and actual start. */

@@ -248,7 +248,7 @@ async function setup(
     expect(await app.ctx.db.get('answerLinks', link.id)).toMatchObject({
       ownerId: user.id,
       purpose: input.purpose ?? 'learning',
-      taskId: input.taskId ?? null,
+      taskId: attempt.taskId,
       attemptId: attempt.id,
     });
     return { attempt, headers, entry };
@@ -547,7 +547,7 @@ describe('attempt HTTP lifecycle', () => {
   });
 
   it.each<Entry>(['personal', 'answer_link'])(
-    'does not infer task association for unlinked learning from %s',
+    'does not guess between multiple matching tasks for learning from %s',
     async (entry) => {
       const f = await setup();
       const session = await f.start({}, entry);
@@ -558,6 +558,114 @@ describe('attempt HTTP lifecycle', () => {
       expect(await f.dashboard()).toMatchObject({ completedAttempts: 1, pendingTasks: 2 });
     },
   );
+
+  it.each([
+    { entry: 'personal', kind: 'practice' },
+    { entry: 'personal', kind: 'exam' },
+    { entry: 'answer_link', kind: 'practice' },
+    { entry: 'answer_link', kind: 'exam' },
+  ] as const)(
+    'associates a unique task for $entry $kind without an explicit taskId',
+    async ({ entry, kind }) => {
+      const f = await setup(kind);
+      await f.app.ctx.db.update('plans', f.plan.id, f.plan.revision, {
+        phases: [{ ...f.plan.phases[0], tasks: [f.tasks[0]] }],
+      });
+      // Archived plans, foreign owners and mismatched topics/kinds must not create ambiguity.
+      for (const changes of [
+        { archivedAt: now() },
+        { ownerId: f.other.id },
+        { topicId: id() },
+        { phases: [{ ...f.plan.phases[0], tasks: [{ ...f.tasks[1], kind: 'manual' as const }] }] },
+      ]) {
+        await f.app.ctx.db.insert('plans', {
+          ...f.plan,
+          ...baseRecord(),
+          phases: [{ ...f.plan.phases[0], tasks: f.tasks.map((task) => ({ ...task, id: id() })) }],
+          ...changes,
+        });
+      }
+      const session = await f.start({}, entry);
+      expect(session.attempt.taskId).toBe(f.tasks[0].id);
+      expect((await f.taskStates())[0]).toMatchObject({ status: 'in_progress', completedAt: null });
+      await f.save(session, { value: true });
+      const submitted = await f.submit(session);
+      expect((await f.taskStates())[0]).toMatchObject({
+        status: 'completed',
+        completedAt: submitted.submittedAt,
+      });
+      await f.voidAttempt(session.attempt.id);
+      expect((await f.taskStates())[0]).toMatchObject({ status: 'todo', completedAt: null });
+    },
+  );
+
+  it.each<Entry>(['personal', 'answer_link'])(
+    'does not auto-associate a unique task for test attempts from %s',
+    async (entry) => {
+      const f = await setup();
+      await f.app.ctx.db.update('plans', f.plan.id, f.plan.revision, {
+        phases: [{ ...f.plan.phases[0], tasks: [f.tasks[0]] }],
+      });
+      const session = await f.start({ purpose: 'test' }, entry);
+      expect(session.attempt.taskId).toBeNull();
+      await f.save(session, { value: true });
+      await f.submit(session);
+      expect((await f.taskStates())[0]).toMatchObject({ status: 'todo', completedAt: null });
+    },
+  );
+
+  it('keeps an existing personal association when omitted on resume after its plan is archived', async () => {
+    const f = await setup();
+    const session = await f.start({ taskId: f.tasks[0].id });
+    const plan = (await f.app.ctx.db.get('plans', f.plan.id))!;
+    await f.app.ctx.db.update('plans', plan.id, plan.revision, { archivedAt: now() });
+    await f.app.ctx.db.insert('plans', {
+      ...f.plan,
+      ...baseRecord(),
+      phases: [{ ...f.plan.phases[0], tasks: [{ ...f.tasks[1], id: id() }] }],
+    });
+    const resumed = await f.api<AttemptView>(
+      'POST',
+      `/assessments/${f.assessment.id}/attempts`,
+      f.learner,
+      {},
+      200,
+    );
+    expect(resumed.id).toBe(session.attempt.id);
+    expect(resumed.taskId).toBe(f.tasks[0].id);
+  });
+
+  it('resolves an unbound link at first start and persists the same association on resume', async () => {
+    const f = await setup();
+    await f.app.ctx.db.delete('plans', f.plan.id);
+    const link = await f.api<AnswerLinkCreated>(
+      'POST',
+      `/agent/assessments/${f.assessment.id}/answer-links`,
+      f.agent,
+      {},
+      201,
+    );
+    expect(link.taskId).toBeNull();
+    await f.app.ctx.db.insert('plans', {
+      ...f.plan,
+      phases: [{ ...f.plan.phases[0], tasks: [f.tasks[0]] }],
+    });
+    const headers = { 'x-answer-link-token': new URL(link.answerUrl).hash.slice(1) };
+    const attempt = await f.api<AttemptView>('POST', '/public/answer/attempt', headers, {});
+    expect(attempt.taskId).toBe(f.tasks[0].id);
+    expect(await f.app.ctx.db.get('answerLinks', link.id)).toMatchObject({
+      taskId: f.tasks[0].id,
+      attemptId: attempt.id,
+    });
+    await f.app.ctx.db.insert('plans', {
+      ...f.plan,
+      ...baseRecord(),
+      phases: [{ ...f.plan.phases[0], tasks: f.tasks.map((task) => ({ ...task, id: id() })) }],
+    });
+    expect(await f.api<AttemptView>('POST', '/public/answer/attempt', headers, {})).toEqual(
+      attempt,
+    );
+  });
 
   it.each<Entry>(['personal', 'answer_link'])(
     'voids %s evidence, removes mistakes and retracts its task without deleting grading history',
