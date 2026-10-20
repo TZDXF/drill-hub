@@ -331,6 +331,9 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await expect(reportItems).toHaveCount(1);
   await expect(reportItems.getByRole('heading', { name: '解释事务的两个性质' })).toBeVisible();
   await expect(reportItems.getByText('待评分', { exact: true }).first()).toBeVisible();
+  await expect(
+    reportItems.getByRole('region', { name: '你的答案', exact: true }).locator('p'),
+  ).toHaveText('事务具有原子性');
   await expect(pagination.getByRole('button', { name: '下一题' })).toBeDisabled();
   await expect(pagination.getByRole('button', { name: '上一题' })).toBeEnabled();
   await expect(page).toHaveURL(/\?question=5$/);
@@ -379,6 +382,9 @@ test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告�
   await closeQuestionNav(page);
   await expect(pagination.getByText('第 5 / 5 题', { exact: true })).toBeVisible();
   await expect(reportItems.getByText('已评分', { exact: true })).toBeVisible();
+  await expect(
+    reportItems.getByRole('region', { name: '你的答案', exact: true }).locator('p'),
+  ).toHaveText('事务具有原子性');
   await expect(reportItems.locator('.grade-feedback__summary')).toHaveCount(0);
   const criterionFeedback = reportItems.locator('.criterion-item');
   await expect(

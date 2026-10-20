@@ -19,6 +19,7 @@ import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
 import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
+import AttemptWrittenAnswer from '../components/AttemptWrittenAnswer.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
 
@@ -330,6 +331,7 @@ onBeforeUnmount(() => {
                   }}
                 </p>
                 <AttemptChoiceReview :item="currentItem" />
+                <AttemptWrittenAnswer :item="currentItem" />
                 <GradeFeedback
                   v-if="released && currentItem.lockedAt"
                   :item="currentItem"
