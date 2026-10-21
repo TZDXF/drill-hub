@@ -35,6 +35,10 @@
 
 ## 请求与约束
 
+- 题目定义采用字段白名单；仅接受下文列出的定义字段，嵌套选项、空位、评分键与 rubric 也校验字段。未知定义字段返回 `422 INVALID_QUESTION_FIELD`，不会被静默剥离。
+- 批量创建和修改题目的请求外层、题目定义顶层均禁止 `ownerId`、`score`、`maxScore`、`correct`、`submittedAt`、`gradingStatus`、`answerStatus`、`startedAt`、`answerLinkId`、`voidedAt`、`voidedBy`、`voidReason`；即使值为 `null`、`false` 或 `0` 也返回 `422 CLIENT_FACT_FORBIDDEN`，`error.fields` 标出禁止字段。`maxScore` 只允许作为评估项的组卷配置，不属于题目定义。
+- 一个批次中任意题目校验失败，整个批次回滚，不创建题目、版本或成功审计记录。修改校验失败不会改变当前题目、版本历史或已有作答快照。
+
 读取：
 
 ```http
@@ -152,6 +156,6 @@ PATCH /api/v1/agent/questions/{id}
 ```
 
 - `definition` 是完整的新定义；也可以把定义字段平铺在请求体，但推荐使用 `definition` 以避免歧义。
-- 成功后题目 `version` 增加并写入新的 `questionVersions` 记录。
+- 成功后题目 `version` 增加并写入新的 `questionVersions` 记录；仅替换当前题目的定义，不修改已有版本行、作答冻结定义、答案或评分历史。
 - 已归档题目不能修改。
 - 已有评估项仍固定原 `questionVersion`；需要新版本时创建/修改评估并显式引用新版本。

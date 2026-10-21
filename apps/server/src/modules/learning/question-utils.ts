@@ -1,10 +1,11 @@
 import type { QuestionDefinition } from '@drill-hub/contracts';
 import { gradeBlankRubric, gradeRule, validateQuestion } from '../grading/engine.js';
-import { assert, clone, isRecord } from './common.js';
+import { assert, clone, isRecord, rejectClientFacts } from './common.js';
 import { scoreToMinor } from './scores.js';
 
 export function questionDefinition(value: unknown): QuestionDefinition {
   assert(isRecord(value), 'INVALID_QUESTION', '题目定义必须是对象');
+  rejectClientFacts(value);
   const keys = (record: Record<string, unknown>, allowed: string[]) => {
     assert(
       Object.keys(record).every((key) => allowed.includes(key)),

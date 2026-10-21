@@ -115,6 +115,189 @@ async function createAssessment(
   return response.json().data;
 }
 
+const forbiddenQuestionFacts = [
+  'ownerId',
+  'score',
+  'maxScore',
+  'correct',
+  'submittedAt',
+  'gradingStatus',
+  'answerStatus',
+  'startedAt',
+  'answerLinkId',
+  'voidedAt',
+  'voidedBy',
+  'voidReason',
+];
+
+describe('question definition trust boundary', () => {
+  it('rejects every client fact in batch items and envelopes without partial writes', async () => {
+    const { app, agent, createTopic } = await setup();
+    const topic = await createTopic();
+    const auditBefore = await app.ctx.db.list('auditLogs');
+    for (const field of forbiddenQuestionFacts) {
+      for (const value of ['forged', null, false, 0]) {
+        for (const payload of [
+          {
+            items: [
+              { ...ruleDefinition, clientRef: 'valid' },
+              { ...ruleDefinition, clientRef: 'invalid', [field]: value },
+            ],
+          },
+          { items: [ruleDefinition], [field]: value },
+        ]) {
+          const response = await app.inject({
+            method: 'POST',
+            url: `/api/v1/agent/topics/${topic.id}/questions/batch`,
+            headers: agent,
+            payload,
+          });
+          expect(response.statusCode).toBe(422);
+          expect(response.json().error).toMatchObject({
+            code: 'CLIENT_FACT_FORBIDDEN',
+            fields: { [field]: '该字段由服务端确定' },
+          });
+          expect(await app.ctx.db.list('questions')).toEqual([]);
+          expect(await app.ctx.db.list('questionVersions')).toEqual([]);
+        }
+      }
+    }
+    expect(await app.ctx.db.list('auditLogs')).toEqual(auditBefore);
+  });
+
+  it('rejects facts in flat, nested and outer PATCH payloads without changing frozen data', async () => {
+    const { app, agent, learner, createTopic } = await setup();
+    const topic = await createTopic();
+    const question = await createQuestion(app, agent, topic.id);
+    const assessment = await createAssessment(app, agent, topic.id, question.questionId);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/api/v1/assessments/${assessment.id}/attempts`,
+      headers: learner,
+      payload: {},
+    });
+    expect(started.statusCode).toBe(201);
+    const original = await app.ctx.db.get('questions', question.questionId);
+    const versions = await app.ctx.db.list('questionVersions');
+    const attempts = await app.ctx.db.list('attempts');
+    const audits = await app.ctx.db.list('auditLogs');
+    for (const field of forbiddenQuestionFacts) {
+      for (const value of ['forged', null, false, 0]) {
+        for (const payload of [
+          { expectedRevision: 1, ...ruleDefinition, [field]: value },
+          { expectedRevision: 1, definition: { ...ruleDefinition, [field]: value } },
+          { expectedRevision: 1, definition: ruleDefinition, [field]: value },
+        ]) {
+          const response = await app.inject({
+            method: 'PATCH',
+            url: `/api/v1/agent/questions/${question.questionId}`,
+            headers: agent,
+            payload,
+          });
+          expect(response.statusCode).toBe(422);
+          expect(response.json().error).toMatchObject({
+            code: 'CLIENT_FACT_FORBIDDEN',
+            fields: { [field]: '该字段由服务端确定' },
+          });
+          expect(await app.ctx.db.get('questions', question.questionId)).toEqual(original);
+          expect(await app.ctx.db.list('questionVersions')).toEqual(versions);
+          expect(await app.ctx.db.list('attempts')).toEqual(attempts);
+        }
+      }
+    }
+    expect(await app.ctx.db.list('auditLogs')).toEqual(audits);
+  });
+
+  it('creates new versions without changing historical definitions, grades or assessment pins', async () => {
+    const { app, agent, learner, createTopic } = await setup();
+    const topic = await createTopic();
+    const question = await createQuestion(app, agent, topic.id);
+    const assessment = await createAssessment(app, agent, topic.id, question.questionId);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/api/v1/assessments/${assessment.id}/attempts`,
+      headers: learner,
+      payload: {},
+    });
+    expect(started.statusCode).toBe(201);
+    const attempt = started.json().data;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/attempts/${attempt.id}/answers/${attempt.items[0].id}`,
+      headers: learner,
+      payload: { expectedRevision: 0, answer: { value: true } },
+    });
+    expect(saved.statusCode).toBe(200);
+    const submitted = await app.inject({
+      method: 'POST',
+      url: `/api/v1/attempts/${attempt.id}/submit`,
+      headers: learner,
+      payload: {},
+    });
+    expect(submitted.statusCode).toBe(200);
+    const frozenAttempt = await app.ctx.db.get('attempts', attempt.id);
+    expect(frozenAttempt?.items[0].grade?.score).toBe('10.00');
+    const firstVersion = await app.ctx.db.get('questionVersions', question.questionRevisionId);
+    const secondDefinition = { ...ruleDefinition, stem: '新题干', gradingKey: { value: false } };
+    const second = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/agent/questions/${question.questionId}`,
+      headers: agent,
+      payload: { expectedRevision: 1, definition: secondDefinition },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().data).toMatchObject({
+      version: 2,
+      revision: 2,
+      definition: secondDefinition,
+    });
+    const secondVersion = await app.ctx.db.findOne('questionVersions', {
+      questionId: question.questionId,
+      version: 2,
+    });
+    const thirdDefinition = { ...secondDefinition, stem: '第三版题干' };
+    const third = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/agent/questions/${question.questionId}`,
+      headers: agent,
+      payload: { expectedRevision: 2, ...thirdDefinition },
+    });
+    expect(third.statusCode).toBe(200);
+    expect(third.json().data).toMatchObject({
+      version: 3,
+      revision: 3,
+      definition: thirdDefinition,
+    });
+    expect(await app.ctx.db.get('questionVersions', question.questionRevisionId)).toEqual(
+      firstVersion,
+    );
+    expect(await app.ctx.db.get('questionVersions', secondVersion!.id)).toEqual(secondVersion);
+    expect(await app.ctx.db.list('questionVersions')).toHaveLength(3);
+    expect(await app.ctx.db.get('attempts', attempt.id)).toEqual(frozenAttempt);
+    expect(await app.ctx.db.get('assessments', assessment.id)).toEqual(assessment);
+    const agentView = await app.inject({
+      method: 'GET',
+      url: `/api/v1/agent/attempts/${attempt.id}`,
+      headers: agent,
+    });
+    expect(agentView.statusCode).toBe(200);
+    expect(agentView.json().data).toEqual(frozenAttempt);
+    const next = await app.inject({
+      method: 'POST',
+      url: `/api/v1/assessments/${assessment.id}/attempts`,
+      headers: learner,
+      payload: {},
+    });
+    expect(next.statusCode).toBe(201);
+    const nextAttempt = await app.ctx.db.get('attempts', next.json().data.id);
+    expect(nextAttempt?.items[0]).toMatchObject({
+      questionVersion: 1,
+      definition: ruleDefinition,
+      maxScore: '10.00',
+    });
+  });
+});
+
 describe('learning HTTP closed loop', () => {
   it('rejects nested client facts and preserves historical retry scores', async () => {
     const { app, agent, learner, createTopic } = await setup();

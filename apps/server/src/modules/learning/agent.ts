@@ -23,6 +23,7 @@ import {
   params,
   positiveInteger,
   query,
+  rejectClientFacts,
   requiredString,
   type JsonObject,
 } from './common.js';
@@ -367,6 +368,7 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
   app.post(`${API_PREFIX}/agent/topics/:id/questions/batch`, async (request, reply) => {
     const actor = await ctx.requireAgent(request, 'content:write');
     const input = body(request);
+    rejectClientFacts(input);
     const rawItems = input.items;
     assert(
       Array.isArray(rawItems) && rawItems.length > 0 && rawItems.length <= 100,
@@ -429,6 +431,7 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
   app.patch(`${API_PREFIX}/agent/questions/:id`, async (request) => {
     const actor = await ctx.requireAgent(request, 'content:write');
     const input = body(request);
+    rejectClientFacts(input);
     const revision = expectedRevision(input);
     const saved = await ctx.db.transaction(async (tx) => {
       const question = await owned(tx, 'questions', params(request).id, actor.userId);
