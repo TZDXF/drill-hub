@@ -18,6 +18,10 @@ export interface ServerConfig {
   encryptionKey: string;
   production: boolean;
   publicUrl?: string;
+  corsOrigins: string[];
+  trustedProxies: string[];
+  allowPrivateModelUrls: boolean;
+  accessLogRetentionDays: number;
 }
 export interface GradingService {
   gradeLockedItem(db: Database, attempt: Attempt, item: AttemptItemSnapshot): Promise<void>;

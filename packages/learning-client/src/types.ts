@@ -9,6 +9,7 @@ import type {
   QuestionType,
   Scope,
   UserView,
+  WrongQuestionPracticeInput,
 } from '@drill-hub/contracts';
 import { localizedRecord, translate } from './utils';
 
@@ -158,12 +159,6 @@ export function asAttemptView(value: AttemptView | { attempt: AttemptView }): At
   return 'attempt' in value ? value.attempt : value;
 }
 
-export function wrongPracticeRequest(detail: WrongQuestionDetailView) {
-  const snapshot = detail.attempts
-    ?.flatMap((attempt) => attempt.items)
-    .find((item) => item.questionId === detail.questionId && typeof item.maxScore === 'string');
-  if (!snapshot) {
-    throw new Error(translate('core.wrongPractice.missingScore'));
-  }
-  return { items: [{ questionId: detail.questionId, maxScore: snapshot.maxScore }] };
+export function wrongPracticeRequest(detail: WrongQuestionDetailView): WrongQuestionPracticeInput {
+  return { items: [{ questionId: detail.questionId }] };
 }

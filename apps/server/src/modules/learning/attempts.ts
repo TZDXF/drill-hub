@@ -420,15 +420,14 @@ export async function submitAttempt(
 
 interface WrongPracticeInputItem {
   questionId: string;
-  maxScore?: string;
 }
 
 function wrongPracticeItems(input: JsonObject): WrongPracticeInputItem[] {
   const seen = new Set<string>();
-  const add = (questionId: string, maxScore?: string) => {
+  const add = (questionId: string) => {
     assert(!seen.has(questionId), 'DUPLICATE_QUESTION', '同一次重练不能重复题目');
     seen.add(questionId);
-    return { questionId, maxScore };
+    return { questionId };
   };
   if (input.questionId !== undefined) {
     assert(input.items === undefined, 'INVALID_ITEMS', 'questionId 与 items 不能同时提供');
@@ -441,12 +440,13 @@ function wrongPracticeItems(input: JsonObject): WrongPracticeInputItem[] {
   );
   return input.items.map((raw) => {
     assert(isRecord(raw), 'INVALID_ITEM', '重练题目格式无效');
+    rejectClientFacts(raw);
     assert(
-      raw.maxScore === undefined || typeof raw.maxScore === 'string',
-      'INVALID_SCORE',
-      'maxScore 必须是十进制字符串',
+      Object.keys(raw).every((key) => key === 'questionId'),
+      'INVALID_ITEM',
+      '重练题目仅接受 questionId',
     );
-    return add(requiredString(raw, 'questionId', 128), raw.maxScore as string | undefined);
+    return add(requiredString(raw, 'questionId', 128));
   });
 }
 
@@ -456,6 +456,11 @@ export async function startWrongQuestionPractice(
   input: JsonObject,
 ): Promise<Attempt> {
   rejectClientFacts(input);
+  assert(
+    Object.keys(input).every((key) => ['questionId', 'items', 'title', 'purpose'].includes(key)),
+    'INVALID_FIELD',
+    '重练包含不允许的字段',
+  );
   const purpose = attemptPurpose(input);
   const requested = wrongPracticeItems(input);
   assert(
@@ -518,13 +523,8 @@ export async function startWrongQuestionPractice(
         .sort((left, right) =>
           (right.lockedAt ?? '').localeCompare(left.lockedAt ?? ''),
         )[0]?.maxScore;
-      const maxScore = requestedItem.maxScore ?? historicalScore;
-      assert(
-        maxScore,
-        'PRACTICE_SCORE_REQUIRED',
-        '无法从历史作答确定重练分值，请显式提供 maxScore',
-        422,
-      );
+      const maxScore = historicalScore;
+      assert(maxScore, 'PRACTICE_SCORE_REQUIRED', '无法从历史作答确定重练分值', 422);
       validateScoringConfiguration(version.definition, maxScore);
       items.push(snapshot(question.id, question.version, version.definition, maxScore));
     }

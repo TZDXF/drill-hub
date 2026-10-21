@@ -59,6 +59,11 @@ async function normalizeAssessmentItems(
   const result: AssessmentItem[] = [];
   for (const raw of input) {
     assert(isRecord(raw), 'INVALID_ITEM', '试卷题目格式无效');
+    assert(
+      Object.keys(raw).every((key) => ['questionId', 'questionVersion', 'maxScore'].includes(key)),
+      'INVALID_ITEM',
+      '试卷题目包含不允许的字段',
+    );
     const questionId = requiredString(raw, 'questionId', 128);
     assert(!seen.has(questionId), 'DUPLICATE_QUESTION', '同一试卷不能重复题目');
     seen.add(questionId);

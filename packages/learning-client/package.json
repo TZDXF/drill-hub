@@ -23,7 +23,7 @@
     "@stream-markdown/math": "2.1.0",
     "@stream-markdown/mermaid": "2.1.0",
     "@vueuse/core": "15.0.0",
-    "katex": "0.17.0",
+    "katex": "0.18.2",
     "reka-ui": "2.11.0",
     "vue": "3.5.44",
     "vue-i18n": "11.4.16",

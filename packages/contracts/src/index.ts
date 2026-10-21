@@ -176,6 +176,14 @@ export interface Assessment extends BaseRecord {
   items: AssessmentItem[];
   archivedAt: string | null;
 }
+/** Learners cannot configure scores; retry maxScore comes from a frozen historical item. */
+export type WrongQuestionPracticeInput = {
+  title?: string;
+  purpose?: Attempt['purpose'];
+} & (
+  | { questionId: string; items?: never }
+  | { items: { questionId: string }[]; questionId?: never }
+);
 export interface AnswerLinkCreated {
   purpose: Attempt['purpose'];
   /** Resolved single task: explicit or uniquely matched for learning; null means unassociated. */

@@ -116,6 +116,77 @@ async function createAssessment(
 }
 
 describe('learning HTTP closed loop', () => {
+  it('rejects nested client facts and preserves historical retry scores', async () => {
+    const { app, agent, learner, createTopic } = await setup();
+    const topic = await createTopic();
+    const question = await createQuestion(app, agent, topic.id);
+    const assessment = await createAssessment(app, agent, topic.id, question.questionId);
+    const start = await app.inject({
+      method: 'POST',
+      url: `/api/v1/assessments/${assessment.id}/attempts`,
+      headers: learner,
+      payload: {},
+    });
+    const attempt = start.json().data;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/attempts/${attempt.id}/answers/${attempt.items[0].id}`,
+      headers: learner,
+      payload: { expectedRevision: 0, answer: { value: false } },
+    });
+    expect(saved.statusCode).toBe(200);
+    const submitted = await app.inject({
+      method: 'POST',
+      url: `/api/v1/attempts/${attempt.id}/submit`,
+      headers: learner,
+      payload: {},
+    });
+    expect(submitted.statusCode).toBe(200);
+    const count = (await app.ctx.db.list('attempts')).length;
+    for (const field of ['maxScore', 'score', 'correct', 'submittedAt', 'ownerId', 'grade']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/wrong-question-practices',
+        headers: learner,
+        payload: { items: [{ questionId: question.questionId, [field]: '1000000.00' }] },
+      });
+      expect(response.statusCode).toBe(422);
+      expect((await app.ctx.db.list('attempts')).length).toBe(count);
+    }
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/api/v1/wrong-question-practices',
+      headers: learner,
+      payload: { items: [{ questionId: question.questionId }] },
+    });
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json().data.items[0].maxScore).toBe('10.00');
+    const forgedAssessment = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent/topics/${topic.id}/assessments`,
+      headers: agent,
+      payload: {
+        kind: 'exam',
+        title: '伪造',
+        items: [
+          {
+            questionId: question.questionId,
+            questionVersion: 1,
+            maxScore: '10.00',
+            score: '10.00',
+          },
+        ],
+      },
+    });
+    expect(forgedAssessment.statusCode).toBe(422);
+    const forgedQuestion = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent/topics/${topic.id}/questions/batch`,
+      headers: agent,
+      payload: { items: [{ ...ruleDefinition, score: '10.00' }] },
+    });
+    expect(forgedQuestion.statusCode).toBe(422);
+  });
   it('creates real resources and never leaks rule answers before exam submission', async () => {
     const { app, agent, learner, otherLearner, createTopic } = await setup();
     const topic = await createTopic();

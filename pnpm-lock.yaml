@@ -162,6 +162,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  katex: 0.18.2
+
 importers:
 
   .:
@@ -255,8 +258,11 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
       typeorm:
-        specifier: 0.3.28
-        version: 0.3.28(better-sqlite3@12.4.1)
+        specifier: 0.3.31
+        version: 0.3.31(better-sqlite3@12.4.1)
+      undici:
+        specifier: 7.30.1
+        version: 7.30.1
     devDependencies:
       '@types/better-sqlite3':
         specifier: 9.6.0
@@ -334,8 +340,8 @@ importers:
         specifier: 15.0.0
         version: 15.0.0(vue@3.5.44(typescript@5.9.3))
       katex:
-        specifier: 0.17.0
-        version: 0.17.0
+        specifier: 0.18.2
+        version: 0.18.2
       reka-ui:
         specifier: 2.11.0
         version: 2.11.0(vue@3.5.44(typescript@5.9.3))
@@ -350,7 +356,7 @@ importers:
         version: 4.6.4(vue@3.5.44(typescript@5.9.3))
       vue-stream-markdown:
         specifier: 2.1.0
-        version: 2.1.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(markdown-it@15.0.3)(shiki@4.5.0)(vue@3.5.44(typescript@5.9.3))
+        version: 2.1.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(markdown-it@15.0.3)(shiki@4.5.0)(vue@3.5.44(typescript@5.9.3))
     devDependencies:
       tailwindcss:
         specifier: 4.3.3
@@ -2434,12 +2440,8 @@ packages:
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
-  katex@0.16.47:
-    resolution: {integrity: sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==}
-    hasBin: true
-
-  katex@0.17.0:
-    resolution: {integrity: sha512-Vdw0ATsQ9V+LuegM/BTwQqV/6cTl5lbGcIrU+BCgLxyf6bo38ybOr372tuSIxir3CN720flu1meYR6XzNMwQnw==}
+  katex@0.18.2:
+    resolution: {integrity: sha512-3snve4y0SXTMequLim1FMiPvLGElySam0blN5xQZBqEY3lOJz1TnuaaiugnBZBqHzlSAGmFTYL7MCQkORuLKCA==}
     hasBin: true
 
   khroma@2.1.0:
@@ -3209,8 +3211,8 @@ packages:
     resolution: {integrity: sha512-r+7YvGfM5TkTiDQ5EqWi/Z4L4KP3jUI+YCmTtWg1tmTHUw6xladLJqzR2heMaHBIM0TTFLZmn/EkIaEHYs/bIA==}
     engines: {node: '>= 0.4'}
 
-  typeorm@0.3.28:
-    resolution: {integrity: sha512-6GH7wXhtfq2D33ZuRXYwIsl/qM5685WZcODZb7noOOcRMteM9KF2x2ap3H0EBjnSV0VO4gNAfJT5Ukp0PkOlvg==}
+  typeorm@0.3.31:
+    resolution: {integrity: sha512-6u9EFtdLBgHjnPm78NStVeM+I/1MolTzKykDDcydzKUkh6E++YS6XViU/fePJbvDvEGU4Xq34KOM/CLeer9I2A==}
     engines: {node: '>=16.13.0'}
     hasBin: true
     peerDependencies:
@@ -3221,13 +3223,13 @@ packages:
       mongodb: ^5.8.0 || ^6.0.0
       mssql: ^9.1.1 || ^10.0.0 || ^11.0.0 || ^12.0.0
       mysql2: ^2.2.5 || ^3.0.1
-      oracledb: ^6.3.0
+      oracledb: ^6.3.0 || ^7.0.0
       pg: ^8.5.1
       pg-native: ^3.0.0
       pg-query-stream: ^4.0.0
       redis: ^3.1.1 || ^4.0.0 || ^5.0.14
       sql.js: ^1.4.0
-      sqlite3: ^5.0.3
+      sqlite3: ^5.0.3 || ^6.0.0
       ts-node: ^10.7.0
       typeorm-aurora-data-api-driver: ^2.0.0 || ^3.0.0
     peerDependenciesMeta:
@@ -3284,6 +3286,10 @@ packages:
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
+    engines: {node: '>=20.18.1'}
 
   unist-util-is@6.0.1:
     resolution: {integrity: sha512-LsiILbtBETkDz8I9p1dQ0uyRUWuaQzd/cuEeS1hoRSyW5E5XGmTzlwY1OrNzzakGowI9Dr/I8HVaw4hTtnxy8g==}
@@ -3770,10 +3776,10 @@ snapshots:
 
   '@markmend/core@2.1.0': {}
 
-  '@markmend/parser@2.1.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(markdown-it@15.0.3)(shiki@4.5.0)':
+  '@markmend/parser@2.1.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(markdown-it@15.0.3)(shiki@4.5.0)':
     dependencies:
       '@markmend/core': 2.1.0
-      comark: 0.7.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(shiki@4.5.0)
+      comark: 0.7.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(shiki@4.5.0)
       markdown-it-cjk-friendly: 3.0.0(markdown-it@15.0.3)
     transitivePeerDependencies:
       - '@types/markdown-it'
@@ -4028,8 +4034,8 @@ snapshots:
   '@stream-markdown/math@2.1.0(beautiful-mermaid@1.1.3)(shiki@4.5.0)':
     dependencies:
       '@stream-markdown/core': 2.1.0
-      comark: 0.7.0(beautiful-mermaid@1.1.3)(katex@0.16.47)(shiki@4.5.0)
-      katex: 0.16.47
+      comark: 0.7.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(shiki@4.5.0)
+      katex: 0.18.2
     transitivePeerDependencies:
       - beautiful-mermaid
       - rangi
@@ -4612,7 +4618,7 @@ snapshots:
 
   color-name@1.1.4: {}
 
-  comark@0.7.0(beautiful-mermaid@1.1.3)(katex@0.16.47)(shiki@4.5.0):
+  comark@0.7.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(shiki@4.5.0):
     dependencies:
       entities: 8.1.0
       htmlparser2: 12.0.0
@@ -4620,18 +4626,7 @@ snapshots:
       markdown-exit: 1.1.0-beta.2
     optionalDependencies:
       beautiful-mermaid: 1.1.3
-      katex: 0.16.47
-      shiki: 4.5.0
-
-  comark@0.7.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(shiki@4.5.0):
-    dependencies:
-      entities: 8.1.0
-      htmlparser2: 12.0.0
-      js-yaml: 5.5.0
-      markdown-exit: 1.1.0-beta.2
-    optionalDependencies:
-      beautiful-mermaid: 1.1.3
-      katex: 0.17.0
+      katex: 0.18.2
       shiki: 4.5.0
 
   comlink@4.4.2: {}
@@ -5498,11 +5493,7 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
-  katex@0.16.47:
-    dependencies:
-      commander: 8.3.0
-
-  katex@0.17.0:
+  katex@0.18.2:
     dependencies:
       commander: 8.3.0
 
@@ -5708,7 +5699,7 @@ snapshots:
       dompurify: 3.4.17
       es-toolkit: 1.52.0
       fastdom: 1.0.12
-      katex: 0.16.47
+      katex: 0.18.2
       khroma: 2.1.0
       marked: 16.4.2
       roughjs: 4.6.6
@@ -6367,7 +6358,7 @@ snapshots:
       typed-array-buffer: 1.0.3
       typed-array-byte-offset: 1.0.5
 
-  typeorm@0.3.28(better-sqlite3@12.4.1):
+  typeorm@0.3.31(better-sqlite3@12.4.1):
     dependencies:
       '@sqltools/formatter': 1.2.5
       ansis: 4.4.0
@@ -6406,6 +6397,8 @@ snapshots:
       which-boxed-primitive: 1.1.1
 
   undici-types@7.16.0: {}
+
+  undici@7.30.1: {}
 
   unist-util-is@6.0.1:
     dependencies:
@@ -6499,10 +6492,10 @@ snapshots:
       '@vue/devtools-api': 6.6.4
       vue: 3.5.44(typescript@5.9.3)
 
-  vue-stream-markdown@2.1.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(markdown-it@15.0.3)(shiki@4.5.0)(vue@3.5.44(typescript@5.9.3)):
+  vue-stream-markdown@2.1.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(markdown-it@15.0.3)(shiki@4.5.0)(vue@3.5.44(typescript@5.9.3)):
     dependencies:
       '@floating-ui/dom': 1.8.0
-      '@markmend/parser': 2.1.0(beautiful-mermaid@1.1.3)(katex@0.17.0)(markdown-it@15.0.3)(shiki@4.5.0)
+      '@markmend/parser': 2.1.0(beautiful-mermaid@1.1.3)(katex@0.18.2)(markdown-it@15.0.3)(shiki@4.5.0)
       '@stream-markdown/core': 2.1.0
       '@vueuse/core': 15.0.0(vue@3.5.44(typescript@5.9.3))
       vue: 3.5.44(typescript@5.9.3)

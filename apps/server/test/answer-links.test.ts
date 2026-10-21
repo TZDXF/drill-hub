@@ -20,11 +20,11 @@ const definition: QuestionDefinition = {
   explanation: '事务作为整体提交或回滚',
 };
 
-async function setup() {
+async function setup(publicUrl = 'https://study.example.test') {
   const app = await createApp({
     databasePath: ':memory:',
     encryptionKey: 'cd'.repeat(32),
-    publicUrl: 'https://study.example.test',
+    publicUrl,
     startWorkers: false,
   });
   apps.push(app);
@@ -110,6 +110,29 @@ async function setup() {
 }
 
 describe('temporary public answer links', () => {
+  it('rejects poisoned external Host before persisting a credential link', async () => {
+    const { app, agent, assessment } = await setup('');
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent/assessments/${assessment.id}/answer-links`,
+      headers: { ...agent, host: 'attacker.example' },
+      payload: {},
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe('PUBLIC_URL_UNAVAILABLE');
+    expect(await app.ctx.db.list('answerLinks')).toHaveLength(0);
+  });
+  it('ignores poisoned Host when an explicit deployment URL is configured', async () => {
+    const { app, agent, assessment } = await setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agent/assessments/${assessment.id}/answer-links`,
+      headers: { ...agent, host: 'attacker.example' },
+      payload: {},
+    });
+    expect(response.statusCode).toBe(201);
+    expect(new URL(response.json().data.answerUrl).origin).toBe('https://study.example.test');
+  });
   it('attributes link submissions to owner history and personal learning projections', async () => {
     const { app, user, learner, agent, assessment, createLink } = await setup();
     const created = await createLink();

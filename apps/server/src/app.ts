@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { API_VERSION, APP_VERSION } from '@drill-hub/contracts';
 import { Database } from './db/database.js';
 import { loadConfig } from './core/config.js';
+import { isTrustedOrigin } from './core/origins.js';
 import { SecretVault } from './core/security.js';
 import { AppError } from './core/errors.js';
 import { normalizePublicBaseUrl, resolvePublicUrl } from './core/public-url.js';
@@ -29,22 +30,47 @@ export interface CreateAppOptions extends Partial<ServerConfig> {
 }
 export async function createApp(options: CreateAppOptions = {}) {
   const config = await loadConfig(options);
-  if (config.publicUrl?.trim()) config.publicUrl = normalizePublicBaseUrl(config.publicUrl);
+  config.publicUrl = config.publicUrl?.trim()
+    ? normalizePublicBaseUrl(config.publicUrl)
+    : undefined;
   const db = await Database.open(config.databasePath);
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: 1024 * 1024,
     requestTimeout: 30000,
-    trustProxy: false,
+    trustProxy: config.trustedProxies.length ? config.trustedProxies : false,
     requestIdHeader: false,
     genReqId: id,
   });
   await app.register(cookie);
-  await app.register(cors, {
-    credentials: true,
-    origin: true,
-  });
   await app.register(rateLimit, { max: 1200, timeWindow: '1 minute' });
+  app.addHook('onRequest', async (request) => {
+    if (!request.url.startsWith('/api/')) return;
+    const origin = request.headers.origin;
+    if (origin && !isTrustedOrigin(origin, request, config)) {
+      throw new AppError(403, 'ORIGIN_FORBIDDEN', '请求来源不在允许列表中');
+    }
+    if (!origin && request.headers.referer) {
+      let refererOrigin = '';
+      try {
+        refererOrigin = new URL(request.headers.referer).origin;
+      } catch {}
+      if (!isTrustedOrigin(refererOrigin, request, config)) {
+        throw new AppError(403, 'ORIGIN_FORBIDDEN', '请求来源不在允许列表中');
+      }
+    }
+  });
+  await app.register(cors, {
+    delegator: async (request: FastifyRequest) => ({
+      credentials: true,
+      origin:
+        request.headers.origin && isTrustedOrigin(request.headers.origin, request, config)
+          ? request.headers.origin
+          : false,
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Answer-Link-Token'],
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    }),
+  });
   let settings = await db.get('settings', 'global');
   if (!settings)
     settings = await db.insert('settings', {
@@ -171,31 +197,46 @@ export async function createApp(options: CreateAppOptions = {}) {
     '.zip': 'application/zip',
     '.woff2': 'font/woff2',
   };
-  app.setNotFoundHandler(async (request, reply) => {
-    const pathname = new URL(request.raw.url ?? '/', 'http://localhost').pathname;
-    if (request.method === 'GET' && !pathname.startsWith('/api/')) {
-      try {
-        const decoded = decodeURIComponent(pathname);
-        const target = resolve(webDist, '.' + decoded);
-        if (
-          (target === resolve(webDist) || target.startsWith(resolve(webDist) + sep)) &&
-          !decoded.includes('\\') &&
-          !decoded.includes('\0')
-        ) {
-          const candidate = extname(target) ? target : resolve(webDist, 'index.html');
-          const info = await stat(candidate);
-          if (info.isFile()) {
-            const extension = extname(candidate);
-            if (extension === '.zip') reply.header('Content-Disposition', 'attachment');
-            return reply
-              .type(mime[extension] ?? 'application/octet-stream')
-              .send(await readFile(candidate));
+  const limitApiNotFound = app.rateLimit();
+  app.setNotFoundHandler(
+    {
+      preHandler: async (request: FastifyRequest, reply: FastifyReply) => {
+        if (request.url.startsWith('/api/')) await limitApiNotFound.call(app, request, reply);
+      },
+    },
+    async (request, reply) => {
+      const pathname = new URL(request.raw.url ?? '/', 'http://localhost').pathname;
+      if (request.method === 'GET' && !pathname.startsWith('/api/')) {
+        try {
+          const decoded = decodeURIComponent(pathname);
+          const target = resolve(webDist, '.' + decoded);
+          if (
+            (target === resolve(webDist) || target.startsWith(resolve(webDist) + sep)) &&
+            !decoded.includes('\\') &&
+            !decoded.includes('\0')
+          ) {
+            const candidate = extname(target) ? target : resolve(webDist, 'index.html');
+            const info = await stat(candidate);
+            if (info.isFile()) {
+              const extension = extname(candidate);
+              if (extension === '.zip') reply.header('Content-Disposition', 'attachment');
+              return reply
+                .type(mime[extension] ?? 'application/octet-stream')
+                .send(await readFile(candidate));
+            }
           }
-        }
-      } catch {}
-    }
-    return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '页面或接口不存在' } });
-  });
+        } catch {}
+      }
+      return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '页面或接口不存在' } });
+    },
+  );
+  await db.pruneAccessLogs(config.accessLogRetentionDays);
+  const logRetentionTimer = setInterval(() => {
+    void db
+      .pruneAccessLogs(config.accessLogRetentionDays)
+      .catch(() => app.log.error('访问日志清理失败'));
+  }, 3600000);
+  logRetentionTimer.unref();
   let expirationTimer: ReturnType<typeof setInterval> | undefined;
   if (options.startWorkers !== false) {
     ctx.grading.start();
@@ -206,6 +247,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     await expireAttempts(ctx);
   }
   app.addHook('onClose', async () => {
+    clearInterval(logRetentionTimer);
     if (expirationTimer) clearInterval(expirationTimer);
     ctx.grading.stop();
     await db.close();

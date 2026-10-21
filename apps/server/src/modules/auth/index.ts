@@ -217,14 +217,32 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     return { data: { user: userView(user), accessToken: raw, refreshToken } };
   }
   const loginRateLimitMax = Number(process.env.E2E_LOGIN_RATE_LIMIT_MAX ?? 10);
+  const loginFloodLimit = app.createRateLimit();
+  const limitLoginFlood = async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await loginFloodLimit(request);
+    if (!result.isAllowed && result.isExceeded) {
+      reply.header('Retry-After', result.ttlInSeconds);
+      throw new AppError(429, 'RATE_LIMITED', '请求过于频繁，请稍后重试');
+    }
+  };
+  const loginRateLimit = {
+    max: loginRateLimitMax,
+    timeWindow: '1 minute',
+    hook: 'preHandler' as const,
+    keyGenerator: (request: FastifyRequest) => {
+      const raw = request.body as Record<string, unknown> | null;
+      const username = typeof raw?.username === 'string' ? raw.username.trim().slice(0, 64) : '';
+      return JSON.stringify([request.ip, username]);
+    },
+  };
   app.post(
     '/api/v1/auth/web/login',
-    { config: { rateLimit: { max: loginRateLimitMax, timeWindow: '1 minute' } } },
+    { onRequest: limitLoginFlood, config: { rateLimit: loginRateLimit } },
     (req, reply) => login(req, reply, 'web'),
   );
   app.post(
     '/api/v1/auth/mobile/login',
-    { config: { rateLimit: { max: loginRateLimitMax, timeWindow: '1 minute' } } },
+    { onRequest: limitLoginFlood, config: { rateLimit: loginRateLimit } },
     (req, reply) => login(req, reply, 'mobile'),
   );
   app.post('/api/v1/auth/mobile/refresh', async (request) => {

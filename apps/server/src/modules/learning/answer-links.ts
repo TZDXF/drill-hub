@@ -127,6 +127,7 @@ export function registerAnswerLinkRoutes(app: FastifyInstance, ctx: AppContext):
       'taskId 无效',
     );
     const ttl = linkTtl(input, assessment.durationSeconds);
+    const base = resolvePublicUrl(request, ctx.config.publicUrl).publicBaseUrl;
     const token = randomSecret();
     const link = await ctx.db.transaction(async (tx) => {
       const taskId = await resolveAssessmentTaskId(
@@ -158,7 +159,6 @@ export function registerAnswerLinkRoutes(app: FastifyInstance, ctx: AppContext):
       );
       return link;
     });
-    const base = resolvePublicUrl(request, ctx.config.publicUrl).publicBaseUrl;
     const created: AnswerLinkCreated = {
       id: link.id,
       purpose: link.purpose,

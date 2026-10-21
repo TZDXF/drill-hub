@@ -31,7 +31,7 @@ export function normalizePublicBaseUrl(value: string): string {
   }
 }
 
-function isLoopbackUrl(baseUrl: string): boolean {
+export function isLoopbackUrl(baseUrl: string): boolean {
   const hostname = new URL(baseUrl).hostname.toLowerCase().replace(/\.$/, '');
   return (
     hostname === 'localhost' ||
@@ -54,6 +54,8 @@ export function resolvePublicUrl(request: PublicUrlRequest, configuredUrl?: stri
         throw new Error('Invalid request origin');
       }
       publicBaseUrl = normalizePublicBaseUrl(`${request.protocol}://${host}`);
+      if (!isLoopbackUrl(publicBaseUrl))
+        throw new Error('PUBLIC_URL required for non-loopback hosts');
     } catch {
       throw new AppError(
         503,

@@ -45,6 +45,15 @@ export function registerAccessLogging(app: FastifyInstance, ctx: AppContext): vo
       ? request.routeOptions.url
       : '/api/[unmatched]';
     const actor = request.auditActor;
+    // Anonymous scans and rejected floods must not amplify persistent writes.
+    if (
+      !actor &&
+      (route === '/api/[unmatched]' ||
+        reply.statusCode === 429 ||
+        reply.statusCode === 403 ||
+        request.method === 'OPTIONS')
+    )
+      return;
     const channel = request.method === 'POST' ? loginRoutes.get(route) : undefined;
     try {
       await ctx.db.transaction(async (db) => {

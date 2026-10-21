@@ -679,16 +679,16 @@ describe('accounts, sessions and scope boundaries', () => {
       ).statusCode,
     ).toBe(409);
   });
-  it('accepts arbitrary browser origins for web login', async () => {
+  it('rejects arbitrary browser origins for web login', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/web/login',
       headers: { origin: 'https://untrusted.invalid' },
       payload: { username: ADMIN, password: PASSWORD },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(403);
   });
-  it('allows cross-origin web writes when CSRF is valid', async () => {
+  it('rejects untrusted cross-origin web writes even when CSRF is valid', async () => {
     const session = await login();
     const current = await app.inject({ url: '/api/v1/me', headers: session.headers });
     const response = await app.inject({
@@ -700,24 +700,24 @@ describe('accounts, sessions and scope boundaries', () => {
         displayName: '跨域写入测试',
       },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(403);
   });
-  it('accepts LAN development origins forwarded through the Vite proxy', async () => {
+  it('rejects unconfigured LAN origins even through a proxy', async () => {
     const origin = 'http://192.168.1.20:5173';
     const preflight = await app.inject({
       method: 'OPTIONS',
       url: '/api/v1/auth/web/login',
       headers: { origin, 'access-control-request-method': 'POST' },
     });
-    expect(preflight.statusCode).toBe(204);
-    expect(preflight.headers['access-control-allow-origin']).toBe(origin);
+    expect(preflight.statusCode).toBe(403);
+    expect(preflight.headers['access-control-allow-origin']).toBeUndefined();
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/web/login',
       headers: { origin, host: '127.0.0.1:3000' },
       payload: { username: ADMIN, password: PASSWORD },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(403);
   });
   it('encrypts model secrets with authenticated encryption', () => {
     const vault = new SecretVault('a'.repeat(64));

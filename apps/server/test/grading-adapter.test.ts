@@ -99,10 +99,12 @@ describe('chat_completions adapter', () => {
     expect(result.criteria).toHaveLength(1);
   });
 
-  it('accepts private, loopback and plain HTTP provider addresses', async () => {
+  it('accepts private provider addresses only with explicit opt-in', async () => {
     const fake = vi.fn<typeof fetch>(async () => completion(validContent()));
     await expect(
-      callChatCompletions(input(fake, { baseUrl: 'http://127.0.0.1:11434/v1/' })),
+      callChatCompletions(
+        input(fake, { baseUrl: 'http://127.0.0.1:11434/v1/', allowPrivateUrls: true }),
+      ),
     ).resolves.toMatchObject({ modelId: 'provider-model-id' });
     expect(fake).toHaveBeenCalledOnce();
     expect(normalizeProviderBaseUrl('http://localhost:1234/v1/')).toBe('http://localhost:1234/v1');

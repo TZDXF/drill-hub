@@ -220,10 +220,12 @@ export const schemas = Object.entries(definitions).map(
           },
         ]),
       ) as never,
-      indices: (uniqueIndexes[name as TableName] ?? []).map((columns) => ({
-        columns,
-        unique: true,
-      })),
+      indices: [
+        ...(uniqueIndexes[name as TableName] ?? []).map((columns) => ({ columns, unique: true })),
+        ...(['auditLogs', 'apiLogs', 'loginLogs'].includes(name)
+          ? [{ name: 'ix_' + name + '_date_id', columns: ['createdAt', 'id'] }]
+          : []),
+      ],
     }),
 );
 export class InitialSchema1792195200000 implements MigrationInterface {

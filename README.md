@@ -52,7 +52,7 @@ pnpm dev
 
 - 本机 Web 开发入口：`http://127.0.0.1:3000`。`pnpm dev` 会监听 Web 源码并在变化后自动重建，页面随后自动刷新。
 - 局域网 Web 入口：`http://<开发机局域网 IP>:3000`。开发环境默认监听 `0.0.0.0:3000`，同一局域网内的浏览器可直接访问；首次启动时如有需要，请在系统防火墙中允许 Node.js 的专用网络访问。
-- 服务端同时提供 Web 开发产物和 `/api/v1` 接口，允许所有来源的跨域访问；Web 写操作仍需要 CSRF 校验。
+- 服务端同时提供 Web 开发产物和 `/api/v1` 接口，仅允许显式白名单来源的跨域访问；Web 写操作仍需要 CSRF 校验。
 - 默认数据库：仓库根 `.data/drill-hub.sqlite`，自动执行显式 TypeORM 迁移，不使用 `synchronize`。
 - 开发时未设置主密钥，会在 `.data/dev-encryption-key` 创建本地主密钥；不要将 `.data` 或 `.env` 提交到版本控制。
 - 局域网开发仅用于可信网络。不要将开发服务器暴露到公网；如需仅本机访问，将 `.env` 中的 `HOST` 改为 `127.0.0.1`。
@@ -71,17 +71,25 @@ pnpm --filter @drill-hub/server start
 
 主要环境项：
 
-| 变量                       | 作用                                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------------- |
-| `HOST` / `PORT`            | 开发默认 `0.0.0.0:3000`，生产默认 `127.0.0.1:3000`；按局域网或反向代理拓扑调整                    |
-| `DATABASE_PATH`            | SQLite 数据库路径，默认 `.data/drill-hub.sqlite`                                                  |
-| `NODE_ENV`                 | 生产设置为 `production`，会要求显式主密钥；HTTPS 部署使用 Secure Cookie                           |
-| `PUBLIC_URL`               | 公开 HTTP/HTTPS 地址，用于 Secure Cookie 判断和生成完整答题链接，例如 `https://study.example.org` |
-| `DRILL_HUB_ENCRYPTION_KEY` | 64 位十六进制主密钥，生产必须设置并妥善备份                                                       |
+| 变量                        | 作用                                                                                                                                                                             |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HOST` / `PORT`             | 开发默认 `0.0.0.0:3000`，生产默认 `127.0.0.1:3000`；按局域网或反向代理拓扑调整                                                                                                   |
+| `DATABASE_PATH`             | SQLite 数据库路径，默认 `.data/drill-hub.sqlite`                                                                                                                                 |
+| `NODE_ENV`                  | 生产设置为 `production`，会要求显式主密钥；HTTPS 部署使用 Secure Cookie                                                                                                          |
+| `PUBLIC_URL`                | 公开 HTTP/HTTPS 地址，用于 Secure Cookie 判断和生成完整答题链接，例如 `https://study.example.org`                                                                                |
+| `CORS_ORIGINS`              | 逗号分隔的精确来源（scheme+host+port）；自动允许 `PUBLIC_URL` 的 origin，拒绝 `null` 和通配符。生产默认无额外来源；开发默认允许 `http://localhost:5173`、`http://127.0.0.1:5173` |
+| `TRUSTED_PROXIES`           | 逗号分隔的可信代理 IP/CIDR，默认不信任转发头；仅填写实际代理地址，禁止全网 CIDR                                                                                                  |
+| `ALLOW_PRIVATE_MODEL_URLS`  | 默认 `false`；仅可信自建内网模型部署可显式设置 `true`，这会关闭模型地址隔离，但仍禁止重定向                                                                                      |
+| `ACCESS_LOG_RETENTION_DAYS` | API/登录日志保留天数，默认 7，范围 1–365；启动时及每小时清理，业务审计与评分历史不删除                                                                                           |
+| `DRILL_HUB_ENCRYPTION_KEY`  | 64 位十六进制主密钥，生产必须设置并妥善备份                                                                                                                                      |
 
 可用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成主密钥。数据库和主密钥需成对备份，丢失主密钥将无法解密已保存的供应商凭据。使用 SQLite 在线备份机制或停服备份，不要在运行时只复制主文件而忽略 WAL。
 
-评分适配器当前只支持 `chat_completions` 和内置 rubric 评分提示词；兼容端点也必须通过实际连接与模型探测，不能保证所有所谓兼容供应商都可用。生产应配合模型域名/出口网络白名单，由部署网络边界承担出站访问控制。
+评分适配器当前只支持 `chat_completions` 和内置 rubric 评分提示词；兼容端点也必须通过实际连接与模型探测，不能保证所有所谓兼容供应商都可用。服务端默认拒绝模型连接访问回环、私网、链路本地和保留地址，对实际连接使用经过校验的 DNS 结果，并禁止重定向。生产仍应配合模型域名/出口网络白名单。
+
+浏览器来源按完整 origin 精确匹配，包含端口；不要把不受信任的兄弟子域加入白名单。通过 Vite 代理访问的局域网来源也需显式列入 `CORS_ORIGINS`。Android WebView 的实际来源（例如 `http://tauri.localhost` 或 `tauri://localhost`）需按实际构建结果登记，不代表已完成真机验收。可信代理仅用于真实 IP 与协议识别，不用于派生公开地址；HTTPS 终结时设置 HTTPS 的 `PUBLIC_URL`，并限制应用端口只能由可信代理访问。
+
+匿名未匹配 API、匿名 429、拒绝的来源及预检不逐条落库，避免扫描放大磁盘写入。登录按“用户名 + 来源 IP”限流，不再让代理后的不同账号共享低阈值桶；它仍是单实例内存限流，不能代替公网网关的连接数/速率控制。
 
 ## Docker Compose 部署
 
@@ -117,8 +125,8 @@ docker compose logs -f drill-hub
 不允许凭据、查询参数或片段，非法配置会阻止服务启动，错误不会回显配置原文。
 
 `GET /api/v1/server-info` 返回 `publicBaseUrl`、`publicUrlSource`（`configured` 或 `request`）
-和 `isLoopback`。未设置或留空时，公开地址取自当前请求的协议与 Host，不信任转发头；
-反向代理后应显式设置 `PUBLIC_URL`，避免把内部地址发给 Agent。
+和 `isLoopback`。未设置或留空时，仅允许从回环 Host 派生本机地址，不信任转发头；
+局域网、公网和反向代理部署必须设置 `PUBLIC_URL`，否则返回 `503 PUBLIC_URL_UNAVAILABLE`，不会生成携带凭据的外部链接。
 
 “Agent 配置帮助”使用上述公开地址生成接入说明、环境变量和 Skill ZIP 下载链接，并在回环地址时提示。
 这不会修改浏览器或 Android 当前连接的 API 地址，也不保证该地址能从公网访问；

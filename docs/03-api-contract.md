@@ -232,3 +232,11 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 - 编辑请求必须提供 `expectedRevision`，其余字段可省略并沿用原值；返回新的配置 ID，原配置保留执行参数，已绑定任务不迁移。版本过期返回 409 `VERSION_CONFLICT`。原配置是默认项时，新版本必须继续为默认项，不能通过取消默认使系统无默认配置。
 - 编辑或设置默认前验证模型已启用、供应商已启用且模型通过当前连接版本的测试。模型列表可快速设置评分模型：存在默认配置时继承其并发/超时/重试；不存在时新建默认配置，并发为 2。
 - Worker 按任务绑定的配置限制并行调用，在数据库事务内领取任务，网络调用在事务外；不同配置分别计数，不是供应商级或全局并发配额。
+
+### 当前安全边界
+
+浏览器来源必须匹配 `PUBLIC_URL` origin 或 `CORS_ORIGINS` 精确白名单；拒绝来源返回 `403 ORIGIN_FORBIDDEN`，不返回跨源放行头。非回环部署缺少 `PUBLIC_URL` 时公开地址解析返回 `503 PUBLIC_URL_UNAVAILABLE`。
+
+`POST /wrong-question-practices` 接受 `{questionId, title?, purpose?}` 或 `{items:[{questionId}], title?, purpose?}`；满分只取历史作答快照。嵌套 `maxScore/score/correct/submittedAt/ownerId` 返回 422，不创建作答。Agent 组卷的 `items[].maxScore` 仍是明确允许的配置字段，其他未知项键被拒绝。
+
+登录按用户名与来源 IP 组合限流；可信代理只由部署者显式配置。API 与登录运行日志默认保留 7 天；匿名扫描与限流拒绝不逐条持久化，业务审计、评分和作答历史不清理。

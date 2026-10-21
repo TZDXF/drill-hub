@@ -107,7 +107,7 @@ describe('administrator audit and access logs', () => {
     }
   });
 
-  it('includes rate limited login attempts and does not trust forwarding headers', async () => {
+  it('does not persist flood rejections or trust forwarding headers', async () => {
     vi.stubEnv('E2E_LOGIN_RATE_LIMIT_MAX', '1');
     await app.close();
     app = await createApp({
@@ -125,17 +125,8 @@ describe('administrator audit and access logs', () => {
     });
     expect(response.statusCode).toBe(429);
     const rows = await app.ctx.db.list('loginLogs');
-    expect(rows).toHaveLength(2);
-    expect(rows).toContainEqual(
-      expect.objectContaining({
-        outcome: 'failed',
-        statusCode: 429,
-        errorCode: 'INVALID_REQUEST',
-        ownerId: null,
-        username: null,
-        ip: '127.0.0.1',
-      }),
-    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outcome: 'succeeded', statusCode: 200, ip: '127.0.0.1' });
   });
 
   it('stores matched route templates, status, identity and request correlation, never raw URLs or payloads', async () => {
@@ -171,9 +162,7 @@ describe('administrator audit and access logs', () => {
     });
     expect(correlated!.durationMs).toBeGreaterThanOrEqual(0);
     expect(correlated!.requestId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(rows).toContainEqual(
-      expect.objectContaining({ route: '/api/[unmatched]', statusCode: 404 }),
-    );
+    expect(rows.some((row) => row.route === '/api/[unmatched]')).toBe(false);
     expect(rows).toContainEqual(
       expect.objectContaining({ route: '/api/v1/me', statusCode: 401, channel: 'anonymous' }),
     );
@@ -185,7 +174,7 @@ describe('administrator audit and access logs', () => {
         ownerId: session.response.json().data.user.id,
       }),
     );
-    expect(rows).toContainEqual(expect.objectContaining({ method: 'OPTIONS', statusCode: 204 }));
+    expect(rows.some((row) => row.method === 'OPTIONS')).toBe(false);
     expect(rows.every((row) => row.route.startsWith('/api/'))).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(secret);
     expect(JSON.stringify(rows)).not.toContain(rawId);

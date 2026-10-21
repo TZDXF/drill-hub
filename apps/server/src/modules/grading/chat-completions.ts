@@ -1,3 +1,8 @@
+import {
+  assertProviderHost,
+  publicProviderDispatcher,
+  ProviderNetworkError,
+} from '../../core/provider-network.js';
 import type {
   Answer,
   DiscoveredProviderModel,
@@ -22,6 +27,7 @@ export class ProviderError extends Error {
 
 export interface ChatCompletionInput {
   baseUrl: string;
+  allowPrivateUrls?: boolean;
   apiKey: string;
   modelKey: string;
   definition: QuestionDefinition;
@@ -106,6 +112,7 @@ async function readLimited(response: Response, maxBytes: number): Promise<string
 
 interface ProviderRequestOptions {
   baseUrl: string;
+  allowPrivateUrls?: boolean;
   apiKey: string;
   timeoutMs: number;
   fetchImpl?: typeof fetch;
@@ -132,16 +139,21 @@ async function providerRequest(options: ProviderRequestOptions): Promise<unknown
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
     const baseUrl = normalizeProviderBaseUrl(options.baseUrl);
+    assertProviderHost(new URL(baseUrl), options.allowPrivateUrls === true);
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     if (options.apiKey) headers.Authorization = `Bearer ${options.apiKey}`;
-    const request = fetchImpl(endpointFor(baseUrl, options.resource), {
+    const requestOptions: RequestInit = {
       method: options.body === undefined ? 'GET' : 'POST',
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       redirect: 'manual',
       signal: controller.signal,
-    });
+    };
+    // Node fetch supports Undici dispatchers; DOM RequestInit does not expose that extension.
+    if (!options.allowPrivateUrls)
+      Object.assign(requestOptions, { dispatcher: publicProviderDispatcher });
+    const request = fetchImpl(endpointFor(baseUrl, options.resource), requestOptions);
     const response = await Promise.race([request, timeout]);
     if (response.status >= 300 && response.status < 400)
       throw new ProviderError('PROVIDER_REDIRECT_FORBIDDEN', false);
@@ -161,6 +173,12 @@ async function providerRequest(options: ProviderRequestOptions): Promise<unknown
       throw new ProviderError('MODEL_INVALID_JSON', true);
     }
   } catch (error) {
+    if (
+      error instanceof ProviderNetworkError ||
+      (error instanceof Error && error.cause instanceof ProviderNetworkError)
+    ) {
+      throw new ProviderError('PROVIDER_ADDRESS_FORBIDDEN', false);
+    }
     if (error instanceof ProviderError) throw error;
     if (controller.signal.aborted) throw new ProviderError('MODEL_TIMEOUT', true);
     throw new ProviderError('MODEL_NETWORK_ERROR', true);
@@ -278,6 +296,7 @@ export async function callChatCompletions(
   const body = buildChatCompletionBody(input);
   const raw = await providerRequest({
     baseUrl: input.baseUrl,
+    allowPrivateUrls: input.allowPrivateUrls,
     apiKey: input.apiKey,
     timeoutMs: input.timeoutMs,
     fetchImpl: input.fetchImpl,

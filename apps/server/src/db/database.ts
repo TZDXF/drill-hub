@@ -71,6 +71,19 @@ export class Database {
       release();
     }
   }
+  async pruneAccessLogs(retentionDays: number): Promise<void> {
+    const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    await this.locked(async () => {
+      for (const table of ['apiLogs', 'loginLogs']) {
+        await this.manager
+          .getRepository(table)
+          .createQueryBuilder()
+          .delete()
+          .where('createdAt < :cutoff', { cutoff })
+          .execute();
+      }
+    });
+  }
   async get<K extends TableName>(table: K, id: string): Promise<DatabaseTables[K] | undefined> {
     return this.findOne(table, { id } as Partial<DatabaseTables[K]>);
   }

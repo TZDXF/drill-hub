@@ -80,11 +80,11 @@ describe('public deployment URL', () => {
     'falls back to the request for empty configuration (%#)',
     (value) => {
       expect(
-        resolvePublicUrl({ protocol: 'https', headers: { host: 'study.example.org:8443' } }, value),
+        resolvePublicUrl({ protocol: 'https', headers: { host: 'localhost:8443' } }, value),
       ).toEqual({
-        publicBaseUrl: 'https://study.example.org:8443',
+        publicBaseUrl: 'https://localhost:8443',
         publicUrlSource: 'request',
-        isLoopback: false,
+        isLoopback: true,
       });
     },
   );
@@ -124,6 +124,8 @@ describe('public deployment URL', () => {
     'study.example.org#secret',
     'study.example.org\\path',
     'study.example.org:99999',
+    'attacker.example',
+    '192.168.1.20:3000',
     'study.example.org\n',
   ])('returns a stable error for an unusable request host (%#)', (host) => {
     expect(() => resolvePublicUrl({ protocol: 'http', headers: { host } })).toThrowError(
@@ -139,6 +141,15 @@ describe('public deployment URL', () => {
 });
 
 describe('GET /api/v1/server-info public URL', () => {
+  it('treats whitespace-only PUBLIC_URL as unset for browser requests too', async () => {
+    const app = await setup('   ');
+    const response = await app.inject({
+      url: '/api/v1/server-info',
+      headers: { host: 'localhost:3000', origin: 'http://localhost:3000' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.publicBaseUrl).toBe('http://localhost:3000');
+  });
   it.each(['http://public.example:8080/drill///', 'https://public.example/drill/'])(
     'advertises configured deployment %s without changing the request host',
     async (publicUrl) => {
@@ -184,7 +195,7 @@ describe('GET /api/v1/server-info public URL', () => {
 
   it('derives the advertised URL per request, not from a previous request', async () => {
     const app = await setup();
-    for (const host of ['192.168.1.20:3000', '[::1]:3000']) {
+    for (const host of ['localhost:3000', '[::1]:3000']) {
       const response = await app.inject({
         method: 'GET',
         url: '/api/v1/server-info',
@@ -194,10 +205,20 @@ describe('GET /api/v1/server-info public URL', () => {
       expect(response.json().data).toMatchObject({
         publicBaseUrl: `http://${host}`,
         publicUrlSource: 'request',
-        isLoopback: host.startsWith('['),
+        isLoopback: true,
       });
     }
   });
+
+  it.each(['attacker.example', '192.168.1.20:3000'])(
+    'rejects non-loopback Host without PUBLIC_URL (%s)',
+    async (host) => {
+      const app = await setup();
+      const response = await app.inject({ url: '/api/v1/server-info', headers: { host } });
+      expect(response.statusCode).toBe(503);
+      expect(response.json().error.code).toBe('PUBLIC_URL_UNAVAILABLE');
+    },
+  );
 
   it('returns the standard error envelope when the request host is unusable', async () => {
     const app = await setup();

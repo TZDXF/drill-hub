@@ -71,6 +71,7 @@ const CONFIG_ERROR_CODES = new Set([
   'MODEL_DISABLED',
   'STALE_MODEL_VERIFICATION',
   'SECRET_UNAVAILABLE',
+  'PROVIDER_ADDRESS_FORBIDDEN',
 ]);
 
 function decryptApiKey(ctx: AppContext, envelope: string): string {
@@ -466,6 +467,7 @@ export class GradingServiceImpl implements GradingService {
           answer: claimed.item.answer,
           pendingCriterionIds,
           timeoutMs: config.profile.timeoutMs,
+          allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
           fetchImpl: this.options.fetchImpl,
         },
         {
@@ -599,6 +601,7 @@ export class GradingServiceImpl implements GradingService {
     await testChatCompletionsConnection({
       ...input,
       timeoutMs: 15_000,
+      allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
       fetchImpl: this.options.fetchImpl,
     });
   }
@@ -615,6 +618,7 @@ export class GradingServiceImpl implements GradingService {
       baseUrl: version.baseUrl,
       apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
       timeoutMs: 15_000,
+      allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
       fetchImpl: this.options.fetchImpl,
     });
   }
@@ -638,6 +642,7 @@ export class GradingServiceImpl implements GradingService {
           definition: syntheticTestDefinition(),
           answer: syntheticTestAnswer,
           timeoutMs: 30_000,
+          allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
           fetchImpl: this.options.fetchImpl,
         },
         {
