@@ -8,18 +8,6 @@ afterEach(() => {
 });
 
 describe('server host defaults', () => {
-  it.each([
-    '*',
-    'null',
-    'https://*.example.org',
-    'https://example.org/path',
-    'https://example.org/',
-    'https://user:password@example.org',
-  ])('rejects unsafe browser whitelist entry %s', async (origin) => {
-    await expect(
-      loadConfig({ encryptionKey: 'a'.repeat(64), corsOrigins: [origin] }),
-    ).rejects.toThrow('Invalid CORS_ORIGINS');
-  });
   it.each(['0.0.0.0/0', '::/0', 'true', '127.0.0.1/33', '::1/129'])(
     'rejects unsafe trusted proxy entry %s',
     async (proxy) => {

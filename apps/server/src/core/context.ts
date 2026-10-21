@@ -18,7 +18,6 @@ export interface ServerConfig {
   encryptionKey: string;
   production: boolean;
   publicUrl?: string;
-  corsOrigins: string[];
   trustedProxies: string[];
   allowPrivateModelUrls: boolean;
   accessLogRetentionDays: number;

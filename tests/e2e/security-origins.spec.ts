@@ -1,55 +1,59 @@
 import { expect, test } from '@playwright/test';
 import { login } from './helpers';
 
-test('同站不同端口页面不能读取会话或 CSRF，也不能创建 Agent 令牌', async ({ page, context }) => {
+test('任意来源可跨域读取会话并写入，但仍要求登录和 CSRF', async ({ page, context }) => {
   await login(page);
   const base = new URL(page.url()).origin;
-  const csrfResponse = await page.request.get(base + '/api/v1/auth/csrf');
-  expect(csrfResponse.ok()).toBe(true);
-  const csrf = (await csrfResponse.json()).data.csrfToken as string;
-  const beforeResponse = await page.request.get(base + '/api/v1/me/agent-tokens');
-  expect(beforeResponse.ok()).toBe(true);
-  const before = (await beforeResponse.json()).data;
-  const attacker = new URL(base);
-  attacker.port = '4180';
-  await context.route(attacker.origin + '/**', (route) =>
+  const otherOrigin = new URL(base);
+  otherOrigin.port = '4180';
+  // 明确授权测试来源访问回环网络，避免浏览器网络权限遮蔽服务端 CORS 行为。
+  await context.grantPermissions(['local-network-access'], { origin: otherOrigin.origin });
+  await context.route(otherOrigin.origin + '/**', (route) =>
     route.fulfill({
       contentType: 'text/html',
-      body: '<!doctype html><title>isolated origin probe</title>',
+      body: '<!doctype html><title>cross-origin policy probe</title>',
     }),
   );
   const probe = await context.newPage();
   try {
-    await probe.goto(attacker.origin);
-    const results = await probe.evaluate(
-      async ({ base, csrf }) => {
-        const readable: boolean[] = [];
-        for (const path of ['/api/v1/me', '/api/v1/auth/csrf']) {
-          try {
-            await (await fetch(base + path, { credentials: 'include' })).json();
-            readable.push(true);
-          } catch {
-            readable.push(false);
-          }
-        }
-        try {
-          await fetch(base + '/api/v1/me/agent-tokens', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
-            body: JSON.stringify({ name: 'forbidden-browser-probe', scopes: ['read'] }),
-          });
-          readable.push(true);
-        } catch {
-          readable.push(false);
-        }
-        return readable;
-      },
-      { base, csrf },
-    );
-    expect(results).toEqual([false, false, false]);
-    const after = await page.request.get(base + '/api/v1/me/agent-tokens');
-    expect((await after.json()).data).toEqual(before);
+    await probe.goto(otherOrigin.origin);
+    const results = await probe.evaluate(async (base) => {
+      const me = await fetch(base + '/api/v1/me', { credentials: 'include' });
+      const user = (await me.json()).data;
+      const csrfResponse = await fetch(base + '/api/v1/auth/csrf', { credentials: 'include' });
+      const csrf = (await csrfResponse.json()).data.csrfToken;
+      const payload = JSON.stringify({
+        expectedRevision: user.revision,
+        displayName: user.displayName,
+      });
+      const missingCsrf = await fetch(base + '/api/v1/me', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: payload,
+      });
+      const validCsrf = await fetch(base + '/api/v1/me', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
+        body: payload,
+      });
+      const anonymous = await fetch(base + '/api/v1/me', { credentials: 'omit' });
+      return {
+        me: me.status,
+        csrf: csrfResponse.status,
+        missingCsrf: missingCsrf.status,
+        validCsrf: validCsrf.status,
+        anonymous: anonymous.status,
+      };
+    }, base);
+    expect(results).toEqual({
+      me: 200,
+      csrf: 200,
+      missingCsrf: 403,
+      validCsrf: 200,
+      anonymous: 401,
+    });
     expect((await page.request.get(base + '/api/v1/me')).ok()).toBe(true);
   } finally {
     await probe.close();

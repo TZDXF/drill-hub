@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { API_VERSION, APP_VERSION } from '@drill-hub/contracts';
 import { Database } from './db/database.js';
 import { loadConfig } from './core/config.js';
-import { isTrustedOrigin } from './core/origins.js';
 import { SecretVault } from './core/security.js';
 import { AppError } from './core/errors.js';
 import { normalizePublicBaseUrl, resolvePublicUrl } from './core/public-url.js';
@@ -44,32 +43,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   await app.register(cookie);
   await app.register(rateLimit, { max: 1200, timeWindow: '1 minute' });
-  app.addHook('onRequest', async (request) => {
-    if (!request.url.startsWith('/api/')) return;
-    const origin = request.headers.origin;
-    if (origin && !isTrustedOrigin(origin, request, config)) {
-      throw new AppError(403, 'ORIGIN_FORBIDDEN', '请求来源不在允许列表中');
-    }
-    if (!origin && request.headers.referer) {
-      let refererOrigin = '';
-      try {
-        refererOrigin = new URL(request.headers.referer).origin;
-      } catch {}
-      if (!isTrustedOrigin(refererOrigin, request, config)) {
-        throw new AppError(403, 'ORIGIN_FORBIDDEN', '请求来源不在允许列表中');
-      }
-    }
-  });
   await app.register(cors, {
-    delegator: async (request: FastifyRequest) => ({
-      credentials: true,
-      origin:
-        request.headers.origin && isTrustedOrigin(request.headers.origin, request, config)
-          ? request.headers.origin
-          : false,
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Answer-Link-Token'],
-      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    }),
+    credentials: true,
+    origin: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Answer-Link-Token'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   let settings = await db.get('settings', 'global');
   if (!settings)

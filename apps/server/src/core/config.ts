@@ -30,32 +30,6 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
   }
   const port = overrides.port ?? Number(process.env.PORT ?? 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
-  const corsOrigins =
-    overrides.corsOrigins ??
-    (process.env.CORS_ORIGINS ?? (production ? '' : 'http://localhost:5173,http://127.0.0.1:5173'))
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  for (const origin of corsOrigins) {
-    let parsed: URL;
-    try {
-      parsed = new URL(origin);
-    } catch {
-      throw new Error('Invalid CORS_ORIGINS');
-    }
-    if (
-      !['http:', 'https:', 'tauri:'].includes(parsed.protocol) ||
-      parsed.hostname.includes('*') ||
-      parsed.username ||
-      parsed.password ||
-      parsed.search ||
-      parsed.hash ||
-      (parsed.pathname !== '/' && parsed.pathname !== '') ||
-      (parsed.protocol === 'tauri:' ? origin !== 'tauri://localhost' : parsed.origin !== origin)
-    ) {
-      throw new Error('Invalid CORS_ORIGINS: use exact scheme, host and port');
-    }
-  }
   const trustedProxies =
     overrides.trustedProxies ??
     (process.env.TRUSTED_PROXIES ?? '')
@@ -86,7 +60,6 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
   )
     throw new Error('Invalid ACCESS_LOG_RETENTION_DAYS');
   return {
-    corsOrigins,
     trustedProxies,
     allowPrivateModelUrls: overrides.allowPrivateModelUrls ?? privateUrls === 'true',
     accessLogRetentionDays,

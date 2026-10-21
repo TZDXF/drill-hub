@@ -235,7 +235,7 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 
 ### 当前安全边界
 
-浏览器来源必须匹配 `PUBLIC_URL` origin 或 `CORS_ORIGINS` 精确白名单；拒绝来源返回 `403 ORIGIN_FORBIDDEN`，不返回跨源放行头。非回环部署缺少 `PUBLIC_URL` 时公开地址解析返回 `503 PUBLIC_URL_UNAVAILABLE`。
+浏览器跨域允许所有来源并支持携带凭据，不按 Origin/Referer 拦截；Cookie 写操作仍校验 CSRF，鉴权、所有权和权限校验不变。非回环部署缺少 `PUBLIC_URL` 时公开地址解析返回 `503 PUBLIC_URL_UNAVAILABLE`。
 
 `POST /wrong-question-practices` 接受 `{questionId, title?, purpose?}` 或 `{items:[{questionId}], title?, purpose?}`；满分只取历史作答快照。嵌套 `maxScore/score/correct/submittedAt/ownerId` 返回 422，不创建作答。Agent 组卷的 `items[].maxScore` 仍是明确允许的配置字段，其他未知项键被拒绝。
 

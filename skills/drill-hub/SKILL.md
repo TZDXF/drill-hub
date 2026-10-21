@@ -91,7 +91,7 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 ## 安全校验边界
 
 - 局域网、公网或反向代理部署必须配置 `PUBLIC_URL`。未配置时仅回环 Host 可用；其他地址返回 `503 PUBLIC_URL_UNAVAILABLE`，不要自行用请求 Host 改写答题链接。
-- 浏览器请求仅接受 `PUBLIC_URL` 的 origin 和 `CORS_ORIGINS` 的精确白名单，拒绝时返回 `403 ORIGIN_FORBIDDEN`；Agent 继续使用 Bearer 令牌，不需要伪造 Origin。
+- 浏览器跨域允许所有来源并支持携带凭据，不按 Origin/Referer 拦截；Web 写操作仍需 CSRF，Agent 继续使用 Bearer 令牌。此开放策略保留跨源会话访问风险。
 - 批量题目及嵌套选项/rubric、试卷项使用字段白名单。试卷项允许 `questionId`、`questionVersion`、`maxScore`（组卷配置），其他事实字段返回 422；不代表学习者能设置满分。
 - 学习者错题重练的 `items[]` 只接受 `questionId`，`maxScore` 由历史冻结快照决定，客户端传入会返回 `422 CLIENT_FACT_FORBIDDEN`。不引入手工改分或删除历史能力。
 - 模型请求默认阻止非公网地址并禁止重定向，策略拒绝的错误码为 `PROVIDER_ADDRESS_FORBIDDEN`；只有部署者可通过 `ALLOW_PRIVATE_MODEL_URLS=true` 显式放行自建内网模型。

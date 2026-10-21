@@ -85,7 +85,7 @@ pnpm exec playwright install chromium
 
 ## 鉴权与安全不变量
 
-- Web 使用 HttpOnly Cookie 和 CSRF，服务端仅允许显式白名单来源的跨域访问；Android 当前只在进程内存保存会话，`localStorage` 只保存非敏感服务器连接信息。
+- Web 使用 HttpOnly Cookie 和 CSRF，服务端允许所有来源的跨域访问；Android 当前只在进程内存保存会话，`localStorage` 只保存非敏感服务器连接信息。
 - 外部 Agent 使用 `dhk.` 令牌和最小 scope；检查资源所有权，管理员也不能绕过 owner 校验。
 - 内部模型题由服务端异步评分；`grade:write` 只允许提交 `external_rubric` 题的离散等级和证据，最终分数由服务端计算。
 - 供应商密钥只以服务端加密形式保存。不得在日志、错误、测试快照、Skill 文档或 Git 中暴露密钥、Agent 令牌、密码或完整用户答案。
