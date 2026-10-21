@@ -99,14 +99,16 @@ pnpm --filter @drill-hub/server start
 
 ### 用户部署：只拉取镜像，不需要源码
 
-安装 Docker 与 Docker Compose 插件后，下载下面两个文件即可，无需安装 Node.js 或 pnpm。
-以下为 Linux/macOS 命令；Windows 可直接下载这两个文件，并用 `Copy-Item .env.example .env` 复制模板。
+安装 Docker 与 Docker Compose 插件后，从公开镜像中提取部署文件即可，无需源码访问权限，也无需安装 Node.js 或 pnpm。
+以下为 Linux/macOS 命令；Windows 可运行相同 Docker 命令，并用 `Copy-Item .env.example .env` 复制模板。
+首次构建成功且维护者将 GHCR 包设为 Public 后，外部用户才能匿名拉取镜像。
 
 ```bash
 mkdir drill-hub
 cd drill-hub
-curl -fLO https://raw.githubusercontent.com/TZDXF/drill-hub/master/docker-compose.yml
-curl -fLO https://raw.githubusercontent.com/TZDXF/drill-hub/master/.env.example
+docker pull ghcr.io/tzdxf/drill-hub:nightly
+docker run --rm --entrypoint cat ghcr.io/tzdxf/drill-hub:nightly /app/deploy/docker-compose.yml > docker-compose.yml
+docker run --rm --entrypoint cat ghcr.io/tzdxf/drill-hub:nightly /app/deploy/.env.example > .env.example
 cp -n .env.example .env
 ```
 

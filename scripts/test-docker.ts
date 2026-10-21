@@ -108,6 +108,11 @@ async function main() {
   let cleanupFailed = false;
   try {
     let base = await start(true);
+    const deployment = docker('exec', container, 'cat', '/app/deploy/docker-compose.yml');
+    assert.match(deployment, /ghcr\.io\/tzdxf\/drill-hub:nightly/, '镜像应包含部署配置');
+    const template = docker('exec', container, 'cat', '/app/deploy/.env.example');
+    assert.match(template, /DRILL_HUB_ENCRYPTION_KEY/, '镜像应包含现有环境变量模板');
+    assert.ok(!template.includes(encryptionKey), '部署模板不得包含实际主密钥');
     assert.equal((await request(base, '/api/v1/health')).status, 200);
     const page = await request(base, '/');
     assert.equal(page.status, 200);

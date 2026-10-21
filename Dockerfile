@@ -37,6 +37,7 @@ COPY --from=build /out/package.json ./apps/server/package.json
 COPY --from=build /out/dist ./apps/server/dist
 COPY --from=build /out/node_modules ./apps/server/node_modules
 COPY --from=build /app/apps/web/dist ./apps/web/dist
+COPY --from=build /app/docker-compose.yml /app/.env.example ./deploy/
 
 RUN mkdir -p /app/data \
     && chown node:node /app/data
