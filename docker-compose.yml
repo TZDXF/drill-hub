@@ -1,9 +1,6 @@
 services:
   drill-hub:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: drill-hub:latest
+    image: '${DRILL_HUB_IMAGE:-ghcr.io/tzdxf/drill-hub:nightly}'
     restart: unless-stopped
     init: true
     ports:
@@ -14,7 +11,7 @@ services:
       PORT: '${PORT:-3000}'
       DATABASE_PATH: /app/data/drill-hub.sqlite
       PUBLIC_URL: '${PUBLIC_URL:-http://localhost:3000}'
-      DRILL_HUB_ENCRYPTION_KEY: '${DRILL_HUB_ENCRYPTION_KEY:-}'
+      DRILL_HUB_ENCRYPTION_KEY: '${DRILL_HUB_ENCRYPTION_KEY:?请在 .env 中设置 64 位十六进制主密钥}'
       TRUSTED_PROXIES: '${TRUSTED_PROXIES:-}'
       ALLOW_PRIVATE_MODEL_URLS: '${ALLOW_PRIVATE_MODEL_URLS:-false}'
       ACCESS_LOG_RETENTION_DAYS: '${ACCESS_LOG_RETENTION_DAYS:-7}'

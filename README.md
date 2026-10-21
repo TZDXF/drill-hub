@@ -90,30 +90,95 @@ pnpm --filter @drill-hub/server start
 
 匿名未匹配 API、匿名 429/403 及预检不逐条落库，避免扫描放大磁盘写入。登录按“用户名 + 来源 IP”限流，不再让代理后的不同账号共享低阈值桶；它仍是单实例内存限流，不能代替公网网关的连接数/速率控制。
 
-## Docker Compose 部署
+## Docker 每日构建版
 
-仓库根目录提供多阶段 `Dockerfile` 和 `docker-compose.yml`。镜像以非 root 用户运行，服务端直接提供 Web 静态文件和 `/api/v1`，SQLite 数据保存在命名卷 `drill-hub-data` 中。
+当前只发布 **nightly 每日构建**，不是正式版本，不发布 `latest` 或语义化版本镜像。
+镜像地址为 `ghcr.io/tzdxf/drill-hub:nightly`，目前支持 `linux/amd64`。
+镜像以非 root 用户运行，同时提供 Web 静态文件与 `/api/v1`，不包含 Android APK。
+每日构建可能有破坏性变更，不保证旧数据库兼容；请先在独立环境试用，更新前备份数据库和主密钥。
 
-首次启动前创建环境文件，并设置至少以下项目：
+### 用户部署：只拉取镜像，不需要源码
 
-```powershell
-Copy-Item .env.example .env
+安装 Docker 与 Docker Compose 插件后，下载下面两个文件即可，无需安装 Node.js 或 pnpm。
+以下为 Linux/macOS 命令；Windows 可直接下载这两个文件，并用 `Copy-Item .env.example .env` 复制模板。
+
+```bash
+mkdir drill-hub
+cd drill-hub
+curl -fLO https://raw.githubusercontent.com/TZDXF/drill-hub/master/docker-compose.yml
+curl -fLO https://raw.githubusercontent.com/TZDXF/drill-hub/master/.env.example
+cp -n .env.example .env
 ```
 
-- `DRILL_HUB_ENCRYPTION_KEY`：生产必填的 64 位十六进制主密钥，可使用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成。
-- `PUBLIC_URL`：浏览器实际访问的 HTTP/HTTPS 地址；本地默认 `http://localhost:3000`，局域网或公网部署必须改成实际地址。
-- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：仅在空数据库首次启动时创建管理员；初始化完成后应从 `.env` 删除管理员密码并重建容器。
-- `HOST` / `PORT`：容器监听地址与端口，Compose 使用同一个 `PORT` 映射到宿主机；默认 `0.0.0.0:3000`。Docker 部署通常保持 `HOST=0.0.0.0`，修改 `PORT` 后要同步调整 `PUBLIC_URL`。
+**只复用 `.env.example` 这一个配置模板**；真实密钥与密码填写到部署目录的 `.env`，不要写回或提交模板。
+首次启动前编辑 `.env`，取消相应配置行的注释并设置：
 
-启动或更新部署：
+- `DRILL_HUB_ENCRYPTION_KEY`：生产必填的 64 位十六进制主密钥。可通过下方命令使用镜像内的 Node.js 生成，妥善保存，不要每次更新都重新生成。
+- `PUBLIC_URL`：用户和外部 Agent 实际可达的 HTTP/HTTPS 地址。本机试用可用 `http://localhost:3000`；局域网或公网部署不能保留 `localhost`。
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD`：自选管理员用户名与至少 10 个字符的强密码，仅在空数据库首次启动时创建管理员。初始化完成后从 `.env` 删除管理员密码并重建容器；之后修改该变量不会重置已有账号密码。
+- `HOST` / `PORT`：默认 `0.0.0.0:3000`。容器内保持 `HOST=0.0.0.0`；修改 `PORT` 后同步调整 `PUBLIC_URL`。
+- `DRILL_HUB_IMAGE`：可选，默认 `ghcr.io/tzdxf/drill-hub:nightly`。建议验收后改为本次构建的完整标签，以免无意切换到其他构建。
 
-```powershell
-docker compose up -d --build
+```bash
+# 首次发布且 GHCR 包已设为 Public 后，用户可匿名拉取。
+docker pull ghcr.io/tzdxf/drill-hub:nightly
+
+# 在本机生成主密钥，将输出保存到 .env；不需要在宿主机安装 Node.js。
+docker run --rm --entrypoint node ghcr.io/tzdxf/drill-hub:nightly -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+
+# 完成 .env 配置后启动。
+docker compose up -d --pull always --wait
 docker compose ps
-docker compose logs -f drill-hub
+docker compose logs --tail 100 drill-hub
 ```
 
-本地访问 `http://localhost:3000`（或配置的地址）。`docker compose down` 不会删除命名卷；数据库与主密钥必须成对备份，备份 SQLite 时使用在线备份机制或停服备份，不要只复制运行中的主数据库文件。公网部署建议在容器前配置 HTTPS 反向代理，并将 `PUBLIC_URL` 设置为公开 HTTPS 地址。
+访问配置的 `PUBLIC_URL` 并登录。健康检查接口为 `GET /api/v1/health`。
+SQLite 保存在命名卷 `drill-hub-data` 的 `/app/data/drill-hub.sqlite` 中，Compose 会给卷名加上项目名前缀。
+部署时保持相同目录和 Compose 项目名，否则可能连接到新的空卷。
+
+公网部署建议通过 HTTPS 反向代理访问，并将 `PUBLIC_URL` 设置为实际 HTTPS 地址；
+若代理运行在同一宿主机，可将 Compose 端口映射改为 `127.0.0.1:3000:3000`，避免应用端口直接暴露公网。
+
+### 更新、固定构建与备份
+
+`nightly` 只在质量检查、镜像构建与容器验收全部通过后更新；构建失败时保留上一次成功镜像。
+GitHub Actions 的运行摘要会显示本次构建标签，格式为：
+`nightly-<北京时间日期>-<提交号>-<运行编号>-<重试编号>`。
+需要固定构建时，在 `.env` 中设置完整 `DRILL_HUB_IMAGE`，再执行：
+
+```bash
+# 更新前先备份数据库与加密主密钥。
+docker compose up -d --pull always --wait
+```
+
+`docker compose down` 不删除命名卷，**不要执行 `docker compose down -v`，它会删除数据卷**。
+备份 SQLite 时使用在线备份机制或停服备份，不要只复制运行中的主数据库文件。
+由于 nightly 不保证旧数据格式兼容，不能假定只切回旧镜像就能回滚数据库；应保留与旧构建匹配的备份。
+
+### 维护者：自动发布每日构建
+
+`.github/workflows/docker-nightly.yml` 每天北京时间 **04:00**（UTC 20:00）从默认分支运行，
+也可以在 GitHub Actions 的 **Docker Nightly → Run workflow** 手动触发默认分支构建。
+GitHub 定时任务可能延迟，不保证准点；不需要创建 Git tag 或 GitHub 正式 Release。
+
+发布前会复用 CI 的构建、类型、Lint、格式、单元/集成与 E2E 检查，然后构建并加载 `linux/amd64` 镜像，
+运行容器验收，验证非 root、健康检查、Web 静态资源、管理员登录、CSRF 及重建容器后的数据卷持久化。
+只有通过后，才会把**同一个已验收镜像**推送为构建标签与滚动 `nightly` 标签。
+
+首次启用需要：
+
+1. 将工作流及相关文件提交到 GitHub 默认分支，并确保仓库启用了 GitHub Actions。
+2. 允许工作流通过 `GITHUB_TOKEN` 写入 Packages。工作流声明了 `packages: write`，不需要另建 Docker Hub 密钥；组织策略仍可能限制发布。
+3. 手动运行一次 **Docker Nightly**，首次成功推送后，在仓库 **Packages → drill-hub → Package settings** 中将包的可见性设为 **Public**。代码仓库公开不代表 GHCR 包已自动公开。
+4. 确认未登录的用户也能拉取 `ghcr.io/tzdxf/drill-hub:nightly`，再向用户提供部署文件。
+
+Fork 仓库的工作流按自身仓库名生成小写 GHCR 路径；若要部署 Fork 镜像，在 `.env` 中覆盖 `DRILL_HUB_IMAGE`。
+本地可先构建并运行相同容器验收；验收会创建并清理随机命名的临时容器和卷，不读取开发数据库、不调用真实模型：
+
+```powershell
+docker build -t drill-hub:nightly-test .
+pnpm test:docker drill-hub:nightly-test
+```
 
 ### 统一公开地址
 

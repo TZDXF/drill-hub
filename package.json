@@ -8,6 +8,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && pnpm typecheck:tools",
     "test": "vitest run",
+    "test:docker": "tsx scripts/test-docker.ts",
     "dev:web": "pnpm build:shared && pnpm --filter @drill-hub/web dev:vite",
     "dev:server": "pnpm build:shared && pnpm --filter @drill-hub/server dev",
     "dev:mobile": "pnpm build:shared && pnpm --filter @drill-hub/mobile dev",
