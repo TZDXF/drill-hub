@@ -210,6 +210,15 @@
     "position": "第 {current} / {total} 题",
     "positionMarked": "第 {current} / {total} 题 · 已标记 {count} 题"
   },
+  "planOutline": {
+    "navLabel": "学习计划目录",
+    "viewPlan": "查看完整学习计划",
+    "progress": "已完成 {done}/{total}",
+    "fabLabel": "打开学习计划目录",
+    "fabText": "目录",
+    "sheetDescription": "学习计划目录 · 已完成 {done}/{total}",
+    "closeLabel": "关闭学习计划目录"
+  },
   "choiceReview": {
     "trueFalseLabel": "判断题选项",
     "singleChoiceLabel": "单选题选项",

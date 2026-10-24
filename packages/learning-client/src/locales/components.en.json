@@ -210,6 +210,15 @@
     "position": "Question {current} / {total}",
     "positionMarked": "Question {current} / {total} · {count} marked"
   },
+  "planOutline": {
+    "navLabel": "Learning plan outline",
+    "viewPlan": "View the full learning plan",
+    "progress": "{done}/{total} done",
+    "fabLabel": "Open learning plan outline",
+    "fabText": "Plan",
+    "sheetDescription": "Learning plan outline · {done}/{total} done",
+    "closeLabel": "Close learning plan outline"
+  },
   "choiceReview": {
     "trueFalseLabel": "True or false options",
     "singleChoiceLabel": "Single choice options",

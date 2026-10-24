@@ -7,6 +7,7 @@ import type {
   Answer,
   AttemptItemView,
   AttemptView,
+  LearningPlan,
   PublicAnswerContext,
 } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
@@ -19,6 +20,7 @@ import { clone, errorMessage, isApiError, formatOptionLabel } from '../utils';
 import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
+import PlanOutlineNav from '../components/PlanOutlineNav.vue';
 import GradeFeedback from '../components/GradeFeedback.vue';
 import AppCheckbox from '../components/AppCheckbox.vue';
 
@@ -31,6 +33,7 @@ const router = useRouter();
 const publicToken = ref('');
 const publicPurpose = ref<AttemptView['purpose'] | null>(null);
 const attempt = ref<AttemptView | null>(null);
+const plan = ref<LearningPlan | null>(null);
 const planReturn = computed(() =>
   attempt.value ? planReturnLocation(attempt.value.topicId, route.query) : null,
 );
@@ -236,6 +239,7 @@ async function load(forceAnswers = false) {
       return;
     }
     attempt.value = value;
+    void loadPlan();
     currentIndex.value = questionIndexFromQuery(route.query.question, value.items.length);
     for (const item of value.items) {
       if (forceAnswers || !(item.id in answers.value)) {
@@ -263,6 +267,22 @@ async function load(forceAnswers = false) {
     learning.notify.error(t('learning.attempt.notifySessionError'), error.value);
   } finally {
     loading.value = false;
+  }
+}
+
+// 从学习计划进入时拉取来源计划用于左侧目录；失败不影响答题。
+async function loadPlan() {
+  const { planId } = planNavigationQuery(route.query);
+  const attemptId = attempt.value?.id;
+  if (props.publicAccess || !attempt.value || !planId) return;
+  try {
+    const plans = await learning.get<LearningPlan[]>(
+      `/topics/${attempt.value.topicId}/plans?archiveState=all`,
+    );
+    if (attempt.value?.id === attemptId)
+      plan.value = plans.find((item) => item.id === planId) ?? null;
+  } catch (reason) {
+    learning.notify.error(t('learning.plan.notifyLoadFailed'), errorMessage(reason));
   }
 }
 
@@ -616,6 +636,7 @@ watch(
     saveErrors.value = {};
     currentIndex.value = 0;
     markedIds.value = [];
+    plan.value = null;
     cardAnimation?.cancel();
     swipeOffset.value = 0;
     carouselEngaged.value = false;
@@ -734,15 +755,18 @@ function confirmLeave() {
         <p>{{ t('learning.attempt.publicTestNotice') }}</p>
       </div>
       <main class="attempt-container">
-        <AttemptQuestionNav
-          :items="attempt.items"
-          :answers="answers"
-          :current-index="currentIndex"
-          :marked-ids="markedIds"
-          :marks-enabled="attempt.kind === 'exam'"
-          :disabled="navigationDisabled"
-          @select="goTo"
-        />
+        <div class="attempt-aside">
+          <PlanOutlineNav v-if="plan" :plan="plan" :current-task-id="attempt.taskId" fab-raised />
+          <AttemptQuestionNav
+            :items="attempt.items"
+            :answers="answers"
+            :current-index="currentIndex"
+            :marked-ids="markedIds"
+            :marks-enabled="attempt.kind === 'exam'"
+            :disabled="navigationDisabled"
+            @select="goTo"
+          />
+        </div>
         <div
           class="attempt-content"
           :class="{ 'attempt-content--swiping': swiping }"

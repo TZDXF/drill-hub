@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { LearningPlan, LearningTask } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
+import { planTaskLocation } from '../planNavigation';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
@@ -42,20 +43,7 @@ async function load() {
   }
 }
 function taskLink(task: LearningTask) {
-  if (!task.targetId) return null;
-  if (task.kind === 'reading')
-    return {
-      name: 'content',
-      params: { contentId: task.targetId },
-      query: { taskId: task.id, planId: String(route.params.planId) },
-    };
-  if (task.kind === 'practice' || task.kind === 'exam')
-    return {
-      name: 'assessment',
-      params: { assessmentId: task.targetId },
-      query: { taskId: task.id, planId: String(route.params.planId) },
-    };
-  return null;
+  return plan.value ? planTaskLocation(plan.value.id, task) : null;
 }
 async function complete(task: LearningTask) {
   if (!plan.value) return;
