@@ -20,7 +20,7 @@ import AppScrollArea from './AppScrollArea.vue';
 
 const { t } = useI18n();
 
-const { locale, toggleLocale } = useLocale();
+const { toggleLocale } = useLocale();
 const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
 const themeIcon = computed(() => themeIcons[themePreference.value]);
 const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
@@ -207,8 +207,7 @@ async function logout() {
             :aria-label="t('components.language.switch')"
             @click="toggleLocale"
           >
-            <span aria-hidden="true">中 / EN</span>
-            <span>{{ locale === 'zh-CN' ? '中文' : 'English' }}</span>
+            中 / EN
           </button>
           <button
             class="icon-button"
