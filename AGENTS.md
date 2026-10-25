@@ -77,7 +77,7 @@ pnpm exec playwright install chromium
 - 入口：`apps/server/src/app.ts`；数据库封装：`apps/server/src/db/database.ts`；表定义：`apps/server/src/db/schema.ts`。
 - 业务模块位于 `apps/server/src/modules/auth`、`learning`、`grading`。
 - TypeORM 使用 `synchronize: false` 和显式 migration。修改表结构时必须同时保证实体定义与当前 migration/初始化路径一致。
-- SQLite 默认单实例、单文件部署；`DATABASE_DRIVER=postgres` 加 `DATABASE_URL` 可切换 PostgreSQL（Docker Compose 提供 `postgres` profile）。模型调用不得持有数据库长事务。
+- SQLite 默认单实例、单文件部署；`DATABASE_DRIVER=postgres` 加 `DATABASE_URL` 可切换 PostgreSQL（`docker-compose.yml` 与 `docker-compose.dev.yml` 均包含全部配置并默认启用 SQLite，PostgreSQL 配置以注释形式内置，需要时解除注释）。模型调用不得持有数据库长事务。
 - 服务端是答案、评分、考试截止时间、分数、所有权和归档状态的唯一事实来源；客户端提交的 `score`、`maxScore`、`correct`、`submittedAt` 等事实字段必须拒绝。
 - 修改操作通常使用 `revision` / `expectedRevision` 做乐观并发控制；版本冲突返回 409，禁止静默覆盖。
 - API 成功响应为 `{ data, meta }`，错误为 `{ error: { code, message, fields? }, meta }`。

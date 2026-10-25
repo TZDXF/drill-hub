@@ -1,0 +1,53 @@
+# 开发构建配置：从源码构建镜像启动，包含应用与全部数据库配置。
+# 用法：docker compose -f docker-compose.dev.yml up -d
+# 默认启用 SQLite（drill-hub-dev-data 卷）。需要 PostgreSQL 时：
+#   1. 在 .env 中设置 DATABASE_DRIVER=postgres 和 POSTGRES_PASSWORD（或提供 DATABASE_URL）
+#   2. 解除下方 postgres 服务与 drill-hub-dev-pgdata 卷的注释
+services:
+  drill-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 'drill-hub:dev'
+    restart: unless-stopped
+    init: true
+    ports:
+      - '${PORT:-3000}:${PORT:-3000}'
+    environment:
+      NODE_ENV: production
+      HOST: '${HOST:-0.0.0.0}'
+      PORT: '${PORT:-3000}'
+      DATABASE_DRIVER: '${DATABASE_DRIVER:-sqlite}'
+      DATABASE_URL: '${DATABASE_URL:-postgres://drill_hub:${POSTGRES_PASSWORD:-}@postgres:5432/drill_hub}'
+      DATABASE_PATH: /app/data/drill-hub-dev.sqlite
+      PUBLIC_URL: '${PUBLIC_URL:-http://localhost:3000}'
+      DRILL_HUB_ENCRYPTION_KEY: '${DRILL_HUB_ENCRYPTION_KEY:?请在 .env 中设置 64 位十六进制主密钥}'
+      TRUSTED_PROXIES: '${TRUSTED_PROXIES:-}'
+      ALLOW_PRIVATE_MODEL_URLS: '${ALLOW_PRIVATE_MODEL_URLS:-false}'
+      ACCESS_LOG_RETENTION_DAYS: '${ACCESS_LOG_RETENTION_DAYS:-7}'
+      ADMIN_USERNAME: '${ADMIN_USERNAME:-}'
+      ADMIN_PASSWORD: '${ADMIN_PASSWORD:-}'
+    volumes:
+      - drill-hub-dev-data:/app/data
+
+  # PostgreSQL（默认注释，需要时解除本块与 drill-hub-dev-pgdata 卷的注释）：
+  # postgres:
+  #   image: 'postgres:17-alpine'
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: drill_hub
+  #     POSTGRES_USER: drill_hub
+  #     # 留空时容器会因缺少密码拒绝初始化。
+  #     POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-}'
+  #   volumes:
+  #     - drill-hub-dev-pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ['CMD-SHELL', 'pg_isready -U drill_hub -d drill_hub']
+  #     interval: 10s
+  #     timeout: 5s
+  #     start_period: 10s
+  #     retries: 6
+
+volumes:
+  drill-hub-dev-data:
+  # drill-hub-dev-pgdata:

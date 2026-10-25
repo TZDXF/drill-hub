@@ -1,3 +1,7 @@
+# 生产部署配置：使用线上镜像，包含应用与全部数据库配置。
+# 默认启用 SQLite（drill-hub-data 卷）。需要 PostgreSQL 时：
+#   1. 在 .env 中设置 DATABASE_DRIVER=postgres 和 POSTGRES_PASSWORD（或提供 DATABASE_URL）
+#   2. 解除下方 postgres 服务与 drill-hub-pgdata 卷的注释
 services:
   drill-hub:
     image: '${DRILL_HUB_IMAGE:-ghcr.io/tzdxf/drill-hub:nightly}'
@@ -9,9 +13,8 @@ services:
       NODE_ENV: production
       HOST: '${HOST:-0.0.0.0}'
       PORT: '${PORT:-3000}'
-      # 默认使用卷内 SQLite；设置 DATABASE_DRIVER=postgres 并启用 postgres profile 切换数据库。
       DATABASE_DRIVER: '${DATABASE_DRIVER:-sqlite}'
-      DATABASE_URL: '${DATABASE_URL:-}'
+      DATABASE_URL: '${DATABASE_URL:-postgres://drill_hub:${POSTGRES_PASSWORD:-}@postgres:5432/drill_hub}'
       DATABASE_PATH: /app/data/drill-hub.sqlite
       PUBLIC_URL: '${PUBLIC_URL:-http://localhost:3000}'
       DRILL_HUB_ENCRYPTION_KEY: '${DRILL_HUB_ENCRYPTION_KEY:?请在 .env 中设置 64 位十六进制主密钥}'
@@ -23,24 +26,24 @@ services:
     volumes:
       - drill-hub-data:/app/data
 
-  postgres:
-    image: 'postgres:17-alpine'
-    profiles: ['postgres']
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: drill_hub
-      POSTGRES_USER: drill_hub
-      # 仅在启用 postgres profile 时使用；留空时 postgres 容器会因缺少密码拒绝初始化。
-      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-}'
-    volumes:
-      - drill-hub-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U drill_hub -d drill_hub']
-      interval: 10s
-      timeout: 5s
-      start_period: 10s
-      retries: 6
+  # PostgreSQL（默认注释，需要时解除本块与 drill-hub-pgdata 卷的注释）：
+  # postgres:
+  #   image: 'postgres:17-alpine'
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: drill_hub
+  #     POSTGRES_USER: drill_hub
+  #     # 留空时容器会因缺少密码拒绝初始化。
+  #     POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-}'
+  #   volumes:
+  #     - drill-hub-pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ['CMD-SHELL', 'pg_isready -U drill_hub -d drill_hub']
+  #     interval: 10s
+  #     timeout: 5s
+  #     start_period: 10s
+  #     retries: 6
 
 volumes:
   drill-hub-data:
-  drill-hub-pgdata:
+  # drill-hub-pgdata:

@@ -81,38 +81,60 @@ async function request(base: string, path: string, options?: RequestInit): Promi
   return fetch(new URL(path, base), { ...options, signal: AbortSignal.timeout(10_000) });
 }
 
-async function main() {
-  const compose = JSON.parse(
-    docker('compose', '--env-file', '.env.example', 'config', '--format', 'json'),
-  ) as {
-    services: Record<
-      string,
-      { image: string; build?: unknown; environment: Record<string, string> }
-    >;
-  };
-  const service = compose.services['drill-hub']!;
-  assert.equal(service.image, image, 'Compose 应支持覆盖镜像标签');
-  assert.equal(service.build, undefined, '用户部署不应依赖源码构建');
-  assert.equal(service.environment.DATABASE_PATH, '/app/data/drill-hub.sqlite');
-  assert.equal(service.environment.NODE_ENV, 'production');
-  assert.equal(service.environment.DATABASE_DRIVER, 'sqlite', '默认部署应使用 SQLite');
-  const withPostgres = JSON.parse(
-    docker(
+type ComposeConfig = {
+  services: Record<string, { image: string; build?: unknown; environment: Record<string, string> }>;
+};
+function composeConfig(
+  files: string[],
+  options: { env?: Record<string, string> } = {},
+): ComposeConfig {
+  const result = spawnSync(
+    'docker',
+    [
       'compose',
       '--env-file',
       '.env.example',
-      '--profile',
-      'postgres',
+      ...files.flatMap((file) => ['--file', file]),
       'config',
       '--format',
       'json',
-    ),
-  ) as typeof compose;
-  assert.equal(
-    withPostgres.services['postgres']?.image,
-    'postgres:17-alpine',
-    'postgres profile 应提供内置 PostgreSQL 服务',
+    ],
+    { encoding: 'utf8', env: { ...env, ...options.env }, timeout: 120_000 },
   );
+  assert.equal(result.status, 0, `Docker 命令失败：compose config ${files.join(' ')}`);
+  return JSON.parse(result.stdout) as ComposeConfig;
+}
+
+async function main() {
+  const compose = composeConfig(['docker-compose.yml']);
+  const service = compose.services['drill-hub']!;
+  assert.equal(service.image, image, 'Compose 应支持覆盖镜像标签');
+  assert.equal(service.build, undefined, '线上镜像部署不应依赖源码构建');
+  assert.equal(service.environment.DATABASE_PATH, '/app/data/drill-hub.sqlite');
+  assert.equal(service.environment.NODE_ENV, 'production');
+  assert.equal(service.environment.DATABASE_DRIVER, 'sqlite', '默认应启用 SQLite');
+  assert.ok(!('postgres' in compose.services), '默认启动不应包含 PostgreSQL 服务');
+  const withPostgres = composeConfig(['docker-compose.yml'], {
+    env: { DATABASE_DRIVER: 'postgres', POSTGRES_PASSWORD: 'pg-smoke' },
+  });
+  assert.equal(
+    withPostgres.services['drill-hub']?.environment.DATABASE_DRIVER,
+    'postgres',
+    'DATABASE_DRIVER=postgres 应切换服务端数据库驱动',
+  );
+  assert.match(
+    withPostgres.services['drill-hub']?.environment.DATABASE_URL ?? '',
+    /^postgres:\/\//,
+    'PostgreSQL 模式应提供默认连接串',
+  );
+  const dev = composeConfig(['docker-compose.dev.yml']);
+  assert.ok(dev.services['drill-hub']?.build, '开发配置应从源码构建启动');
+  assert.equal(
+    dev.services['drill-hub']?.environment.DATABASE_DRIVER,
+    'sqlite',
+    '开发配置默认应启用 SQLite',
+  );
+  assert.ok(!('postgres' in dev.services), '开发配置默认不应包含 PostgreSQL 服务');
 
   const missingKey = spawnSync(
     'docker',
@@ -128,6 +150,11 @@ async function main() {
     let base = await start(true);
     const deployment = docker('exec', container, 'cat', '/app/deploy/docker-compose.yml');
     assert.match(deployment, /ghcr\.io\/tzdxf\/drill-hub:nightly/, '镜像应包含部署配置');
+    assert.match(
+      deployment,
+      /postgres:17-alpine/,
+      '镜像部署配置应包含可解除注释的 PostgreSQL 配置',
+    );
     const template = docker('exec', container, 'cat', '/app/deploy/.env.example');
     assert.match(template, /DRILL_HUB_ENCRYPTION_KEY/, '镜像应包含现有环境变量模板');
     assert.ok(!template.includes(encryptionKey), '部署模板不得包含实际主密钥');
