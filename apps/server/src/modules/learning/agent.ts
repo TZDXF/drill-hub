@@ -28,6 +28,7 @@ import {
   type JsonObject,
 } from '#server/modules/learning/common.js';
 import { findTaskLocation, normalizePhases, replaceTask } from '#server/modules/learning/plans.js';
+import { toAssistantQuestionDefinition } from '#server/modules/learning/projections.js';
 import {
   questionDefinition,
   validateScoringConfiguration,
@@ -362,7 +363,17 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       });
       result.push({
         ...question,
-        versions: versions.sort((left, right) => right.version - left.version),
+        definition: actor.assistantTurnId
+          ? toAssistantQuestionDefinition(question.definition)
+          : question.definition,
+        versions: versions
+          .sort((left, right) => right.version - left.version)
+          .map((version) => ({
+            ...version,
+            definition: actor.assistantTurnId
+              ? toAssistantQuestionDefinition(version.definition)
+              : version.definition,
+          })),
       });
     }
     return { data: result };
@@ -469,7 +480,11 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       );
       return updated;
     });
-    return { data: saved };
+    return {
+      data: actor.assistantTurnId
+        ? { ...saved, definition: toAssistantQuestionDefinition(saved.definition) }
+        : saved,
+    };
   });
 
   app.get(`${API_PREFIX}/agent/topics/:id/assessments`, async (request) => {
@@ -648,7 +663,12 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       true,
       body(request),
     );
-    return { data: saved };
+    return {
+      data:
+        actor.assistantTurnId && 'definition' in saved
+          ? { ...saved, definition: toAssistantQuestionDefinition(saved.definition) }
+          : saved,
+    };
   });
 
   app.post(`${API_PREFIX}/agent/resources/:type/:id/restore`, async (request) => {
@@ -661,6 +681,11 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       false,
       body(request),
     );
-    return { data: saved };
+    return {
+      data:
+        actor.assistantTurnId && 'definition' in saved
+          ? { ...saved, definition: toAssistantQuestionDefinition(saved.definition) }
+          : saved,
+    };
   });
 }

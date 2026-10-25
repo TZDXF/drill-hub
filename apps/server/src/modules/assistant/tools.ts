@@ -10,50 +10,21 @@ import { AppError } from '#server/core/errors.js';
 import type { Actor, AppContext } from '#server/core/context.js';
 import type { SearchProviderRecord } from '#server/db/records.js';
 import { runSearch } from '#server/modules/assistant/search.js';
+import {
+  ASSISTANT_API_RESOURCES,
+  assistantApiHelp,
+  isAssistantApiAllowed,
+} from '#server/modules/assistant/api-reference.js';
 
 /**
  * 助手可调用的 Drill Hub API 白名单：学习者端点（本人身份，答案按既有释放规则投影）
  * 与 Agent 写创建端点（不读取标准答案）。显式排除：
  * - /admin/*、/auth/*、/me/*：助手无管理员与凭据管理能力；
- * - /agent/attempts*、/agent/learning-summary、GET /agent/topics/:id/questions：
+ * - /agent/attempts*、/agent/learning-summary：
  *   这些接口返回冻结答案/得分项快照，不能作为聊天工具结果提前释放；
- * - /agent/grading*、/agent/attempt-items/*：外部批改职责不属于内置助手。
+ * - /agent/grading-queue、/agent/attempt-items/:id/grades：外部批改职责不属于内置助手。
+ * 题库读取使用服务端专门投影，隐藏评分定义与参考答案。
  */
-const API_ALLOWLIST: { method: string; pattern: RegExp }[] = [
-  { method: 'GET', pattern: /^\/api\/v1\/dashboard$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/topics$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/topics\/[\w-]+$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/topics\/[\w-]+\/(plans|contents|assessments)$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/contents\/[\w-]+$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/assessments\/[\w-]+$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/tasks\/[\w-]+\/complete$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/assessments\/[\w-]+\/attempts$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/attempts$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/attempts\/[\w-]+(\/report)?$/ },
-  { method: 'PUT', pattern: /^\/api\/v1\/attempts\/[\w-]+\/answers\/[\w-]+$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/attempts\/[\w-]+\/(items\/[\w-]+\/submit|submit|void)$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wrong-questions$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wrong-questions\/[\w-]+$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/wrong-questions\/[\w-]+\/mastery$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wrong-question-practices$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/archive$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/archive\/[\w]+\/[\w-]+\/restore$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/agent\/topics$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/topics$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+\/(plans|contents|assessments)$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+\/plans$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/(plans|tasks)\/[\w-]+$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+\/contents$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/contents\/[\w-]+$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+\/questions\/batch$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/questions\/[\w-]+$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/topics\/[\w-]+\/assessments$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/assessments\/[\w-]+$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/agent\/wrong-questions$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/agent\/wrong-questions\/[\w-]+\/mastery$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/agent\/resources\/[\w]+\/[\w-]+\/(archive|restore)$/ },
-];
 
 const ROUTE_PARAMS: Record<AssistantRouteName, string[]> = {
   home: [],
@@ -108,6 +79,23 @@ export function createAssistantTools(deps: AssistantToolDeps) {
   let apiCalls = 0;
   let writeCalls = 0;
 
+  const apiHelp = defineTool({
+    name: 'drill_hub_api_help',
+    label: '学习 API 使用说明',
+    description:
+      '查询助手可用的学习 API 方法、真实路径、请求字段及约束。' +
+      '不确定接口时先查说明，不要猜测路径或声称没有创建权限。省略 resource 返回完整端点目录。',
+    promptSnippet: '查询学习 API 的路径、参数与操作说明',
+    parameters: Type.Object({
+      resource: Type.Optional(
+        Type.Union(ASSISTANT_API_RESOURCES.map((name) => Type.Literal(name))),
+      ),
+    }),
+    async execute(_toolCallId, params) {
+      return textResult(assistantApiHelp(params.resource));
+    },
+  });
+
   const drillHubApi = defineTool({
     name: 'drill_hub_api',
     label: 'Drill Hub API',
@@ -115,8 +103,10 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       '调用 Drill Hub 学习平台的 API 端点（以当前用户身份执行）。' +
       '可用于：查询主题/计划/内容/练习考试/作答记录/错题/报告，创建主题、内容、计划、题目、练习或考试，' +
       '开始或提交作答、错题重练、标记任务完成、调整掌握状态、恢复归档资源。' +
+      '创建主题直接使用 POST /api/v1/agent/topics，body: {title: string, goalText?: string}。' +
+      '其他操作的路径和字段可通过 drill_hub_api_help 查询；无需用户提供 Agent 令牌。' +
       'method 为 HTTP 方法；path 以 /api/v1 开头，可带查询串；body 为 JSON 对象（可选）。' +
-      '返回 HTTP 状态码与 JSON 响应。不允许访问管理端点或任何标准答案数据。',
+      '返回 HTTP 状态码与 JSON 响应。不允许访问管理端点；答案遵循服务端释放规则。',
     promptSnippet: '调用 Drill Hub API 读写本人学习数据',
     parameters: Type.Object({
       method: Type.Union([
@@ -141,14 +131,12 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       const rawPath: string = params.path;
       if (!rawPath.startsWith('/api/v1/') || rawPath.includes('..') || rawPath.includes('\0'))
         return textResult('path 必须以 /api/v1/ 开头且不包含非法字符', true);
-      const [pathname, search = ''] = rawPath.split('?');
-      if (search.includes('?')) return textResult('path 查询串格式无效', true);
-      const allowed = API_ALLOWLIST.some(
-        (entry) => entry.method === method && entry.pattern.test(pathname ?? ''),
-      );
-      if (!allowed)
+      const [pathname, search = '', extra] = rawPath.split('?');
+      if (extra !== undefined) return textResult('path 查询串格式无效', true);
+      if (!isAssistantApiAllowed(method, pathname ?? ''))
         return textResult(
-          `助手不能调用 ${method} ${pathname ?? ''}（不在白名单或会泄露答案）`,
+          `助手不能调用 ${method} ${pathname ?? ''}（不在白名单或会泄露答案）。` +
+            '请先调用 drill_hub_api_help 查询正确路径；创建主题使用 POST /api/v1/agent/topics。',
           true,
         );
       const response = await deps.app.inject({
@@ -261,5 +249,5 @@ export function createAssistantTools(deps: AssistantToolDeps) {
     },
   });
 
-  return [drillHubApi, webSearch, navigate, setLayout];
+  return [drillHubApi, apiHelp, webSearch, navigate, setLayout];
 }

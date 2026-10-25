@@ -16,7 +16,7 @@ POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerM
      · pi-ai Model<'openai-completions'>（按轮 providerModelId 选择；缺省回退到最早的启用模型，
        baseUrl/密钥从 modelConnections 解密后内存注入 setRuntimeApiKey，不落盘；
        模型默认参数 contextWindow/maxTokens/reasoning/input/cost 一并写入 models.json）
-     · tools 白名单：仅 4 个自定义工具（drill_hub_api/web_search/navigate/set_layout），
+     · tools 白名单：5 个自定义工具（drill_hub_api/drill_hub_api_help/web_search/navigate/set_layout），
        Pi 内置 read/bash/edit/write 等文件工具全部不注册
      · MCP 扩展 + 管理员配置的启用服务器；Skills 目录物化（DB → SKILL.md）
   → session.prompt() → session.subscribe 事件桥接（text_delta / tool_execution_*）
@@ -34,20 +34,21 @@ GET /me/assistant/models（对话可选模型：仅返回启用模型及其启�
 
 ## 3. 工具集与白名单
 
-| 工具            | 说明                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `drill_hub_api` | 以当前用户身份经 `app.inject()` 执行真实端点；方法+路径白名单                                                                                                 |
-| `web_search`    | 走管理员配置的搜索服务（tavily/brave/searxng/openai_responses）                                                                                               |
-| `navigate`      | 生成 `ui_action` 事件，前端跳转到白名单路由（home/topics/topic/plan/content/assessment/attempt/report/wrong-questions/wrong-question-detail/history/archive） |
-| `set_layout`    | 生成 `ui_action` 事件；split/chat/content 与面板宽度 320–560                                                                                                  |
+| 工具                 | 说明                                                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drill_hub_api`      | 以当前用户身份经 `app.inject()` 执行真实端点；方法+路径白名单                                                                                                 |
+| `drill_hub_api_help` | 返回真实学习端点、请求字段和约束；端点目录与 `drill_hub_api` 白名单共用，避免模型猜测接口                                                                     |
+| `web_search`         | 走管理员配置的搜索服务（tavily/brave/searxng/openai_responses）                                                                                               |
+| `navigate`           | 生成 `ui_action` 事件，前端跳转到白名单路由（home/topics/topic/plan/content/assessment/attempt/report/wrong-questions/wrong-question-detail/history/archive） |
+| `set_layout`         | 生成 `ui_action` 事件；split/chat/content 与面板宽度 320–560                                                                                                  |
 
 `drill_hub_api` 白名单显式排除：
 
 - `/admin/*`、`/auth/*`、`/me/*`（`/me/assistant/*` 同时防止递归自调用）；
-- 返回冻结答案/得分项的端点：`/agent/attempts*`、`/agent/learning-summary`、`GET /agent/topics/:id/questions`；
-- 外部批改职责端点：`/agent/grading*`、`/agent/attempt-items/*`。
+- 返回冻结答案/得分项的端点：`/agent/attempts*`、`/agent/learning-summary`；题库端点对助手使用专门投影，隐藏评分键、参考答案、rubric 和解析；
+- 外部批改职责端点：`/agent/grading-queue`、`/agent/attempt-items/:id/grades`；助手仍可读取评分任务、重试失败任务和请求模型重评，不能提交外部批改结果或手工改分。
 
-每轮限额：API 调用 ≤100 次、写操作 ≤30 次。学习者端点既有投影（进行中考试不返回答案/得分项）天然约束助手可见数据。
+每轮限额：API 调用 ≤100 次、写操作 ≤30 次。学习者端点既有投影（进行中考试不返回答案/得分项）天然约束助手可见数据。助手可以直接创建主题等内容，不需要外部 Agent 令牌；所有写操作仍受所有权、revision 和服务端校验约束。
 
 ## 4. 内部令牌
 

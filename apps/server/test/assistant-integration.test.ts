@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '#server/app.js';
 import { signInternalToken } from '#server/core/internal-auth.js';
+import { createUser } from '#server/modules/auth/index.js';
 import { runSearch } from '#server/modules/assistant/search.js';
 import type { SearchProviderRecord } from '#server/db/records.js';
 
@@ -310,8 +311,102 @@ describe('built-in assistant', () => {
     expect(String(toolResult?.payload.summary)).toContain('白名单');
   });
 
-  it('does not leak frozen answers for in-progress attempts', async () => {
+  it('discovers the API and creates learning resources as a regular user without an Agent token', async () => {
     const { app, admin } = await setupApp();
+    const user = await createUser(app.ctx.db, {
+      username: 'assistant-learner',
+      password: PASSWORD,
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/web/login',
+      payload: { username: user.username, password: PASSWORD },
+    });
+    const learner = {
+      cookie: login.cookies.map((entry) => `${entry.name}=${entry.value}`).join('; '),
+      'x-csrf-token': login.json().data.csrfToken,
+    };
+    const { assistantCalls } = installProvider({
+      assistant: async (index) => {
+        if (index === 1)
+          return sseResponse(assistantToolCallRound('drill_hub_api_help', { resource: 'topics' }));
+        if (index === 2)
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: '/api/v1/agent/topics',
+              body: { title: '数据库入门', goalText: '掌握事务与索引' },
+            }),
+          );
+        const [topic] = await app.ctx.db.list('topics', { ownerId: user.id });
+        expect(topic).toBeDefined();
+        if (index === 3)
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: `/api/v1/agent/topics/${topic!.id}/contents`,
+              body: { title: '事务基础', bodyText: '## 事务\n\n学习 ACID。' },
+            }),
+          );
+        if (index === 4) {
+          const [content] = await app.ctx.db.list('contents', { ownerId: user.id });
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: `/api/v1/agent/topics/${topic!.id}/plans`,
+              body: {
+                title: '第一周',
+                phases: [
+                  {
+                    title: '基础',
+                    tasks: [{ title: '阅读事务基础', kind: 'reading', targetId: content!.id }],
+                  },
+                ],
+              },
+            }),
+          );
+        }
+        if (index === 5)
+          return sseResponse(
+            assistantToolCallRound('navigate', {
+              route: 'topic',
+              params: { topicId: topic!.id },
+            }),
+          );
+        return sseResponse(assistantTextRound('已创建数据库入门主题、学习内容和计划。'));
+      },
+    });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, learner);
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: learner,
+      payload: { content: '创建数据库入门主题，添加事务学习内容和第一周阅读计划' },
+    });
+    expect(sent.statusCode).toBe(202);
+    const final = await pollUntil(app, learner, thread.id, (data) => !data.activeTurn);
+    const results = final.events.filter((event) => event.type === 'tool_result');
+    expect(results).toHaveLength(5);
+    expect(results.every((event) => !event.payload.isError)).toBe(true);
+    expect(String(results[0]!.payload.summary)).toContain('/api/v1/agent/topics');
+    const [topic] = await app.ctx.db.list('topics', { ownerId: user.id });
+    expect(topic?.title).toBe('数据库入门');
+    const [content] = await app.ctx.db.list('contents', { ownerId: user.id });
+    expect(content?.topicId).toBe(topic?.id);
+    const [plan] = await app.ctx.db.list('plans', { ownerId: user.id });
+    expect(plan?.phases[0]?.tasks[0]?.targetId).toBe(content?.id);
+    expect(final.events.some((event) => event.type === 'ui_action')).toBe(true);
+    expect(await app.ctx.db.list('agentTokens', { ownerId: user.id })).toHaveLength(0);
+    const audits = await app.ctx.db.list('auditLogs', { resourceId: topic!.id });
+    expect(audits.some((audit) => audit.action === 'topic.create')).toBe(true);
+    const firstCall = JSON.stringify(assistantCalls[0]);
+    expect(firstCall).toContain('drill_hub_api_help');
+    expect(firstCall).toContain('POST /api/v1/agent/topics');
+  });
+
+  it('does not leak frozen answers for in-progress attempts', async () => {
+    const { app, admin, ownerId } = await setupApp();
     let attemptId = '';
     installProvider({
       assistant: (index) =>
@@ -398,6 +493,84 @@ describe('built-in assistant', () => {
       payload: {},
     });
     attemptId = attemptResponse.json().data.id;
+
+    const internal = {
+      authorization: `Bearer ${signInternalToken({
+        secret: 'a'.repeat(64),
+        userId: ownerId,
+        turnId: 'question-read-test',
+        role: 'admin',
+        expiresAt: Date.now() + 60000,
+      })}`,
+    };
+    const update = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/agent/questions/${questionId}`,
+      headers: internal,
+      payload: {
+        expectedRevision: 1,
+        definition: {
+          type: 'true_false',
+          stem: '事务具有原子性',
+          gradingMode: 'rule',
+          gradingKey: { value: true },
+          referenceAnswer: 'SECRET-NEW-REFERENCE',
+          explanation: 'SECRET-EXPLANATION',
+        },
+      },
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.body).not.toContain('SECRET-');
+    expect(update.json().data.definition).not.toHaveProperty('gradingKey');
+    const questionsPath = `/api/v1/agent/topics/${topic.id}/questions`;
+    const questionList = await app.inject({ method: 'GET', url: questionsPath, headers: internal });
+    expect(questionList.statusCode).toBe(200);
+    const [safeQuestion] = questionList.json().data;
+    expect(safeQuestion.version).toBe(2);
+    expect(safeQuestion.versions.map((version: { version: number }) => version.version)).toEqual([
+      2, 1,
+    ]);
+    for (const definition of [
+      safeQuestion.definition,
+      ...safeQuestion.versions.map((version: { definition: unknown }) => version.definition),
+    ]) {
+      expect(definition).not.toHaveProperty('gradingKey');
+      expect(definition).not.toHaveProperty('referenceAnswer');
+      expect(definition).not.toHaveProperty('rubric');
+      expect(definition).not.toHaveProperty('explanation');
+    }
+    expect(questionList.body).not.toContain('SECRET-');
+    const rawQuestions = await app.inject({ method: 'GET', url: questionsPath, headers: bearer });
+    expect(rawQuestions.body).toContain('SECRET-REFERENCE-XYZ');
+    expect(rawQuestions.body).toContain('SECRET-NEW-REFERENCE');
+    for (const action of ['archive', 'restore', 'restore']) {
+      const result = await app.inject({
+        method: 'POST',
+        url: `/api/v1/agent/resources/question/${questionId}/${action}`,
+        headers: internal,
+        payload: {},
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.body).not.toContain('SECRET-');
+      expect(result.json().data.definition).not.toHaveProperty('gradingKey');
+    }
+    const other = await createUser(app.ctx.db, {
+      username: 'other-topic-owner',
+      password: PASSWORD,
+    });
+    const otherToken = signInternalToken({
+      secret: 'a'.repeat(64),
+      userId: other.id,
+      turnId: 'other-user',
+      role: 'user',
+      expiresAt: Date.now() + 60000,
+    });
+    const foreignQuestions = await app.inject({
+      method: 'GET',
+      url: questionsPath,
+      headers: { authorization: `Bearer ${otherToken}` },
+    });
+    expect(foreignQuestions.statusCode).toBe(404);
 
     await configureAssistantModel(app, admin);
     const thread = await createThread(app, admin);

@@ -4,10 +4,23 @@ import type {
   AttemptItemView,
   AttemptReport,
   AttemptView,
+  QuestionDefinition,
 } from '@drill-hub/contracts';
 import { answerStatus } from '#server/modules/learning/attempt-policy.js';
 import { assert } from '#server/core/errors.js';
 import { scoreToMinor, minorToScore } from '#server/modules/learning/scores.js';
+
+/** 助手选题组卷可见的题目字段，不包含任何版本的答案与评分标准。 */
+export function toAssistantQuestionDefinition(definition: QuestionDefinition) {
+  return {
+    type: definition.type,
+    stem: definition.stem,
+    gradingMode: definition.gradingMode,
+    ...(definition.options ? { options: definition.options } : {}),
+    ...(definition.slots ? { slots: definition.slots } : {}),
+    ...(definition.tags ? { tags: definition.tags } : {}),
+  };
+}
 
 function itemIsReleased(attempt: Attempt, item: AttemptItemSnapshot): boolean {
   return attempt.kind === 'exam' ? attempt.submittedAt !== null : item.lockedAt !== null;
