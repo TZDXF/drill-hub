@@ -346,8 +346,6 @@ export interface ProviderModel extends BaseRecord {
   modelKey: string;
   displayName: string;
   enabled: boolean;
-  verifiedConfigVersion: number | null;
-  testError?: string | null;
   contextWindow: number | null;
   maxTokens: number | null;
   reasoning: boolean;
@@ -429,7 +427,6 @@ export interface TokenUsageTotals extends ModelTokenUsage {
   calls: number;
   failedCalls: number;
   unknownUsageCalls: number;
-  modelTestCalls: number;
 }
 export interface TokenUsageReport {
   days: number;

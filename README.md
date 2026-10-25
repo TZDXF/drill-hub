@@ -11,7 +11,7 @@
 - 单选、多选、判断、填空、简答；服务端保存答案、控制考试截止与冻结提交。
 - 规则判分；内部模型按得分项等级评分，服务端确定性计算分数；显式外部 Agent rubric 批改与模型重评。
 - 系统设置中管理供应商连接、模型、评分配置和默认评分模型；可从供应商 `/models` 接口自动发现并批量导入模型，密钥在服务端加密保存。
-- Token 用量页：个人统计、管理员全站统计、最近 7/30/90 天趋势与模型排行；记录模型评分、重试、重评和模型测试的供应商用量，未知用量单列。
+- Token 用量页：个人统计、管理员全站统计、最近 7/30/90 天趋势与模型排行；记录模型评分、重试和重评的供应商用量，未知用量单列。
 - 持久评分队列、失败重试、成绩报告、错题集、重练、归档与恢复。不开放永久删除和手工改分接口。
 - Agent 访问令牌、最小权限 scope 和可分发 Skill。
 - **内置学习助手**：基于 [Pi](https://pi.dev) 的应用内对话助手，以当前用户身份调用平台 API 查询与创建学习数据、执行 web 搜索、为用户打开页面并调整对话/内容布局；桌面三栏、平板窄栏、手机全屏覆盖三端适配；管理员可配置默认聊天模型、搜索服务（Tavily/Brave/SearXNG/OpenAI Responses）、MCP 服务器与助手 Skills。详见 [docs/07-built-in-assistant.md](docs/07-built-in-assistant.md)。
@@ -269,5 +269,5 @@ pnpm test:e2e
 `days` 仅支持 `7`、`30`、`90`，默认 `30`；`utcOffsetMinutes` 为本地时间相对 UTC 的分钟偏移，
 范围为 `-840` 至 `840`，默认 `0`。响应 `data` 含 `days`、`utcOffsetMinutes`、`fromDate`、
 `toDate`、`totals`、补齐无调用日期的 `daily` 以及按连接和请求模型分组的 `models`。
-汇总字段包括 `calls`、`failedCalls`、`unknownUsageCalls`、`modelTestCalls`、`promptTokens`、
+汇总字段包括 `calls`、`failedCalls`、`unknownUsageCalls`、`promptTokens`、
 `completionTokens`、`totalTokens`；Token 汇总仅累加已知用量。

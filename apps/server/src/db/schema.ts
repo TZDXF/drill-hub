@@ -154,8 +154,6 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     modelKey: 'text',
     displayName: 'text',
     enabled: 'boolean',
-    verifiedConfigVersion: 'integer?',
-    testError: 'text?',
     contextWindow: 'integer?',
     maxTokens: 'integer?',
     reasoning: 'boolean',

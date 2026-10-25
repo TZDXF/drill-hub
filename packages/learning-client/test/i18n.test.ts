@@ -188,7 +188,12 @@ describe('translation catalogs', () => {
     );
     const unmapped = [...serverActions].filter((action) => !mapped.has(action));
     expect(unmapped).toEqual([]);
-    const stale = [...mapped.keys()].filter((action) => !serverActions.has(action));
+    // 已移除的功能仍需展示历史审计记录。
+    const historicalActions = new Set(['provider_model.tested', 'provider_model.test_failed']);
+    const stale = [...mapped.keys()].filter(
+      (action) => !serverActions.has(action) && !historicalActions.has(action),
+    );
+    for (const action of historicalActions) expect(mapped.has(action)).toBe(true);
     expect(stale).toEqual([]);
     for (const key of mapped.values()) {
       expect({ key, defined: key in chinese }).toEqual({ key, defined: true });

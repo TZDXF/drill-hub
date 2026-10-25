@@ -202,7 +202,6 @@ export class Database {
       'calls',
       'failedCalls',
       'unknownUsageCalls',
-      'modelTestCalls',
       'promptTokens',
       'completionTokens',
       'totalTokens',
@@ -233,10 +232,6 @@ export class Database {
         .addSelect(
           'COALESCE(SUM(CASE WHEN "u"."usage" IS NULL THEN 1 ELSE 0 END), 0)',
           'unknownUsageCalls',
-        )
-        .addSelect(
-          'COALESCE(SUM(CASE WHEN "u"."purpose" = \'model_test\' THEN 1 ELSE 0 END), 0)',
-          'modelTestCalls',
         );
       for (const field of ['promptTokens', 'completionTokens', 'totalTokens']) {
         query.addSelect(this.usageFieldExpression(field), field);

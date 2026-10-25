@@ -109,19 +109,6 @@ function installProvider(responder: ProviderResponder, options: { models?: unkno
     const request = JSON.parse(String(init?.body));
     chatRequests.push(request);
     const payload = JSON.parse(request.messages[1].content);
-    if (payload.question.stem.startsWith(' synthetic')) {
-      return responseWithCriteria(
-        [
-          {
-            criterionId: 'atomicity',
-            levelId: 'met',
-            evidence: ['All operations succeed together or roll back together.'],
-            explanation: 'synthetic check',
-          },
-        ],
-        'synthetic ok',
-      );
-    }
     return responder(request, payload);
   });
   vi.stubGlobal('fetch', fake);
@@ -195,13 +182,6 @@ async function configureModel(
     },
   });
   expect(invalidCost.statusCode).toBe(422);
-  const tested = await app.inject({
-    method: 'POST',
-    url: `/api/v1/admin/provider-models/${model.id}/test`,
-    headers: admin,
-    payload: {},
-  });
-  expect(tested.statusCode).toBe(200);
   const profileResponse = await app.inject({
     method: 'POST',
     url: '/api/v1/admin/grading-profiles',
@@ -216,7 +196,7 @@ async function configureModel(
   expect(profileResponse.statusCode).toBe(201);
   return {
     connection,
-    model: tested.json().data.providerModel,
+    model: configured.json().data,
     profile: profileResponse.json().data,
     secret,
   };
@@ -635,7 +615,16 @@ describe('grading administration and persistent model workflow', () => {
       throw new Error('unexpected grading call');
     });
     const configured = await configureModel(app, admin);
-    expect(configured.model.verifiedConfigVersion).toBe(1);
+    expect(configured.model).not.toHaveProperty('verifiedConfigVersion');
+    expect(configured.model).not.toHaveProperty('testError');
+    const removedTest = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/provider-models/${configured.model.id}/test`,
+      headers: admin,
+      payload: {},
+    });
+    expect(removedTest.statusCode).toBe(404);
+    expect(await app.ctx.db.list('modelUsage')).toHaveLength(0);
     expect((await app.ctx.db.get('settings', 'global'))?.defaultGradingProfileId).toBe(
       configured.profile.id,
     );
@@ -755,9 +744,9 @@ describe('grading administration and persistent model workflow', () => {
           questionId: current.items[0].questionId,
         }),
       ).toBeUndefined();
-      expect(provider.chatRequests).toHaveLength(3);
-      expect(JSON.stringify(provider.chatRequests[2])).not.toContain(reason);
-      expect(JSON.stringify(provider.chatRequests[2])).not.toContain(ownerId);
+      expect(provider.chatRequests).toHaveLength(2);
+      expect(JSON.stringify(provider.chatRequests[1])).not.toContain(reason);
+      expect(JSON.stringify(provider.chatRequests[1])).not.toContain(ownerId);
     },
   );
 
@@ -822,7 +811,7 @@ describe('grading administration and persistent model workflow', () => {
     },
   );
 
-  it('records each billed retry, successful grading and model test without storing answers or keys', async () => {
+  it('records each billed retry and successful grading without storing answers or keys', async () => {
     const { app, admin, ownerId } = await setupApp();
     let count = 0;
     installProvider(() => {
@@ -868,8 +857,8 @@ describe('grading administration and persistent model workflow', () => {
     await app.ctx.grading.runOnce();
     expect((await currentAttempt(app, attempt.id)).items[0].gradingStatus).toBe('completed');
     const records = await app.ctx.db.list('modelUsage');
-    expect(records).toHaveLength(3);
-    expect(records.filter((record) => record.purpose === 'model_test')).toHaveLength(1);
+    expect(records).toHaveLength(2);
+    expect(records.every((record) => record.purpose === 'grading')).toBe(true);
     expect(
       records
         .filter((record) => record.jobId === job.id)
@@ -886,10 +875,9 @@ describe('grading administration and persistent model workflow', () => {
     expect(JSON.stringify(records)).not.toContain('事务全部成功');
     const result = await app.inject({ url: '/api/v1/me/token-usage', headers: admin });
     expect(result.json().data.totals).toMatchObject({
-      calls: 3,
+      calls: 2,
       failedCalls: 1,
-      unknownUsageCalls: 1,
-      modelTestCalls: 1,
+      unknownUsageCalls: 0,
       totalTokens: 240,
     });
   });
@@ -1344,7 +1332,7 @@ describe('system blank grades and voided-attempt protection', () => {
         questionId: attempt.items[0].questionId,
       }),
     ).toBeUndefined();
-    expect(provider.chatRequests).toHaveLength(2);
+    expect(provider.chatRequests).toHaveLength(1);
   });
 
   it('cancels rather than writing blocked_config if voided after claim and configuration resolution fails', async () => {
@@ -1381,7 +1369,7 @@ describe('system blank grades and voided-attempt protection', () => {
       attemptCount: 1,
     });
     expect(await gradingState(app, attempt.id)).toEqual(before);
-    expect(provider.chatRequests).toHaveLength(1);
+    expect(provider.chatRequests).toHaveLength(0);
   });
 
   it.each([
@@ -1557,7 +1545,7 @@ describe('system blank grades and voided-attempt protection', () => {
       expect(rejected.json().error.code).toBe('ATTEMPT_VOIDED');
       expect(await app.ctx.db.list('gradingJobs')).toEqual(jobs);
       expect(await gradingState(app, attempt.id)).toEqual(before);
-      expect(provider.chatRequests).toHaveLength(3);
+      expect(provider.chatRequests).toHaveLength(2);
     },
   );
 });

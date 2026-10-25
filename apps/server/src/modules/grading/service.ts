@@ -1,5 +1,4 @@
 import type {
-  Answer,
   Attempt,
   AttemptItemSnapshot,
   DiscoveredProviderModel,
@@ -7,7 +6,6 @@ import type {
   GradingJob,
   GradingProfile,
   ProviderModel,
-  QuestionDefinition,
   ModelTokenUsage,
 } from '@drill-hub/contracts';
 import type { AppContext, GradingService } from '#server/core/context.js';
@@ -115,34 +113,6 @@ function activeJob(job: GradingJob): boolean {
     job.status === 'blocked_budget'
   );
 }
-
-function syntheticTestDefinition(): QuestionDefinition {
-  return {
-    type: 'short_answer',
-    stem: ' synthetic rubric capability check: judge whether the answer states all-or-nothing transaction behavior.',
-    gradingMode: 'model_rubric',
-    referenceAnswer: 'All operations succeed together or roll back together.',
-    rubric: {
-      version: 1,
-      criteria: [
-        {
-          id: 'atomicity',
-          description:
-            'The answer explicitly states that operations succeed together or roll back together.',
-          weight: 1,
-          levels: [
-            { id: 'not_met', creditBps: 0, description: 'The statement is absent.' },
-            { id: 'met', creditBps: 10000, description: 'The statement is present.' },
-          ],
-        },
-      ],
-    },
-  };
-}
-
-const syntheticTestAnswer: Answer = {
-  text: 'All operations succeed together or roll back together.',
-};
 
 export class GradingServiceImpl implements GradingService {
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -624,73 +594,6 @@ export class GradingServiceImpl implements GradingService {
       allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
       fetchImpl: this.options.fetchImpl,
     });
-  }
-
-  async testProviderModel(providerModelId: string, ownerId: string): Promise<GradeResult> {
-    const initial = await this.ctx.db.get('providerModels', providerModelId);
-    if (!initial) throw new AppError(404, 'NOT_FOUND', '模型不存在');
-    const connection = await this.ctx.db.get('modelConnections', initial.connectionId);
-    if (!connection) throw new AppError(404, 'NOT_FOUND', '模型连接不存在');
-    const version = await this.ctx.db.findOne('modelConnectionVersions', {
-      connectionId: connection.id,
-      configVersion: connection.configVersion,
-    });
-    if (!version) throw new AppError(422, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在');
-    try {
-      const grade = await this.gradeWithUsage(
-        {
-          baseUrl: version.baseUrl,
-          apiKey: decryptApiKey(this.ctx, version.encryptedApiKey),
-          modelKey: initial.modelKey,
-          definition: syntheticTestDefinition(),
-          answer: syntheticTestAnswer,
-          timeoutMs: 30_000,
-          allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
-          fetchImpl: this.options.fetchImpl,
-        },
-        {
-          ownerId,
-          connectionId: connection.id,
-          purpose: 'model_test',
-          jobId: null,
-        },
-        (output) =>
-          gradeRubric(syntheticTestDefinition(), syntheticTestAnswer, '1', output.criteria, {
-            source: 'model',
-            feedback: output.summary,
-            modelId: output.modelId,
-          }),
-      );
-      await this.ctx.db.transaction(async (tx) => {
-        const model = await tx.get('providerModels', initial.id);
-        const currentConnection = await tx.get('modelConnections', initial.connectionId);
-        if (
-          !model ||
-          !currentConnection ||
-          model.revision !== initial.revision ||
-          currentConnection.configVersion !== version.configVersion ||
-          model.modelKey !== initial.modelKey
-        ) {
-          throw new AppError(409, 'VERSION_CONFLICT', '模型配置已变化，请重新测试');
-        }
-        await tx.update('providerModels', model.id, model.revision, {
-          verifiedConfigVersion: version.configVersion,
-          testError: null,
-        });
-      });
-      return grade;
-    } catch (error) {
-      const failure = safeExecutionError(error);
-      const current = await this.ctx.db.get('providerModels', initial.id);
-      if (current && current.revision === initial.revision) {
-        await this.ctx.db.update('providerModels', current.id, current.revision, {
-          verifiedConfigVersion: null,
-          testError: failure.code,
-        });
-      }
-      if (error instanceof AppError || error instanceof ProviderError) throw error;
-      throw new ProviderError(failure.code, failure.retryable);
-    }
   }
 }
 

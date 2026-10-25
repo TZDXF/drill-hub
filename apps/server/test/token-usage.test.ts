@@ -47,7 +47,6 @@ describe('token usage aggregation', () => {
         calls: 4,
         failedCalls: 2,
         unknownUsageCalls: 1,
-        modelTestCalls: 1,
       });
       expect(own.daily).toHaveLength(7);
       expect(own.daily[0]).toMatchObject({ date: '2026-10-13', calls: 0, totalTokens: 0 });

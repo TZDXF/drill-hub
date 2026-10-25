@@ -133,9 +133,6 @@ onBeforeUnmount(() => {
         <span class="badge" :class="report.totals.unknownUsageCalls ? 'badge--amber' : ''">{{
           t('management.usage.unknownCalls', { count: number(report.totals.unknownUsageCalls) })
         }}</span>
-        <span class="badge">{{
-          t('management.usage.modelTestCalls', { count: number(report.totals.modelTestCalls) })
-        }}</span>
       </div>
       <EmptyState
         v-if="!report.totals.calls"

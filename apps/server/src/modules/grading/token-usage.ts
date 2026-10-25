@@ -7,7 +7,6 @@ export function emptyUsageTotals(): TokenUsageTotals {
     calls: 0,
     failedCalls: 0,
     unknownUsageCalls: 0,
-    modelTestCalls: 0,
     promptTokens: 0,
     completionTokens: 0,
     totalTokens: 0,

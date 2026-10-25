@@ -63,16 +63,15 @@
 | GET, POST  | /admin/model-connections             | 列出脱敏供应商配置/创建连接                                                        |
 | GET, POST  | /admin/model-connections/{id}/models | 查询/添加该供应商下的模型 ID、名称                                                 |
 | PATCH      | /admin/provider-models/{id}          | 更新模型与启用状态，产生可审计变更                                                 |
-| POST       | /admin/provider-models/{id}/test     | 合成题测试该模型的得分项结构化输出能力，结果关联配置版本                           |
 | PATCH      | /admin/model-connections/{id}        | 更新模型连接和密钥，不回显旧密钥                                                   |
-| POST       | /admin/model-connections/{id}/test   | 连接/鉴权测试，不携带真实用户答案，不能替代具体模型评分测试                        |
+| POST       | /admin/model-connections/{id}/test   | 连接/鉴权测试，不携带真实用户答案                                                  |
 | GET, POST  | /admin/grading-profiles              | 查询/创建评分配置版本，指定默认配置                                                |
 | PATCH      | /admin/grading-profiles/{id}         | 校验 expectedRevision，编辑模型/并发/超时/重试并创建新配置版本；默认项随新版本切换 |
 | POST       | /admin/grading-profiles/{id}/default | 将指定配置设为默认，新任务生效，不修改既有任务                                     |
 | GET        | /admin/grading-jobs                  | 脱敏任务运维状态，不提供跨用户答案浏览器                                           |
 | POST       | /admin/grading-jobs/{id}/retry       | 恢复失败/待配置任务；显式改绑默认配置需原因及版本校验，不接受分数或任意答案        |
 
-供应商和模型在“系统设置 → 供应商与模型”管理。供应商显示名可配置；协议类型只能选已实现的适配器。模型 ID 支持手动添加，不要求供应商提供模型列表接口。连接测试和模型测试都需限流及出站地址策略，不能成为任意内网探测器。评分测试是可选的诊断手段，不通过测试也可直接将模型设为评分模型；启用默认评分配置前校验连接版本与权限，API 不返回密钥原文。
+供应商和模型在“系统设置 → 供应商与模型”管理。供应商显示名可配置；协议类型只能选已实现的适配器。模型 ID 支持手动添加，不要求供应商提供模型列表接口。连接测试需限流及出站地址策略，不能成为任意内网探测器。可直接将已启用的模型设为评分模型；启用默认评分配置前校验连接版本与权限，API 不返回密钥原文。
 
 ## 4. 学习者接口
 
@@ -230,7 +229,7 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 - `GradingProfile` 包含 `providerModelId`、`connectionVersionId`、`modelIdSnapshot`、`concurrency`、`timeoutMs`、`maxRetries`、`isDefault` 以及通用记录字段；不保存或接受 `promptVersion`，适配器列表也不提供提示词版本选项。
 - 创建配置时 `concurrency` 默认 2，必须为 1–20 的整数；`timeoutMs` 为 100–120000 的整数（API 默认 30000），`maxRetries` 为 0–5 的整数（默认 2）。UI 新建超时默认 60000。
 - 编辑请求必须提供 `expectedRevision`，其余字段可省略并沿用原值；返回新的配置 ID，原配置保留执行参数，已绑定任务不迁移。版本过期返回 409 `VERSION_CONFLICT`。原配置是默认项时，新版本必须继续为默认项，不能通过取消默认使系统无默认配置。
-- 创建或编辑配置时验证模型与供应商均已启用，并绑定当前连接版本；设置默认配置前还要求其绑定的连接版本仍为当前版本。模型测试仅用于可选诊断，不是创建、编辑或设置默认配置的前置条件。模型列表可快速设置评分模型：存在默认配置时继承其并发/超时/重试；不存在时新建默认配置，并发为 2。
+- 创建或编辑配置时验证模型与供应商均已启用，并绑定当前连接版本；设置默认配置前还要求其绑定的连接版本仍为当前版本。模型列表可快速设置评分模型：存在默认配置时继承其并发/超时/重试；不存在时新建默认配置，并发为 2。
 - Worker 按任务绑定的配置限制并行调用，在数据库事务内领取任务，网络调用在事务外；不同配置分别计数，不是供应商级或全局并发配额。
 
 ### 当前安全边界

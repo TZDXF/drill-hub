@@ -664,8 +664,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
             modelKey: candidate.modelKey,
             displayName: candidate.displayName ?? candidate.modelKey,
             enabled: true,
-            verifiedConfigVersion: null,
-            testError: null,
             contextWindow: null,
             maxTokens: null,
             reasoning: false,
@@ -744,8 +742,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
           modelKey,
           displayName,
           enabled,
-          verifiedConfigVersion: null,
-          testError: null,
           contextWindow: config.contextWindow ?? null,
           maxTokens: config.maxTokens ?? null,
           reasoning: config.reasoning ?? false,
@@ -807,7 +803,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
           ? current.displayName
           : requiredText(input.displayName, 'displayName', 200);
       const enabled = optionalBoolean(input.enabled, current.enabled);
-      const identityChanged = modelKey !== current.modelKey;
       const record = await tx.update('providerModels', current.id, revision, {
         modelKey,
         displayName,
@@ -817,8 +812,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         ...(config.reasoning !== undefined ? { reasoning: config.reasoning } : {}),
         ...(config.input !== undefined ? { input: config.input } : {}),
         ...(config.costPerMillion !== undefined ? { costPerMillion: config.costPerMillion } : {}),
-        verifiedConfigVersion: identityChanged ? null : current.verifiedConfigVersion,
-        testError: identityChanged ? null : (current.testError ?? null),
       });
       await ctx.audit(
         actor,
@@ -832,28 +825,6 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
     });
     return { data: updated };
   });
-
-  app.post<{ Params: { id: string } }>(
-    `${PREFIX}/admin/provider-models/:id/test`,
-    async (request) => {
-      const actor = await ctx.requireAdmin(request);
-      const input = body(request, true);
-      keys(input, []);
-      try {
-        const grade = await gradingRuntime(ctx).testProviderModel(request.params.id, actor.userId);
-        const model = await ctx.db.get('providerModels', request.params.id);
-        await ctx.audit(actor, 'provider_model.tested', 'providerModel', request.params.id, {
-          verifiedConfigVersion: model?.verifiedConfigVersion ?? null,
-        });
-        return { data: { providerModel: model, result: grade } };
-      } catch (error) {
-        await ctx.audit(actor, 'provider_model.test_failed', 'providerModel', request.params.id, {
-          errorCode: safeErrorCode(error),
-        });
-        providerFailure(error);
-      }
-    },
-  );
 
   app.get(`${PREFIX}/admin/grading-profiles`, async (request) => {
     await ctx.requireAdmin(request);

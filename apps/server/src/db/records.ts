@@ -98,6 +98,7 @@ export interface ModelUsageRecord extends BaseRecord {
   ownerId: string;
   connectionId: string;
   modelKey: string;
+  /** model_test 仅用于保留已发生的评分测试用量。 */
   purpose: 'grading' | 'model_test' | 'assistant';
   jobId: string | null;
   status: 'succeeded' | 'failed';

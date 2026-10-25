@@ -482,29 +482,6 @@ async function toggleModel(model: ProviderModel) {
     busy.value = false;
   }
 }
-async function testModel(model: ProviderModel) {
-  testing.value = model.id;
-  try {
-    const result = await learning.post<ProviderModel | { providerModel: ProviderModel }>(
-      `/admin/provider-models/${model.id}/test`,
-      {},
-    );
-    const testedModel = 'providerModel' in result ? result.providerModel : result;
-    await loadModels();
-    if (testedModel.testError) {
-      learning.notify.error(t('management.models.modelTestFailed'), testedModel.testError);
-    } else {
-      learning.notify.success(
-        t('management.models.modelTestDone'),
-        t('management.models.modelTestDoneDesc'),
-      );
-    }
-  } catch (reason) {
-    learning.notify.error(t('management.models.modelTestFailed'), errorMessage(reason));
-  } finally {
-    testing.value = '';
-  }
-}
 async function openProfile(profile: GradingProfile | null = null) {
   busy.value = true;
   try {
@@ -809,13 +786,6 @@ onMounted(() => void load(true));
                           ? t('management.models.state.enabled')
                           : t('management.models.state.disabled')
                       }}</span
-                      ><span>{{
-                        model.verifiedConfigVersion !== null
-                          ? t('management.models.testPassedVersion', {
-                              version: model.verifiedConfigVersion,
-                            })
-                          : t('management.models.notTested')
-                      }}</span
                       ><span v-if="model.contextWindow">{{
                         t('management.models.contextSummary', {
                           context: Math.round(model.contextWindow / 1000),
@@ -829,9 +799,6 @@ onMounted(() => void load(true));
                       }}</span
                       ><span v-if="model.reasoning" class="badge badge--teal">{{
                         t('management.models.reasoningTag')
-                      }}</span
-                      ><span v-if="model.testError" class="badge badge--red">{{
-                        t('management.models.gradingTestFailed')
                       }}</span>
                     </div>
                   </div>
@@ -845,15 +812,6 @@ onMounted(() => void load(true));
                       {{ t('management.models.useAsGrading') }}
                     </button>
                     <button
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy || testing !== ''"
-                      @click="testModel(model)"
-                    >
-                      <span v-if="testing === model.id" class="spinner" />{{
-                        t('management.models.gradingTest')
-                      }}</button
-                    ><button
                       class="button button--small"
                       type="button"
                       :disabled="busy"

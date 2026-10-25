@@ -132,6 +132,7 @@ const actionLabelKeys: Record<string, string> = {
   'model_connection.config_test_failed': 'management.audit.action.modelConnectionConfigTestFailed',
   'provider_model.created': 'management.audit.action.providerModelCreated',
   'provider_model.updated': 'management.audit.action.providerModelUpdated',
+  // 保留已移除评分测试的历史审计文案。
   'provider_model.tested': 'management.audit.action.providerModelTested',
   'provider_model.test_failed': 'management.audit.action.providerModelTestFailed',
   'provider_models.discovered': 'management.audit.action.providerModelsDiscovered',

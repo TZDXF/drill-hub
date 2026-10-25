@@ -26,8 +26,6 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
     modelKey: key,
     displayName: `${key} 模型`,
     enabled: true,
-    verifiedConfigVersion: key === 'unverified' ? null : 1,
-    testError: null,
     contextWindow: 128000,
     maxTokens: 16384,
     reasoning: false,
@@ -97,7 +95,8 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
   const unverified = page
     .locator('.list-card')
     .filter({ has: page.getByRole('heading', { name: 'unverified 模型', exact: true }) });
-  // 模型无需评分测试即可设为评分模型（提交 5d44a6b）。
+  await expect(page.getByRole('button', { name: '评分测试', exact: true })).toHaveCount(0);
+  await expect(page.getByText('未运行评分测试', { exact: true })).toHaveCount(0);
   await expect(unverified.getByRole('button', { name: '设为评分模型', exact: true })).toBeEnabled();
   const layout = await alpha.evaluate((card) => ({
     bodyWidth: card.querySelector('.list-card__body')!.getBoundingClientRect().width,

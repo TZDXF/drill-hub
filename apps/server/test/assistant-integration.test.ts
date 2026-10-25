@@ -89,7 +89,7 @@ function assistantTextRound(text: string) {
   ];
 }
 
-/** stub 全局 fetch：区分本机直连、/models、评分合成测试与助手对话（流式，带工具声明）。 */
+/** stub 全局 fetch：区分本机直连、/models 与助手对话（流式，带工具声明）。 */
 function installProvider(options: {
   assistant?: (callIndex: number) => Response | Promise<Response>;
   models?: unknown[];
@@ -115,32 +115,7 @@ function installProvider(options: {
         options.assistant?.(assistantIndex) ?? sseResponse(assistantTextRound('好的。'));
       return respond;
     }
-    // 评分/连接测试的合成请求：返回成功的评分 JSON。
-    return new Response(
-      JSON.stringify({
-        model: 'configured-model',
-        choices: [
-          {
-            finish_reason: 'stop',
-            message: {
-              refusal: null,
-              content: JSON.stringify({
-                criteria: [
-                  {
-                    criterionId: 'atomicity',
-                    levelId: 'met',
-                    evidence: ['All operations succeed together or roll back together.'],
-                    explanation: 'synthetic check',
-                  },
-                ],
-                summary: 'synthetic ok',
-              }),
-            },
-          },
-        ],
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    );
+    throw new Error('unexpected provider request');
   });
   vi.stubGlobal('fetch', fake);
   return { assistantCalls };
@@ -184,13 +159,6 @@ async function configureAssistantModel(app: FastifyInstance, admin: Record<strin
   const model = modelResponse.json().data;
   expect(model.contextWindow).toBe(128000);
   expect(model.costPerMillion).toEqual({ input: 0.5, output: 2, cacheRead: 0.1, cacheWrite: 0.2 });
-  const tested = await app.inject({
-    method: 'POST',
-    url: `/api/v1/admin/provider-models/${model.id}/test`,
-    headers: admin,
-    payload: {},
-  });
-  expect(tested.statusCode).toBe(200);
   return { connection, model };
 }
 
