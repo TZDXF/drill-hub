@@ -100,6 +100,7 @@ export class ApiClient {
         redirect: 'error',
         signal: AbortSignal.any(signals),
       });
+      if (response.status === 204) return undefined as T;
       let result: ApiResponse<T> | ApiFailure;
       try {
         result = (await response.json()) as ApiResponse<T> | ApiFailure;

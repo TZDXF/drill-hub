@@ -68,6 +68,13 @@ describe('server connection and request isolation', () => {
     });
     await expect(client.get('/me')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
+  it('accepts successful 204 responses without a JSON body', async () => {
+    const client = new ApiClient({
+      baseUrl: 'https://study.example.org',
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+    await expect(client.request<void>('/queued/1', { method: 'DELETE' })).resolves.toBeUndefined();
+  });
   it('cancels in-flight requests when a connection is disposed', async () => {
     const client = new ApiClient({
       baseUrl: 'https://study.example.org',

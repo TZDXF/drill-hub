@@ -132,6 +132,7 @@ export interface AssistantQueuedMessageRecord extends BaseRecord {
   threadId: string;
   content: string;
   mode: import('@drill-hub/contracts').AssistantQueueMode;
+  position: number;
   promptContext: string | null;
   providerModelId: string | null;
   images: import('@drill-hub/contracts').AssistantImageAttachment[];

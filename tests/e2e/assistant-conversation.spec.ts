@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { login } from '#e2e/helpers';
+import type { AssistantQueuedMessage } from '@drill-hub/contracts';
 
 declare global {
   interface Window {
@@ -289,4 +290,102 @@ test('连续文本增量不重复发起平滑滚动，完成后仍停在最新�
       ),
     )
     .toBeLessThan(3);
+});
+
+test('回复中直接输入并加入队列，可编辑、排序、立即发送和删除', async ({ page }) => {
+  const activeTurn = {
+    id: 'queue-active-turn',
+    threadId,
+    userMessageId: 'queue-active-user',
+    assistantMessageId: 'queue-active-answer',
+    status: 'running',
+    errorCode: null,
+    providerModelId: null,
+    createdAt: '2026-01-02T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+    revision: 1,
+  };
+  const queued: AssistantQueuedMessage[] = [];
+  await page.route('**/api/v1/me/assistant/threads', async (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({ json: { data: [detail().thread] } });
+    return route.continue();
+  });
+  await page.route(`**/api/v1/me/assistant/threads/${threadId}`, async (route) =>
+    route.fulfill({ json: { data: { ...detail({ empty: true }), activeTurn, queued } } }),
+  );
+  await page.route(`**/api/v1/me/assistant/threads/${threadId}/stream**`, async (route) =>
+    route.fulfill({ contentType: 'text/event-stream', body: ': heartbeat\n\n' }),
+  );
+  await page.route(`**/api/v1/me/assistant/threads/${threadId}/messages`, async (route) => {
+    const input = route.request().postDataJSON();
+    const stamp = new Date().toISOString();
+    const item: AssistantQueuedMessage = {
+      id: `queued-${queued.length + 1}`,
+      threadId,
+      content: input.content,
+      mode: 'followUp',
+      position: queued.length + 1,
+      providerModelId: null,
+      images: [],
+      createdAt: stamp,
+      updatedAt: stamp,
+      revision: 1,
+    };
+    queued.push(item);
+    return route.fulfill({
+      status: 202,
+      json: { data: { turn: null, userMessage: null, queuedMessage: item } },
+    });
+  });
+  await page.route(
+    `**/api/v1/me/assistant/threads/${threadId}/queued-messages/order`,
+    async (route) => {
+      const ids: string[] = route.request().postDataJSON().ids;
+      const ordered = ids.map((id) => queued.find((item) => item.id === id)!);
+      queued.splice(0, queued.length, ...ordered);
+      return route.fulfill({ json: { data: queued } });
+    },
+  );
+  await page.route('**/api/v1/me/assistant/queued-messages/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const id = path.split('/').at(-1)!;
+    if (path.endsWith('/send')) {
+      const sendId = path.split('/').at(-2)!;
+      const item = queued.find((entry) => entry.id === sendId)!;
+      queued.splice(queued.indexOf(item), 1);
+      return route.fulfill({ json: { data: { ...item, mode: 'steer' } } });
+    }
+    const index = queued.findIndex((entry) => entry.id === id);
+    if (request.method() === 'PATCH') {
+      queued[index] = { ...queued[index]!, content: request.postDataJSON().content, revision: 2 };
+      return route.fulfill({ json: { data: queued[index] } });
+    }
+    queued.splice(index, 1);
+    return route.fulfill({ status: 204, body: '' });
+  });
+  await login(page);
+  await page.goto('/assistant');
+  const input = page.getByTestId('assistant-input');
+  await expect(input).toBeEnabled();
+  await expect(page.getByText('正在回复，可继续输入')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: '发送方式' })).toHaveCount(0);
+  await input.fill('第一条追问');
+  await input.press('Enter');
+  await input.fill('第二条追问');
+  await page.getByRole('button', { name: '加入追问队列' }).click();
+  const rows = page.locator('.assistant-queue-item');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('第一条追问');
+  await rows.nth(0).getByRole('button', { name: '下移' }).click();
+  await expect(rows.nth(0)).toContainText('第二条追问');
+  await rows.nth(0).getByRole('button', { name: '编辑待发送消息' }).click();
+  await rows.nth(0).getByRole('textbox', { name: '编辑待发送消息' }).fill('修改后的追问');
+  await rows.nth(0).getByRole('button', { name: '保存', exact: true }).click();
+  await expect(rows.nth(0)).toContainText('修改后的追问');
+  await rows.nth(1).getByRole('button', { name: '立即发送' }).click();
+  await expect(rows).toHaveCount(1);
+  await rows.nth(0).getByRole('button', { name: '移除待发送消息' }).click();
+  await expect(page.locator('.assistant-queue')).toHaveCount(0);
 });

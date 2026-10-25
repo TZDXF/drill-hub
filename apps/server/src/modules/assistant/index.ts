@@ -3,6 +3,7 @@ import type {
   AssistantImageAttachment,
   AssistantModelOption,
   AssistantQueueMode,
+  AssistantQueuedMessage,
   AssistantRouteName,
   AssistantThread,
   AssistantTurnView,
@@ -356,6 +357,42 @@ export function registerAssistantRoutes(
     await assistant.notifyQueue(queued.threadId);
     const { ownerId: _ownerId, promptContext: _promptContext, ...view } = updated;
     return { data: view };
+  });
+
+  app.put(`${API_PREFIX}/me/assistant/threads/:id/queued-messages/order`, async (request) => {
+    const actor = await ctx.requireUser(request);
+    const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
+    const input = body(request);
+    const ids = input.ids;
+    const pending = await ctx.db.list('assistantQueuedMessages', { threadId: thread.id });
+    assert(
+      Array.isArray(ids) &&
+        ids.length === pending.length &&
+        ids.every((id) => typeof id === 'string') &&
+        new Set(ids).size === pending.length &&
+        pending.every((item) => item.ownerId === actor.userId && ids.includes(item.id)),
+      'INVALID_QUEUE_ORDER',
+      '待发送消息顺序无效，请刷新后重试',
+      422,
+    );
+    const ordered: AssistantQueuedMessage[] = [];
+    for (const [index, id] of (ids as string[]).entries()) {
+      const queued = pending.find((item) => item.id === id)!;
+      const updated = await ctx.db.update('assistantQueuedMessages', queued.id, queued.revision, {
+        position: index + 1,
+      });
+      const { ownerId: _ownerId, promptContext: _promptContext, ...view } = updated;
+      ordered.push(view);
+    }
+    await assistant.notifyQueue(thread.id);
+    return { data: ordered };
+  });
+
+  app.post(`${API_PREFIX}/me/assistant/queued-messages/:id/send`, async (request) => {
+    const actor = await ctx.requireUser(request);
+    const queued = await owned(ctx.db, 'assistantQueuedMessages', params(request).id, actor.userId);
+    const sent = await assistant.sendQueuedMessage(queued);
+    return { data: sent };
   });
 
   app.delete(`${API_PREFIX}/me/assistant/queued-messages/:id`, async (request, reply) => {

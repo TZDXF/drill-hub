@@ -89,7 +89,7 @@
     "notFoundTitle": "没有找到这份计划",
     "notFoundDescription": "计划可能已归档或不再可用，请返回主题查看现有计划。",
     "backToTopic": "返回主题",
-    "description": "{count} 个阶段，按顺序推进；阅读内容打开即完成，普通任务需手动标记完成。",
+    "description": "{count} 个阶段，按顺序推进；阅读内容打开即完成。",
     "archivedNotice": "这份计划已归档，历史记录仍可查看。",
     "kinds": {
       "reading": "阅读",
@@ -103,10 +103,7 @@
     "statusPending": "待开始",
     "continueAction": "继续",
     "goAction": "前往",
-    "markComplete": "标记完成",
     "emptyPhase": "这个阶段还没有任务",
-    "notifyCompleteTitle": "任务已标记完成",
-    "notifyCompleteError": "完成任务失败",
     "notifyLoadFailed": "学习计划读取失败"
   },
   "content": {

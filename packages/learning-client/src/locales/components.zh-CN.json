@@ -322,8 +322,6 @@
     "saveQuote": "保存批注",
     "attach": "添加图片",
     "removeImage": "移除图片",
-    "replyInProgress": "正在回复，可继续输入",
-    "queueMode": "发送方式",
     "followUp": "本轮后发送",
     "steer": "打断并发送",
     "queueSend": "加入追问队列",
@@ -331,6 +329,11 @@
     "editQueue": "编辑待发送消息",
     "removeQueue": "移除待发送消息",
     "saveQueue": "保存",
-    "replyError": "回复失败"
+    "replyError": "回复失败",
+    "sendQueueNow": "立即发送",
+    "dragQueue": "拖拽调整顺序",
+    "moveQueueUp": "上移",
+    "moveQueueDown": "下移",
+    "cancelQueueEdit": "取消"
   }
 }

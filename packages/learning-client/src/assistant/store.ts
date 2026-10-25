@@ -384,6 +384,18 @@ async function removeQueued(id: string): Promise<void> {
   await learning().del(`/me/assistant/queued-messages/${id}`);
   state.queued = state.queued.filter((item) => item.id !== id);
 }
+async function reorderQueued(ids: string[]): Promise<void> {
+  if (!state.currentThreadId) return;
+  const ordered = await learning().put<AssistantQueuedMessage[]>(
+    `/me/assistant/threads/${state.currentThreadId}/queued-messages/order`,
+    { ids },
+  );
+  state.queued = ordered;
+}
+async function sendQueuedNow(id: string): Promise<void> {
+  await learning().post(`/me/assistant/queued-messages/${id}/send`, {});
+  state.queued = state.queued.filter((item) => item.id !== id);
+}
 async function cancelTurn(): Promise<void> {
   if (!state.activeTurnId) return;
   try {
@@ -572,6 +584,8 @@ export interface AssistantStore {
   forkThread(turnId: string, mode: 'before' | 'through'): Promise<AssistantThread>;
   updateQueued(id: string, content: string, mode: AssistantQueueMode): Promise<void>;
   removeQueued(id: string): Promise<void>;
+  reorderQueued(ids: string[]): Promise<void>;
+  sendQueuedNow(id: string): Promise<void>;
 }
 export function initAssistantStore(instance: LearningContext, routerInstance: Router): void {
   learningRef = instance;
@@ -598,5 +612,7 @@ export function useAssistant(): AssistantStore {
     forkThread,
     updateQueued,
     removeQueued,
+    reorderQueued,
+    sendQueuedNow,
   };
 }

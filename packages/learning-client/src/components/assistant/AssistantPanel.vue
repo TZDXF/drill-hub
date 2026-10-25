@@ -280,6 +280,20 @@ async function removeQueue(item: AssistantQueuedMessage) {
     state.error = errorMessage(reason);
   }
 }
+async function reorderQueue(ids: string[]) {
+  try {
+    await assistant.reorderQueued(ids);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function sendQueueNow(item: AssistantQueuedMessage) {
+  try {
+    await assistant.sendQueuedNow(item.id);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
 watch(
   () => state.activeTurnId,
   (active) => {
@@ -457,7 +471,13 @@ onBeforeUnmount(() => {
       ></AppTooltip>
       <AssistantSelectionMenu :root="scroll.viewport" @quote="addQuote" />
     </div>
-    <AssistantQueue :items="state.queued" @update="updateQueue" @remove="removeQueue" />
+    <AssistantQueue
+      :items="state.queued"
+      @update="updateQueue"
+      @remove="removeQueue"
+      @send="sendQueueNow"
+      @reorder="reorderQueue"
+    />
     <AssistantComposer
       ref="composer"
       v-model:text="draft"

@@ -17,7 +17,6 @@ const route = useRoute();
 const plans = ref<LearningPlan[]>([]);
 const loading = ref(true);
 const error = ref('');
-const completing = ref('');
 const plan = computed(
   () => plans.value.find((item) => item.id === String(route.params.planId)) ?? null,
 );
@@ -44,20 +43,6 @@ async function load() {
 }
 function taskLink(task: LearningTask) {
   return plan.value ? planTaskLocation(plan.value.id, task) : null;
-}
-async function complete(task: LearningTask) {
-  if (!plan.value) return;
-  completing.value = task.id;
-  error.value = '';
-  try {
-    await learning.post(`/tasks/${task.id}/complete`, { expectedRevision: plan.value.revision });
-    learning.notify.success(t('learning.plan.notifyCompleteTitle'), task.title);
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('learning.plan.notifyCompleteError'), errorMessage(reason));
-  } finally {
-    completing.value = '';
-  }
 }
 onMounted(load);
 </script>
@@ -160,17 +145,6 @@ onMounted(load);
                     : t('learning.plan.goAction')
                 }}</RouterLink
               >
-              <button
-                v-else-if="task.kind === 'manual' && task.status !== 'completed'"
-                class="button button--small"
-                type="button"
-                :disabled="completing === task.id"
-                @click="complete(task)"
-              >
-                <span v-if="completing === task.id" class="spinner" />{{
-                  t('learning.plan.markComplete')
-                }}
-              </button>
             </div>
           </article>
         </div>

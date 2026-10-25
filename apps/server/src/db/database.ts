@@ -14,6 +14,7 @@ import {
   AddAssistantTables1792448000000,
   ReworkAssistantConfig1792450000000,
   ExpandAssistantConversation1793000000000,
+  OrderAssistantQueue1793000000001,
 } from '#server/db/schema.js';
 import type {
   AuditLogView,
@@ -73,6 +74,7 @@ export class Database {
         AddAssistantTables1792448000000,
         ReworkAssistantConfig1792450000000,
         ExpandAssistantConversation1793000000000,
+        OrderAssistantQueue1793000000001,
       ],
       synchronize: false,
       logging: false,

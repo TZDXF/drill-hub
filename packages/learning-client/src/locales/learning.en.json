@@ -89,7 +89,7 @@
     "notFoundTitle": "This plan was not found",
     "notFoundDescription": "The plan may be archived or no longer available. Go back to the topic to see the current plans.",
     "backToTopic": "Back to topic",
-    "description": "{count} phases to work through in order; reading content counts as done when it opens, and other tasks are completed manually.",
+    "description": "{count} phases to work through in order; reading content counts as done when it opens.",
     "archivedNotice": "This plan is archived. Its history is still readable.",
     "kinds": {
       "reading": "Reading",
@@ -103,10 +103,7 @@
     "statusPending": "Not started",
     "continueAction": "Continue",
     "goAction": "Open",
-    "markComplete": "Mark complete",
     "emptyPhase": "This phase has no tasks yet",
-    "notifyCompleteTitle": "Task marked complete",
-    "notifyCompleteError": "Failed to complete the task",
     "notifyLoadFailed": "Could not load the learning plan"
   },
   "content": {

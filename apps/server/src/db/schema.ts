@@ -234,6 +234,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     threadId: 'text',
     content: 'text',
     mode: 'text',
+    position: 'integer',
     promptContext: 'text?',
     providerModelId: 'text?',
     images: 'json',
@@ -626,5 +627,23 @@ export class ExpandAssistantConversation1793000000000 implements MigrationInterf
       await runner.dropColumn('assistantMessages', 'images');
     if (messages?.findColumnByName('reasoning'))
       await runner.dropColumn('assistantMessages', 'reasoning');
+  }
+}
+
+/** 持久化助手待发送队列的人工排序。 */
+export class OrderAssistantQueue1793000000001 implements MigrationInterface {
+  name = 'OrderAssistantQueue1793000000001';
+  async up(runner: QueryRunner) {
+    const queue = await runner.getTable('assistantQueuedMessages');
+    if (queue && !queue.findColumnByName('position'))
+      await runner.addColumn(
+        'assistantQueuedMessages',
+        new TableColumn({ name: 'position', type: 'integer', isNullable: false, default: 0 }),
+      );
+  }
+  async down(runner: QueryRunner) {
+    const queue = await runner.getTable('assistantQueuedMessages');
+    if (queue?.findColumnByName('position'))
+      await runner.dropColumn('assistantQueuedMessages', 'position');
   }
 }

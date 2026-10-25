@@ -322,8 +322,6 @@
     "saveQuote": "Save comment",
     "attach": "Add images",
     "removeImage": "Remove image",
-    "replyInProgress": "Replying; you can keep typing",
-    "queueMode": "Delivery mode",
     "followUp": "Send after this turn",
     "steer": "Interrupt and send",
     "queueSend": "Queue follow-up",
@@ -331,6 +329,11 @@
     "editQueue": "Edit queued message",
     "removeQueue": "Remove queued message",
     "saveQueue": "Save",
-    "replyError": "Reply failed"
+    "replyError": "Reply failed",
+    "sendQueueNow": "Send now",
+    "dragQueue": "Drag to reorder",
+    "moveQueueUp": "Move up",
+    "moveQueueDown": "Move down",
+    "cancelQueueEdit": "Cancel"
   }
 }

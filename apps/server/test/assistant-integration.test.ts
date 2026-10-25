@@ -820,6 +820,65 @@ describe('built-in assistant', () => {
     );
   });
 
+  it('reorders persistent follow-up messages and prioritizes immediate sending', async () => {
+    const { app, admin } = await setupApp();
+    let releaseModel: (() => void) | undefined;
+    const gate = new Promise<Response>((resolve) => {
+      releaseModel = () => resolve(sseResponse(assistantTextRound('完成')));
+    });
+    installProvider({ assistant: () => gate });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '正在回答' },
+    });
+    const items = [];
+    for (const content of ['队列一', '队列二']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+        headers: admin,
+        payload: { content },
+      });
+      items.push(response.json().data.queuedMessage);
+    }
+    const reordered = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/me/assistant/threads/${thread.id}/queued-messages/order`,
+      headers: admin,
+      payload: { ids: [items[1].id, items[0].id] },
+    });
+    expect(reordered.statusCode).toBe(200);
+    expect(reordered.json().data.map((item: { content: string }) => item.content)).toEqual([
+      '队列二',
+      '队列一',
+    ]);
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/me/assistant/threads/${thread.id}/queued-messages/order`,
+      headers: admin,
+      payload: { ids: [items[1].id] },
+    });
+    expect(invalid.statusCode).toBe(422);
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/queued-messages/${items[0].id}/send`,
+      headers: admin,
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json().data).toMatchObject({ content: '队列一', mode: 'steer', position: 0 });
+    for (const item of items)
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/me/assistant/queued-messages/${item.id}`,
+        headers: admin,
+      });
+    releaseModel?.();
+  });
+
   it('paginates history and forks a settled turn without changing the source', async () => {
     const { app, admin, ownerId } = await setupApp();
     const thread = await createThread(app, admin);

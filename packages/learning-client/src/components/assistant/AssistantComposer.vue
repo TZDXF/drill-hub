@@ -23,7 +23,6 @@ const assistant = useAssistant();
 const images = ref<AssistantImageAttachment[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const composing = ref(false);
-const queueMode = ref<AssistantQueueMode>('followUp');
 const readingFiles = ref(false);
 const canSubmit = computed(
   () =>
@@ -87,7 +86,7 @@ function onDrop(event: DragEvent) {
 }
 async function submit() {
   if (!canSubmit.value) return;
-  emit('submit', props.busy ? queueMode.value : 'followUp');
+  emit('submit', 'followUp');
 }
 function clear() {
   text.value = '';
@@ -99,9 +98,7 @@ defineExpose({ clear, images });
 <template>
   <footer class="assistant-panel__footer" @drop="onDrop" @dragover.prevent>
     <div class="assistant-composer__toolbar">
-      <AssistantModelSelect /><span v-if="busy" class="assistant-composer__live-label">{{
-        t('components.assistant.replyInProgress')
-      }}</span>
+      <AssistantModelSelect />
     </div>
     <div v-if="quotes.length" class="assistant-composer-quotes">
       <span v-for="quote in quotes" :key="quote.id" class="assistant-quote-chip">
@@ -168,15 +165,6 @@ defineExpose({ clear, images });
           >
             <AppIcon name="paperclip" :size="16" /></button
         ></AppTooltip>
-        <select
-          v-if="busy"
-          v-model="queueMode"
-          class="assistant-queue-mode"
-          :aria-label="t('components.assistant.queueMode')"
-        >
-          <option value="followUp">{{ t('components.assistant.followUp') }}</option>
-          <option value="steer">{{ t('components.assistant.steer') }}</option>
-        </select>
         <AppTooltip v-if="busy" :label="t('components.assistant.stop')"
           ><button
             class="assistant-composer__button"

@@ -50,6 +50,8 @@ import branch from '@iconify-icons/lucide/git-branch';
 import rotate from '@iconify-icons/lucide/rotate-ccw';
 import paperclip from '@iconify-icons/lucide/paperclip';
 import arrowDown from '@iconify-icons/lucide/arrow-down';
+import arrowUp from '@iconify-icons/lucide/arrow-up';
+import gripVertical from '@iconify-icons/lucide/grip-vertical';
 import list from '@iconify-icons/lucide/list';
 import brain from '@iconify-icons/lucide/brain';
 
@@ -106,6 +108,8 @@ const icons: Record<string, IconifyIcon> = {
   retry: rotate,
   paperclip,
   arrowDown,
+  arrowUp,
+  grip: gripVertical,
   list,
   brain,
 };

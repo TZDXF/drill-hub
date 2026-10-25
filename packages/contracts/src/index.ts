@@ -553,6 +553,7 @@ export interface AssistantQueuedMessage extends BaseRecord {
   threadId: string;
   content: string;
   mode: AssistantQueueMode;
+  position: number;
   providerModelId: string | null;
   images: AssistantImageAttachment[];
 }

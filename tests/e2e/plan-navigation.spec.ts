@@ -124,7 +124,7 @@ test('计划阅读打开即完成来源任务，刷新不重复写入且仍返�
     page
       .getByRole('region', { name: '准备阶段', exact: true })
       .getByRole('button', { name: '标记完成' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page.getByRole('link', { name: '返回主题', exact: true }).click();
   await expect(page).toHaveURL(planPath.split('/plans/')[0]!);
 });

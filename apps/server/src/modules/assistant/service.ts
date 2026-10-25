@@ -38,6 +38,7 @@ export interface AssistantServiceImpl extends AssistantService {
   /** 将已创建的一轮对话加入执行队列（各线程互不阻塞，不限制同时执行的轮数）。 */
   enqueue(turnId: string): void;
   queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage>;
+  sendQueuedMessage(queued: AssistantQueuedMessageRecord): Promise<AssistantQueuedMessage>;
   notifyQueue(threadId: string): Promise<void>;
   subscribe(threadId: string, listener: StreamListener): () => void;
   /** SSE 订阅时回放断线期间落库的事件，跳过监听器已收到的序号。 */
@@ -155,10 +156,11 @@ export function createAssistantService(
 
   async function queuedMessages(threadId: string): Promise<AssistantQueuedMessageRecord[]> {
     const rows = await ctx.db.list('assistantQueuedMessages', { threadId });
-    return rows.sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.id.localeCompare(right.id)
-        : left.createdAt.localeCompare(right.createdAt),
+    return rows.sort(
+      (left, right) =>
+        left.position - right.position ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id),
     );
   }
 
@@ -170,7 +172,9 @@ export function createAssistantService(
   }
 
   async function queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage> {
-    const row: AssistantQueuedMessageRecord = { ...baseRecord(), ...input };
+    const pending = await ctx.db.list('assistantQueuedMessages', { threadId: input.threadId });
+    const position = Math.max(0, ...pending.map((item) => item.position)) + 1;
+    const row: AssistantQueuedMessageRecord = { ...baseRecord(), ...input, position };
     await ctx.db.insert('assistantQueuedMessages', row);
     await notifyQueue(input.threadId);
     if (input.mode === 'steer') {
@@ -189,6 +193,31 @@ export function createAssistantService(
     }
     void drainThread(input.threadId).catch(() => {});
     return queuedView(row);
+  }
+
+  async function sendQueuedMessage(
+    queued: AssistantQueuedMessageRecord,
+  ): Promise<AssistantQueuedMessage> {
+    const pending = await queuedMessages(queued.threadId);
+    const updated = await ctx.db.update('assistantQueuedMessages', queued.id, queued.revision, {
+      mode: 'steer',
+      position: (pending[0]?.position ?? 1) - 1,
+    });
+    await notifyQueue(queued.threadId);
+    const current = (await ctx.db.list('assistantTurns', { threadId: queued.threadId })).find(
+      (turn) => turn.status === 'queued' || turn.status === 'running',
+    );
+    const entry = current ? active.get(current.id) : null;
+    if (entry) {
+      entry.abort.abort();
+      try {
+        await entry.session?.abort();
+      } catch {
+        /* cancellation is finalized by runTurnNow */
+      }
+    }
+    void drainThread(queued.threadId).catch(() => {});
+    return queuedView(updated);
   }
 
   async function drainThread(threadId: string): Promise<void> {
@@ -499,6 +528,7 @@ export function createAssistantService(
   return {
     enqueue: enqueueTurn,
     queueMessage,
+    sendQueuedMessage,
     notifyQueue,
     async runTurnNow(turnId) {
       await runTurnNow(turnId);
