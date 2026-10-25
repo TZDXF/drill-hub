@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import type { AssistantActionItem } from '../../assistant/turns';
 import AppIcon from '../AppIcon.vue';
 
@@ -54,23 +55,25 @@ function actionLabel(action: AssistantActionItem): string {
       <span data-testid="assistant-waiting">{{ t('components.assistant.thinking') }}</span>
     </template>
   </div>
-  <details v-else-if="!active && (actions.length || failed)" class="assistant-process">
-    <summary>
+  <CollapsibleRoot v-else-if="!active && (actions.length || failed)" class="assistant-process">
+    <CollapsibleTrigger class="assistant-process__trigger">
       <AppIcon name="down" :size="13" class="assistant-process__chevron" />
       <span v-if="actions.length">{{ summary }}</span>
       <span v-if="failed" class="assistant-process__failed">{{
         t('components.assistant.turnFailed')
       }}</span>
-    </summary>
-    <ul v-if="actions.length" class="assistant-process__list">
-      <li
-        v-for="action in actions"
-        :key="action.seq"
-        :class="{ 'assistant-process__item--failed': action.failed }"
-      >
-        <AppIcon :name="action.icon" :size="13" />
-        <span>{{ actionLabel(action) }}</span>
-      </li>
-    </ul>
-  </details>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+      <ul v-if="actions.length" class="assistant-process__list">
+        <li
+          v-for="action in actions"
+          :key="action.seq"
+          :class="{ 'assistant-process__item--failed': action.failed }"
+        >
+          <AppIcon :name="action.icon" :size="13" />
+          <span>{{ actionLabel(action) }}</span>
+        </li>
+      </ul>
+    </CollapsibleContent>
+  </CollapsibleRoot>
 </template>

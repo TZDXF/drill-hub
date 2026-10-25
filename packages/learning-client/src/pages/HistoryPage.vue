@@ -6,6 +6,7 @@ import type { AttemptView } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AppSelect from '../components/AppSelect.vue';
@@ -77,22 +78,18 @@ onMounted(load);
       :aria-label="t('learning.history.filtersLabel')"
       @submit.prevent="load"
     >
-      <div class="form-field">
-        <label for="history-kind">{{ t('learning.history.labelKind') }}</label
-        ><AppSelect id="history-kind" v-model="kind" :items="kindOptions" />
-      </div>
-      <div class="form-field">
-        <label for="history-status">{{ t('learning.history.labelStatus') }}</label
-        ><AppSelect id="history-status" v-model="status" :items="statusOptions" />
-      </div>
-      <div class="form-field">
-        <label for="history-purpose">{{ t('learning.history.labelPurpose') }}</label>
+      <AppFormField id="history-kind" :label="t('learning.history.labelKind')">
+        <AppSelect id="history-kind" v-model="kind" :items="kindOptions" />
+      </AppFormField>
+      <AppFormField id="history-status" :label="t('learning.history.labelStatus')">
+        <AppSelect id="history-status" v-model="status" :items="statusOptions" />
+      </AppFormField>
+      <AppFormField id="history-purpose" :label="t('learning.history.labelPurpose')">
         <AppSelect id="history-purpose" v-model="purpose" :items="purposeOptions" />
-      </div>
-      <div class="form-field">
-        <label for="history-voided">{{ t('learning.history.labelVoided') }}</label>
+      </AppFormField>
+      <AppFormField id="history-voided" :label="t('learning.history.labelVoided')">
         <AppSelect id="history-voided" v-model="voided" :items="voidOptions" />
-      </div>
+      </AppFormField>
       <button class="button" type="submit">
         <AppIcon name="history" :size="16" />{{ t('learning.wrongQuestions.applyFilter') }}
       </button>

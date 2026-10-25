@@ -7,6 +7,7 @@ import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
 import AuthLayout from '../components/AuthLayout.vue';
 import AppIcon from '../components/AppIcon.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppCheckbox from '../components/AppCheckbox.vue';
 
 const { t } = useI18n();
@@ -60,8 +61,7 @@ async function confirm() {
     :description="t('management.connect.description')"
   >
     <form v-if="!pending" class="auth-form" @submit.prevent="verify">
-      <div class="form-field">
-        <label for="server-address">{{ t('management.connect.address') }}</label>
+      <AppFormField id="server-address" :label="t('management.connect.address')">
         <input
           id="server-address"
           v-model.trim="address"
@@ -76,7 +76,7 @@ async function confirm() {
         <p id="server-address-hint" class="field-hint">
           {{ t('management.connect.addressHint') }}
         </p>
-      </div>
+      </AppFormField>
       <button class="button button--primary button--large" type="submit" :disabled="busy">
         <span v-if="busy" class="spinner" /><AppIcon v-else name="server" :size="18" />{{
           t('management.connect.verify')

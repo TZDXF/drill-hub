@@ -8,6 +8,7 @@ import { useLearning } from '../injection';
 import { asAttemptView, wrongPracticeRequest, type WrongQuestionDetailView } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AppSelect from '../components/AppSelect.vue';
@@ -74,10 +75,9 @@ onMounted(load);
       :description="t('learning.wrongQuestions.description')"
     />
     <form class="card filter-bar" @submit.prevent="load">
-      <div class="form-field">
-        <label for="mastery-filter">{{ t('learning.wrongQuestions.filterLabel') }}</label
-        ><AppSelect id="mastery-filter" v-model="mastery" :items="masteryOptions" />
-      </div>
+      <AppFormField id="mastery-filter" :label="t('learning.wrongQuestions.filterLabel')">
+        <AppSelect id="mastery-filter" v-model="mastery" :items="masteryOptions" />
+      </AppFormField>
       <button class="button" type="submit">{{ t('learning.wrongQuestions.applyFilter') }}</button>
     </form>
     <div v-if="loading" class="loading-block">

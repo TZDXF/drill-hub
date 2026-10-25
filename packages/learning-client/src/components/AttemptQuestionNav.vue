@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import {
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogOverlay,
-  DialogPortal,
-  DialogRoot,
-  DialogTitle,
-} from 'reka-ui';
 import type { Answer, AttemptItemView } from '@drill-hub/contracts';
+import AppDialog from './AppDialog.vue';
 import AppIcon from './AppIcon.vue';
-import AppScrollArea from './AppScrollArea.vue';
 import QuestionNav from './QuestionNav.vue';
 
 const { t } = useI18n();
@@ -152,78 +143,61 @@ onBeforeUnmount(() => {
     :mode="mode"
     @select="select"
   />
-  <DialogRoot v-model:open="open">
-    <button
-      ref="trigger"
-      class="question-nav-fab"
-      :class="{ 'question-nav-fab--dragging': dragging }"
-      :style="
-        position
-          ? { left: `${position.x}px`, top: `${position.y}px`, right: 'auto', bottom: 'auto' }
-          : undefined
-      "
-      type="button"
-      :aria-label="t('components.attemptNav.fabLabel')"
-      aria-haspopup="dialog"
-      :aria-expanded="open"
+  <button
+    ref="trigger"
+    class="question-nav-fab"
+    :class="{ 'question-nav-fab--dragging': dragging }"
+    :style="
+      position
+        ? { left: `${position.x}px`, top: `${position.y}px`, right: 'auto', bottom: 'auto' }
+        : undefined
+    "
+    type="button"
+    :aria-label="t('components.attemptNav.fabLabel')"
+    aria-haspopup="dialog"
+    :aria-expanded="open"
+    :disabled="disabled"
+    @pointerdown="startDrag"
+    @pointermove="moveDrag"
+    @pointerup="endDrag"
+    @pointercancel="endDrag"
+    @lostpointercapture="$event.target === $event.currentTarget && endDrag($event)"
+    @click="openCard"
+  >
+    <AppIcon name="content" :size="19" />
+    <span>{{ t('components.attemptNav.fabText') }}</span>
+  </button>
+  <AppDialog
+    v-model:open="open"
+    class="question-nav-sheet"
+    :title="t('components.attemptNav.sheetTitle')"
+    :description="
+      t(
+        currentIndex < 0
+          ? marksEnabled
+            ? 'components.attemptNav.overviewMarked'
+            : 'components.attemptNav.overview'
+          : marksEnabled
+            ? 'components.attemptNav.positionMarked'
+            : 'components.attemptNav.position',
+        { current: currentIndex + 1, total: items.length, count: markedIds.length },
+      )
+    "
+    :close-label="t('components.attemptNav.closeLabel')"
+    @close-auto-focus.prevent="restoreFocus"
+  >
+    <template #top>
+      <div class="question-nav-sheet__handle" aria-hidden="true" />
+    </template>
+    <QuestionNav
+      :items="items"
+      :answers="answers"
+      :current-index="currentIndex"
+      :marked-ids="markedIds"
+      :marks-enabled="marksEnabled"
       :disabled="disabled"
-      @pointerdown="startDrag"
-      @pointermove="moveDrag"
-      @pointerup="endDrag"
-      @pointercancel="endDrag"
-      @lostpointercapture="$event.target === $event.currentTarget && endDrag($event)"
-      @click="openCard"
-    >
-      <AppIcon name="content" :size="19" />
-      <span>{{ t('components.attemptNav.fabText') }}</span>
-    </button>
-    <DialogPortal>
-      <DialogOverlay class="dialog-overlay" />
-      <DialogContent class="question-nav-sheet" @close-auto-focus.prevent="restoreFocus">
-        <div class="question-nav-sheet__handle" aria-hidden="true" />
-        <div class="dialog-heading">
-          <div>
-            <DialogTitle class="dialog-title">{{
-              t('components.attemptNav.sheetTitle')
-            }}</DialogTitle>
-            <DialogDescription class="dialog-description">
-              {{
-                t(
-                  currentIndex < 0
-                    ? marksEnabled
-                      ? 'components.attemptNav.overviewMarked'
-                      : 'components.attemptNav.overview'
-                    : marksEnabled
-                      ? 'components.attemptNav.positionMarked'
-                      : 'components.attemptNav.position',
-                  { current: currentIndex + 1, total: items.length, count: markedIds.length },
-                )
-              }}
-            </DialogDescription>
-          </div>
-          <DialogClose as-child>
-            <button
-              class="icon-button"
-              type="button"
-              :aria-label="t('components.attemptNav.closeLabel')"
-            >
-              <AppIcon name="close" />
-            </button>
-          </DialogClose>
-        </div>
-        <AppScrollArea class="dialog-body" viewport-class="dialog-body__viewport">
-          <QuestionNav
-            :items="items"
-            :answers="answers"
-            :current-index="currentIndex"
-            :marked-ids="markedIds"
-            :marks-enabled="marksEnabled"
-            :disabled="disabled"
-            :mode="mode"
-            @select="select"
-          />
-        </AppScrollArea>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
+      :mode="mode"
+      @select="select"
+    />
+  </AppDialog>
 </template>

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import type { AttemptView } from '@drill-hub/contracts';
 import { attemptPurposeOptions } from '../attemptPresentation';
 import AppSelect from './AppSelect.vue';
+import AppFormField from './AppFormField.vue';
 
 const { t } = useI18n();
 
@@ -14,8 +15,7 @@ function setPurpose(value: string) {
 </script>
 
 <template>
-  <div class="form-field">
-    <label :for="id">{{ t('components.purposeSelect.label') }}</label>
+  <AppFormField :id="id" :label="t('components.purposeSelect.label')">
     <AppSelect
       :id="id"
       :model-value="purpose"
@@ -26,5 +26,5 @@ function setPurpose(value: string) {
     <p class="muted small">
       {{ t('components.purposeSelect.hint') }}
     </p>
-  </div>
+  </AppFormField>
 </template>

@@ -6,6 +6,7 @@ import type { ApiLogView, AuditLogView, LoginLogView, LogPage } from '@drill-hub
 import { useLearning } from '../injection';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import AppSelect from '../components/AppSelect.vue';
 import AppScrollArea from '../components/AppScrollArea.vue';
@@ -106,7 +107,6 @@ const actionLabelKeys: Record<string, string> = {
   'wrong-question-practice.start': 'management.audit.action.wrongQuestionPracticeStart',
   'wrong-question.mastery': 'management.audit.action.wrongQuestionMastery',
   'assistant.thread.delete': 'management.audit.action.assistantThreadDelete',
-  'assistant-settings.update': 'management.audit.action.assistantSettingsUpdate',
   'search-provider.create': 'management.audit.action.searchProviderCreate',
   'search-provider.update': 'management.audit.action.searchProviderUpdate',
   'search-provider.delete': 'management.audit.action.searchProviderDelete',
@@ -255,9 +255,12 @@ onBeforeUnmount(() => {
         </TabsList>
       </AppScrollArea>
       <form class="card filter-bar audit-filters" @submit.prevent="load(true)">
-        <div class="form-field audit-search">
-          <label for="log-search">{{ t('management.audit.field.keyword') }}</label
-          ><input
+        <AppFormField
+          class="audit-search"
+          id="log-search"
+          :label="t('management.audit.field.keyword')"
+        >
+          <input
             id="log-search"
             v-model="q"
             class="input"
@@ -265,23 +268,19 @@ onBeforeUnmount(() => {
             maxlength="200"
             type="search"
           />
-        </div>
-        <div class="form-field">
-          <label for="log-from">{{ t('management.audit.field.from') }}</label
-          ><input id="log-from" v-model="from" class="input" type="datetime-local" />
-        </div>
-        <div class="form-field">
-          <label for="log-until">{{ t('management.audit.field.until') }}</label
-          ><input id="log-until" v-model="until" class="input" type="datetime-local" />
-        </div>
+        </AppFormField>
+        <AppFormField id="log-from" :label="t('management.audit.field.from')">
+          <input id="log-from" v-model="from" class="input" type="datetime-local" />
+        </AppFormField>
+        <AppFormField id="log-until" :label="t('management.audit.field.until')">
+          <input id="log-until" v-model="until" class="input" type="datetime-local" />
+        </AppFormField>
         <template v-if="tab !== 'audit'">
-          <div class="form-field">
-            <label for="log-channel">{{ t('management.audit.field.channel') }}</label
-            ><AppSelect id="log-channel" v-model="channel" :items="channelOptions" />
-          </div>
-          <div class="form-field">
-            <label for="log-status">{{ t('management.audit.field.statusCode') }}</label
-            ><input
+          <AppFormField id="log-channel" :label="t('management.audit.field.channel')">
+            <AppSelect id="log-channel" v-model="channel" :items="channelOptions" />
+          </AppFormField>
+          <AppFormField id="log-status" :label="t('management.audit.field.statusCode')">
+            <input
               id="log-status"
               v-model="statusCode"
               class="input"
@@ -291,16 +290,22 @@ onBeforeUnmount(() => {
               step="1"
               :placeholder="t('management.audit.field.statusCodePlaceholder')"
             />
-          </div>
+          </AppFormField>
         </template>
-        <div v-if="tab === 'api'" class="form-field">
-          <label for="log-method">{{ t('management.audit.field.method') }}</label
-          ><AppSelect id="log-method" v-model="method" :items="methodOptions" />
-        </div>
-        <div v-if="tab === 'login'" class="form-field">
-          <label for="log-outcome">{{ t('management.audit.field.outcome') }}</label
-          ><AppSelect id="log-outcome" v-model="outcome" :items="outcomeOptions" />
-        </div>
+        <AppFormField
+          v-if="tab === 'api'"
+          id="log-method"
+          :label="t('management.audit.field.method')"
+        >
+          <AppSelect id="log-method" v-model="method" :items="methodOptions" />
+        </AppFormField>
+        <AppFormField
+          v-if="tab === 'login'"
+          id="log-outcome"
+          :label="t('management.audit.field.outcome')"
+        >
+          <AppSelect id="log-outcome" v-model="outcome" :items="outcomeOptions" />
+        </AppFormField>
         <div class="audit-filter-actions">
           <button class="button button--primary" type="submit" :disabled="loading">
             {{ t('management.common.applyFilter') }}</button

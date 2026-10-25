@@ -5,6 +5,7 @@ import type { GradingJob } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import AppSelect from '../components/AppSelect.vue';
@@ -90,10 +91,9 @@ onMounted(load);
       >
     </PageHeader>
     <form class="card filter-bar" @submit.prevent="load">
-      <div class="form-field">
-        <label for="job-status">{{ t('management.grading.status.label') }}</label
-        ><AppSelect id="job-status" v-model="status" :items="statusOptions" />
-      </div>
+      <AppFormField id="job-status" :label="t('management.grading.status.label')">
+        <AppSelect id="job-status" v-model="status" :items="statusOptions" />
+      </AppFormField>
       <button class="button" type="submit">{{ t('management.common.applyFilter') }}</button>
     </form>
     <div v-if="loading" class="loading-block">

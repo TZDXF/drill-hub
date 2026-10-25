@@ -9,6 +9,7 @@ import { cycleThemePreference, themePreference } from '../theme';
 import type { SessionView } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -208,8 +209,12 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </div>
         <form v-else @submit.prevent="saveProfile">
           <div class="form-grid">
-            <div class="form-field form-field--full">
-              <label for="profile-name">{{ t('components.settings.displayName') }}</label>
+            <AppFormField
+              class="form-field--full"
+              id="profile-name"
+              :label="t('components.settings.displayName')"
+              :hint="t('components.settings.displayNameHint')"
+            >
               <input
                 id="profile-name"
                 v-model="displayName"
@@ -217,8 +222,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
                 required
                 autocomplete="name"
               />
-              <p class="field-hint">{{ t('components.settings.displayNameHint') }}</p>
-            </div>
+            </AppFormField>
           </div>
           <div class="form-actions">
             <button v-if="isMobile" class="button" type="button" @click="cancelProfileEdit">

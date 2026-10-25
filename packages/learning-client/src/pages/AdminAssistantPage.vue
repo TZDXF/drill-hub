@@ -3,15 +3,17 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type {
-  AssistantSettingsView,
   AssistantSkillView,
   McpServerView,
-  ModelConnectionView,
-  ProviderModel,
+  SearchProviderKind,
   SearchProviderView,
 } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
+import AppCheckbox from '../components/AppCheckbox.vue';
+import AppFormField from '../components/AppFormField.vue';
+import AppSelect from '../components/AppSelect.vue';
+import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
 import PageHeader from '../components/PageHeader.vue';
 
@@ -20,27 +22,39 @@ const learning = useLearning();
 
 const loading = ref(true);
 const error = ref('');
+const busy = ref(false);
+const testing = ref('');
 
-const settings = ref<AssistantSettingsView | null>(null);
-const connections = ref<ModelConnectionView[]>([]);
-const models = ref<ProviderModel[]>([]);
 const providers = ref<SearchProviderView[]>([]);
 const mcpServers = ref<McpServerView[]>([]);
 const skills = ref<AssistantSkillView[]>([]);
 
-const settingsForm = reactive({
-  defaultProviderModelId: '',
-  maxSearchResults: 5,
-  maxConcurrency: 1,
-  turnTimeoutMs: 600000,
-});
+const searchKindOptions = [
+  { value: 'tavily', label: 'Tavily' },
+  { value: 'brave', label: 'Brave Search' },
+  { value: 'searxng', label: 'SearXNG' },
+  { value: 'openai_responses', label: 'OpenAI Responses' },
+];
 
-const searchForm = reactive({
-  kind: 'tavily',
+const mcpTransportOptions = [
+  { value: 'stdio', label: 'stdio' },
+  { value: 'http', label: 'http' },
+];
+
+const mcpExposureOptions = [
+  { value: 'direct', label: 'direct' },
+  { value: 'deferred', label: 'deferred' },
+];
+
+const searchKinds = searchKindOptions.map((option) => option.value as SearchProviderKind);
+
+const providerForm = reactive({
+  kind: 'tavily' as SearchProviderKind,
   displayName: '',
   baseUrl: '',
   modelKey: '',
   apiKey: '',
+  enabled: true,
 });
 
 const mcpForm = reactive({
@@ -53,40 +67,153 @@ const mcpForm = reactive({
   env: '',
   timeoutSeconds: 60,
   exposure: 'direct',
+  enabled: false,
+  clearEnv: false,
+  clearHeaders: false,
 });
 
-const skillForm = reactive({ name: '', description: '', content: '' });
+const skillForm = reactive({
+  name: '',
+  description: '',
+  content: '',
+  enabled: true,
+});
 
-const modelOptions = computed(() =>
-  models.value
-    .filter((model) => model.enabled)
-    .map((model) => ({
-      value: model.id,
-      label: `${connections.value.find((item) => item.id === model.connectionId)?.displayName ?? model.connectionId} / ${model.displayName}`,
-    })),
+type DialogKind = 'provider' | 'mcp' | 'skill';
+/** 当前打开的表单弹窗；editingId 为 null 表示新建。 */
+const dialog = ref<{ kind: DialogKind; editingId: string | null } | null>(null);
+
+function openCreate(kind: DialogKind): void {
+  if (kind === 'provider') {
+    Object.assign(providerForm, {
+      kind: 'tavily',
+      displayName: '',
+      baseUrl: '',
+      modelKey: '',
+      apiKey: '',
+      enabled: true,
+    });
+  } else if (kind === 'mcp') {
+    Object.assign(mcpForm, {
+      name: '',
+      transport: 'stdio',
+      command: '',
+      args: '',
+      url: '',
+      headers: '',
+      env: '',
+      timeoutSeconds: 60,
+      exposure: 'direct',
+      enabled: false,
+      clearEnv: false,
+      clearHeaders: false,
+    });
+  } else {
+    Object.assign(skillForm, { name: '', description: '', content: '', enabled: true });
+  }
+  dialog.value = { kind, editingId: null };
+}
+
+const editingProvider = computed(() =>
+  dialog.value?.kind === 'provider' && dialog.value.editingId
+    ? (providers.value.find((item) => item.id === dialog.value!.editingId) ?? null)
+    : null,
+);
+const editingMcp = computed(() =>
+  dialog.value?.kind === 'mcp' && dialog.value.editingId
+    ? (mcpServers.value.find((item) => item.id === dialog.value!.editingId) ?? null)
+    : null,
+);
+const editingSkill = computed(() =>
+  dialog.value?.kind === 'skill' && dialog.value.editingId
+    ? (skills.value.find((item) => item.id === dialog.value!.editingId) ?? null)
+    : null,
 );
 
-async function load(): Promise<void> {
-  loading.value = true;
+const dialogOpen = computed({
+  get: () => dialog.value !== null,
+  set: (value: boolean) => {
+    if (!value && !busy.value) dialog.value = null;
+  },
+});
+
+const dialogTitle = computed(() => {
+  if (!dialog.value) return '';
+  const editing = Boolean(dialog.value.editingId);
+  if (dialog.value.kind === 'provider')
+    return t(
+      editing ? 'management.assistant.searchEditTitle' : 'management.assistant.searchCreateTitle',
+    );
+  if (dialog.value.kind === 'mcp')
+    return t(editing ? 'management.assistant.mcpEditTitle' : 'management.assistant.mcpCreateTitle');
+  return t(
+    editing ? 'management.assistant.skillEditTitle' : 'management.assistant.skillCreateTitle',
+  );
+});
+
+async function openEdit(kind: DialogKind, id: string): Promise<void> {
+  if (kind === 'provider') {
+    const provider = providers.value.find((item) => item.id === id);
+    if (!provider) return;
+    Object.assign(providerForm, {
+      kind: provider.kind,
+      displayName: provider.displayName,
+      baseUrl: provider.baseUrl ?? '',
+      modelKey: provider.modelKey ?? '',
+      apiKey: '',
+      enabled: provider.enabled,
+    });
+  } else if (kind === 'mcp') {
+    const server = mcpServers.value.find((item) => item.id === id);
+    if (!server) return;
+    Object.assign(mcpForm, {
+      name: server.name,
+      transport: server.transport,
+      command: server.command ?? '',
+      args: server.args.join(' '),
+      url: server.url ?? '',
+      headers: '',
+      env: '',
+      timeoutSeconds: server.timeoutSeconds,
+      exposure: server.exposure,
+      enabled: server.enabled,
+      clearEnv: false,
+      clearHeaders: false,
+    });
+  } else {
+    const skill = skills.value.find((item) => item.id === id);
+    if (!skill) return;
+    Object.assign(skillForm, {
+      name: skill.name,
+      description: skill.description,
+      content: '',
+      enabled: skill.enabled,
+    });
+    try {
+      // 列表接口不含指令内容，编辑前单独拉取详情。
+      const detail = await learning.get<AssistantSkillView & { content: string }>(
+        `/admin/assistant-skills/${id}`,
+      );
+      if (dialog.value?.editingId === id) skillForm.content = detail.content;
+    } catch (reason) {
+      learning.notify.error(t('management.assistant.loadFailed'), errorMessage(reason));
+    }
+  }
+  dialog.value = { kind, editingId: id };
+}
+
+async function load(initial = false): Promise<void> {
+  if (initial) loading.value = true;
   error.value = '';
   try {
-    settings.value = await learning.get<AssistantSettingsView>('/admin/assistant-settings');
-    settingsForm.defaultProviderModelId = settings.value.defaultProviderModelId ?? '';
-    settingsForm.maxSearchResults = settings.value.maxSearchResults;
-    settingsForm.maxConcurrency = settings.value.maxConcurrency;
-    settingsForm.turnTimeoutMs = settings.value.turnTimeoutMs;
-    providers.value = await learning.get<SearchProviderView[]>('/admin/search-providers');
-    mcpServers.value = await learning.get<McpServerView[]>('/admin/mcp-servers');
-    skills.value = await learning.get<AssistantSkillView[]>('/admin/assistant-skills');
-    connections.value = await learning.get<ModelConnectionView[]>('/admin/model-connections');
-    const collected: ProviderModel[] = [];
-    for (const connection of connections.value) {
-      const items = await learning.get<ProviderModel[]>(
-        `/admin/model-connections/${connection.id}/models`,
-      );
-      collected.push(...items);
-    }
-    models.value = collected;
+    const [providerResult, mcpResult, skillResult] = await Promise.all([
+      learning.get<SearchProviderView[]>('/admin/search-providers'),
+      learning.get<McpServerView[]>('/admin/mcp-servers'),
+      learning.get<AssistantSkillView[]>('/admin/assistant-skills'),
+    ]);
+    providers.value = providerResult;
+    mcpServers.value = mcpResult;
+    skills.value = skillResult;
   } catch (reason) {
     error.value = errorMessage(reason);
   } finally {
@@ -94,78 +221,7 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load);
-
-async function saveSettings(): Promise<void> {
-  if (!settings.value) return;
-  try {
-    settings.value = await learning.patch<AssistantSettingsView>('/admin/assistant-settings', {
-      expectedRevision: settings.value.revision,
-      defaultProviderModelId: settingsForm.defaultProviderModelId || null,
-      maxSearchResults: settingsForm.maxSearchResults,
-      maxConcurrency: settingsForm.maxConcurrency,
-      turnTimeoutMs: settingsForm.turnTimeoutMs,
-    });
-    learning.notify.success(t('management.assistant.saved'));
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.saveFailed'), errorMessage(reason));
-  }
-}
-
-async function createProvider(): Promise<void> {
-  try {
-    await learning.post('/admin/search-providers', {
-      kind: searchForm.kind,
-      displayName: searchForm.displayName,
-      baseUrl: searchForm.baseUrl || null,
-      modelKey: searchForm.modelKey || null,
-      apiKey: searchForm.apiKey || null,
-    });
-    learning.notify.success(t('management.assistant.searchCreated'));
-    searchForm.displayName = '';
-    searchForm.baseUrl = '';
-    searchForm.modelKey = '';
-    searchForm.apiKey = '';
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.createFailed'), errorMessage(reason));
-  }
-}
-
-async function toggleProvider(provider: SearchProviderView): Promise<void> {
-  try {
-    await learning.patch(`/admin/search-providers/${provider.id}`, {
-      expectedRevision: provider.revision,
-      enabled: !provider.enabled,
-    });
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
-  }
-}
-
-async function testProvider(provider: SearchProviderView): Promise<void> {
-  try {
-    const result = await learning.post<{ ok: boolean; error?: string }>(
-      `/admin/search-providers/${provider.id}/test`,
-      {},
-    );
-    if (result.ok) learning.notify.success(t('management.assistant.testOk'));
-    else learning.notify.warning(t('management.assistant.testFailed'), result.error);
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.testFailed'), errorMessage(reason));
-  }
-}
-
-async function deleteProvider(provider: SearchProviderView): Promise<void> {
-  try {
-    await learning.del(`/admin/search-providers/${provider.id}`);
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
-  }
-}
+onMounted(() => load(true));
 
 function parseKeyValueBlock(block: string, separator: string): Record<string, string> | null {
   if (!block.trim()) return null;
@@ -179,75 +235,155 @@ function parseKeyValueBlock(block: string, separator: string): Record<string, st
   return result;
 }
 
-async function createMcp(): Promise<void> {
+async function saveProvider(): Promise<void> {
+  busy.value = true;
   try {
-    await learning.post('/admin/mcp-servers', {
-      name: mcpForm.name,
+    const payload = {
+      kind: providerForm.kind,
+      displayName: providerForm.displayName,
+      baseUrl: providerForm.baseUrl || null,
+      modelKey: providerForm.modelKey || null,
+      ...(providerForm.apiKey ? { apiKey: providerForm.apiKey } : {}),
+      enabled: providerForm.enabled,
+    };
+    if (editingProvider.value) {
+      await learning.patch(`/admin/search-providers/${editingProvider.value.id}`, {
+        expectedRevision: editingProvider.value.revision,
+        ...payload,
+      });
+    } else {
+      await learning.post('/admin/search-providers', payload);
+    }
+    learning.notify.success(t('management.assistant.saved'));
+    dialog.value = null;
+    await load();
+  } catch (reason) {
+    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function saveMcp(): Promise<void> {
+  busy.value = true;
+  try {
+    const env = parseKeyValueBlock(mcpForm.env, '=');
+    const headers = parseKeyValueBlock(mcpForm.headers, ':');
+    const payload = {
       transport: mcpForm.transport,
       command: mcpForm.transport === 'stdio' ? mcpForm.command : null,
       args: mcpForm.args ? mcpForm.args.split(/\s+/).filter(Boolean) : [],
       url: mcpForm.transport === 'http' ? mcpForm.url : null,
-      headers: parseKeyValueBlock(mcpForm.headers, ':'),
-      env: parseKeyValueBlock(mcpForm.env, '='),
       timeoutSeconds: mcpForm.timeoutSeconds,
       exposure: mcpForm.exposure,
-    });
-    learning.notify.success(t('management.assistant.mcpCreated'));
-    mcpForm.name = '';
-    mcpForm.command = '';
-    mcpForm.args = '';
-    mcpForm.url = '';
-    mcpForm.headers = '';
-    mcpForm.env = '';
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.createFailed'), errorMessage(reason));
-  }
-}
-
-async function toggleMcp(server: McpServerView): Promise<void> {
-  try {
-    await learning.patch(`/admin/mcp-servers/${server.id}`, {
-      expectedRevision: server.revision,
-      enabled: !server.enabled,
-    });
+      enabled: mcpForm.enabled,
+    };
+    if (editingMcp.value) {
+      await learning.patch(`/admin/mcp-servers/${editingMcp.value.id}`, {
+        expectedRevision: editingMcp.value.revision,
+        ...payload,
+        ...(env ? { env } : {}),
+        ...(mcpForm.clearEnv ? { env: null } : {}),
+        ...(headers ? { headers } : {}),
+        ...(mcpForm.clearHeaders ? { headers: null } : {}),
+      });
+    } else {
+      await learning.post('/admin/mcp-servers', { name: mcpForm.name, ...payload, env, headers });
+    }
+    learning.notify.success(t('management.assistant.saved'));
+    dialog.value = null;
     await load();
   } catch (reason) {
     learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
+  } finally {
+    busy.value = false;
   }
 }
 
-async function deleteMcp(server: McpServerView): Promise<void> {
+async function saveSkill(): Promise<void> {
+  busy.value = true;
   try {
-    await learning.del(`/admin/mcp-servers/${server.id}`);
-    await load();
-  } catch (reason) {
-    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
-  }
-}
-
-async function createSkill(): Promise<void> {
-  try {
-    await learning.post('/admin/assistant-skills', {
-      name: skillForm.name,
+    const payload = {
       description: skillForm.description,
       content: skillForm.content,
-    });
-    learning.notify.success(t('management.assistant.skillCreated'));
-    skillForm.name = '';
-    skillForm.description = '';
-    skillForm.content = '';
+      enabled: skillForm.enabled,
+    };
+    if (editingSkill.value) {
+      await learning.patch(`/admin/assistant-skills/${editingSkill.value.id}`, {
+        expectedRevision: editingSkill.value.revision,
+        ...payload,
+      });
+    } else {
+      await learning.post('/admin/assistant-skills', { name: skillForm.name, ...payload });
+    }
+    learning.notify.success(t('management.assistant.saved'));
+    dialog.value = null;
     await load();
   } catch (reason) {
-    learning.notify.error(t('management.assistant.createFailed'), errorMessage(reason));
+    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
+  } finally {
+    busy.value = false;
   }
 }
 
-async function toggleSkill(skill: AssistantSkillView): Promise<void> {
+type DeleteTarget = { kind: 'provider' | 'mcp' | 'skill'; id: string; name: string };
+
+const pendingDelete = ref<DeleteTarget | null>(null);
+const deleteBusy = ref(false);
+const deleteOpen = computed({
+  get: () => pendingDelete.value !== null,
+  set: (value: boolean) => {
+    if (!value && !deleteBusy.value) pendingDelete.value = null;
+  },
+});
+const deleteTargetName = computed(() => pendingDelete.value?.name ?? '');
+
+function requestDelete(
+  kind: DeleteTarget['kind'],
+  item: { id: string; displayName?: string; name?: string },
+): void {
+  pendingDelete.value = {
+    kind,
+    id: item.id,
+    name: (kind === 'provider' ? item.displayName : item.name) ?? '',
+  };
+}
+
+async function confirmDelete(): Promise<void> {
+  const target = pendingDelete.value;
+  if (!target) return;
+  deleteBusy.value = true;
   try {
-    await learning.patch(`/admin/assistant-skills/${skill.id}`, {
-      expectedRevision: skill.revision,
-      enabled: !skill.enabled,
+    const path =
+      target.kind === 'provider'
+        ? `/admin/search-providers/${target.id}`
+        : target.kind === 'mcp'
+          ? `/admin/mcp-servers/${target.id}`
+          : `/admin/assistant-skills/${target.id}`;
+    await learning.del(path);
+    pendingDelete.value = null;
+    await load();
+  } catch (reason) {
+    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
+  } finally {
+    deleteBusy.value = false;
+  }
+}
+
+async function toggle(
+  kind: 'provider' | 'mcp' | 'skill',
+  item: SearchProviderView | McpServerView | AssistantSkillView,
+): Promise<void> {
+  try {
+    const path =
+      kind === 'provider'
+        ? `/admin/search-providers/${item.id}`
+        : kind === 'mcp'
+          ? `/admin/mcp-servers/${item.id}`
+          : `/admin/assistant-skills/${item.id}`;
+    await learning.patch(path, {
+      expectedRevision: item.revision,
+      enabled: !item.enabled,
     });
     await load();
   } catch (reason) {
@@ -255,12 +391,20 @@ async function toggleSkill(skill: AssistantSkillView): Promise<void> {
   }
 }
 
-async function deleteSkill(skill: AssistantSkillView): Promise<void> {
+async function testProvider(provider: SearchProviderView): Promise<void> {
+  testing.value = provider.id;
   try {
-    await learning.del(`/admin/assistant-skills/${skill.id}`);
+    const result = await learning.post<{ ok: boolean; error?: string }>(
+      `/admin/search-providers/${provider.id}/test`,
+      {},
+    );
+    if (result.ok) learning.notify.success(t('management.assistant.testOk'));
+    else learning.notify.warning(t('management.assistant.testFailed'), result.error);
     await load();
   } catch (reason) {
-    learning.notify.error(t('management.assistant.updateFailed'), errorMessage(reason));
+    learning.notify.error(t('management.assistant.testFailed'), errorMessage(reason));
+  } finally {
+    testing.value = '';
   }
 }
 </script>
@@ -271,15 +415,12 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
     <div v-if="loading" class="loading-block"><span class="spinner"></span></div>
     <EmptyState v-else-if="error" :title="t('management.assistant.loadFailed')">
       <p>{{ error }}</p>
-      <button class="button button--small" type="button" @click="load">
+      <button class="button button--small" type="button" @click="load(true)">
         {{ t('learning.common.retry') }}
       </button>
     </EmptyState>
-    <TabsRoot v-else default-value="model" class="tabs">
+    <TabsRoot v-else default-value="search" class="tabs">
       <TabsList class="tabs-list" aria-label="assistant settings">
-        <TabsTrigger class="tabs-trigger" value="model">{{
-          t('management.assistant.tabModel')
-        }}</TabsTrigger>
         <TabsTrigger class="tabs-trigger" value="search">{{
           t('management.assistant.tabSearch')
         }}</TabsTrigger>
@@ -291,104 +432,11 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
         }}</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="model" class="tabs-content settings-card">
-        <div class="form-field">
-          <label for="assistant-model">{{ t('management.assistant.defaultModel') }}</label>
-          <select
-            id="assistant-model"
-            v-model="settingsForm.defaultProviderModelId"
-            class="input"
-            data-testid="assistant-model-select"
-          >
-            <option value="">{{ t('management.assistant.noModel') }}</option>
-            <option v-for="option in modelOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-          <p class="field-hint">{{ t('management.assistant.defaultModelHint') }}</p>
-        </div>
-        <div class="form-grid">
-          <div class="form-field">
-            <label for="assistant-search-max">
-              {{ t('management.assistant.maxSearchResults') }}
-            </label>
-            <input
-              id="assistant-search-max"
-              v-model.number="settingsForm.maxSearchResults"
-              class="input"
-              type="number"
-              min="1"
-              max="10"
-            />
-          </div>
-          <div class="form-field">
-            <label for="assistant-concurrency">
-              {{ t('management.assistant.maxConcurrency') }}
-            </label>
-            <input
-              id="assistant-concurrency"
-              v-model.number="settingsForm.maxConcurrency"
-              class="input"
-              type="number"
-              min="1"
-              max="4"
-            />
-          </div>
-          <div class="form-field">
-            <label for="assistant-timeout">{{ t('management.assistant.turnTimeoutMs') }}</label>
-            <input
-              id="assistant-timeout"
-              v-model.number="settingsForm.turnTimeoutMs"
-              class="input"
-              type="number"
-              min="30000"
-              max="900000"
-              step="10000"
-            />
-          </div>
-        </div>
-        <div class="button-row">
-          <button class="button button--primary" type="button" @click="saveSettings">
-            {{ t('management.assistant.save') }}
-          </button>
-        </div>
-      </TabsContent>
-
+      <!-- 搜索服务 -->
       <TabsContent value="search" class="tabs-content settings-card">
-        <div class="form-grid">
-          <div class="form-field">
-            <label for="search-kind">{{ t('management.assistant.searchKind') }}</label>
-            <select id="search-kind" v-model="searchForm.kind" class="input">
-              <option value="tavily">Tavily</option>
-              <option value="brave">Brave Search</option>
-              <option value="searxng">SearXNG</option>
-              <option value="openai_responses">OpenAI Responses</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="search-name">{{ t('management.assistant.displayName') }}</label>
-            <input id="search-name" v-model="searchForm.displayName" class="input" />
-          </div>
-          <div class="form-field">
-            <label for="search-url">Base URL</label>
-            <input
-              id="search-url"
-              v-model="searchForm.baseUrl"
-              class="input"
-              :placeholder="t('management.assistant.baseUrlHint')"
-            />
-          </div>
-          <div v-if="searchForm.kind === 'openai_responses'" class="form-field">
-            <label for="search-model">Model</label>
-            <input id="search-model" v-model="searchForm.modelKey" class="input" />
-          </div>
-          <div v-if="searchForm.kind !== 'searxng'" class="form-field">
-            <label for="search-key">API Key</label>
-            <input id="search-key" v-model="searchForm.apiKey" class="input" type="password" />
-          </div>
-        </div>
-        <div class="button-row">
-          <button class="button" type="button" @click="createProvider">
+        <div class="settings-card__toolbar">
+          <p class="field-hint">{{ t('management.assistant.searchHint') }}</p>
+          <button class="button button--primary" type="button" @click="openCreate('provider')">
             {{ t('management.assistant.create') }}
           </button>
         </div>
@@ -403,10 +451,15 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
           </thead>
           <tbody>
             <tr v-for="provider in providers" :key="provider.id">
-              <td>{{ provider.displayName }}</td>
+              <td>
+                {{ provider.displayName }}
+                <span v-if="provider.testError" class="badge badge--red">{{
+                  provider.testError
+                }}</span>
+              </td>
               <td>{{ provider.kind }}</td>
               <td>
-                <span class="badge" :class="{ 'badge--success': provider.enabled }">{{
+                <span class="badge" :class="provider.enabled ? 'badge--green' : ''">{{
                   provider.enabled
                     ? t('management.assistant.enabledOn')
                     : t('management.assistant.enabledOff')
@@ -417,6 +470,7 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
                   <button
                     class="button button--small"
                     type="button"
+                    :disabled="testing === provider.id"
                     @click="testProvider(provider)"
                   >
                     {{ t('management.assistant.test') }}
@@ -424,7 +478,14 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
                   <button
                     class="button button--small"
                     type="button"
-                    @click="toggleProvider(provider)"
+                    @click="openEdit('provider', provider.id)"
+                  >
+                    {{ t('management.assistant.edit') }}
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    @click="toggle('provider', provider)"
                   >
                     {{
                       provider.enabled
@@ -433,9 +494,9 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
                     }}
                   </button>
                   <button
-                    class="button button--small"
+                    class="button button--small button--danger"
                     type="button"
-                    @click="deleteProvider(provider)"
+                    @click="requestDelete('provider', provider)"
                   >
                     {{ t('management.assistant.remove') }}
                   </button>
@@ -444,78 +505,14 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
             </tr>
           </tbody>
         </table>
+        <EmptyState v-else :title="t('management.assistant.searchEmpty')" />
       </TabsContent>
 
+      <!-- MCP 服务器 -->
       <TabsContent value="mcp" class="tabs-content settings-card">
-        <p class="field-hint">{{ t('management.assistant.mcpHint') }}</p>
-        <div class="form-grid">
-          <div class="form-field">
-            <label for="mcp-name">{{ t('management.assistant.mcpName') }}</label>
-            <input id="mcp-name" v-model="mcpForm.name" class="input" />
-          </div>
-          <div class="form-field">
-            <label for="mcp-transport">Transport</label>
-            <select id="mcp-transport" v-model="mcpForm.transport" class="input">
-              <option value="stdio">stdio</option>
-              <option value="http">http</option>
-            </select>
-          </div>
-          <template v-if="mcpForm.transport === 'stdio'">
-            <div class="form-field">
-              <label for="mcp-command">Command</label>
-              <input id="mcp-command" v-model="mcpForm.command" class="input" />
-            </div>
-            <div class="form-field">
-              <label for="mcp-args">Args</label>
-              <input
-                id="mcp-args"
-                v-model="mcpForm.args"
-                class="input"
-                placeholder="npx -y server"
-              />
-            </div>
-            <div class="form-field">
-              <label for="mcp-env">ENV</label>
-              <textarea id="mcp-env" v-model="mcpForm.env" class="input" rows="2"></textarea>
-            </div>
-          </template>
-          <template v-else>
-            <div class="form-field">
-              <label for="mcp-url">URL</label>
-              <input id="mcp-url" v-model="mcpForm.url" class="input" />
-            </div>
-            <div class="form-field">
-              <label for="mcp-headers">Headers</label>
-              <textarea
-                id="mcp-headers"
-                v-model="mcpForm.headers"
-                class="input"
-                rows="2"
-                placeholder="Authorization: Bearer ..."
-              ></textarea>
-            </div>
-          </template>
-          <div class="form-field">
-            <label for="mcp-timeout">Timeout (s)</label>
-            <input
-              id="mcp-timeout"
-              v-model.number="mcpForm.timeoutSeconds"
-              class="input"
-              type="number"
-              min="5"
-              max="600"
-            />
-          </div>
-          <div class="form-field">
-            <label for="mcp-exposure">Exposure</label>
-            <select id="mcp-exposure" v-model="mcpForm.exposure" class="input">
-              <option value="direct">direct</option>
-              <option value="deferred">deferred</option>
-            </select>
-          </div>
-        </div>
-        <div class="button-row">
-          <button class="button" type="button" @click="createMcp">
+        <div class="settings-card__toolbar">
+          <p class="field-hint">{{ t('management.assistant.mcpHint') }}</p>
+          <button class="button button--primary" type="button" @click="openCreate('mcp')">
             {{ t('management.assistant.create') }}
           </button>
         </div>
@@ -530,10 +527,13 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
           </thead>
           <tbody>
             <tr v-for="server in mcpServers" :key="server.id">
-              <td>{{ server.name }}</td>
+              <td>
+                {{ server.name }}
+                <span v-if="server.testError" class="badge badge--red">{{ server.testError }}</span>
+              </td>
               <td>{{ server.transport }}</td>
               <td>
-                <span class="badge" :class="{ 'badge--success': server.enabled }">{{
+                <span class="badge" :class="server.enabled ? 'badge--green' : ''">{{
                   server.enabled
                     ? t('management.assistant.enabledOn')
                     : t('management.assistant.enabledOff')
@@ -541,14 +541,25 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
               </td>
               <td>
                 <div class="button-row">
-                  <button class="button button--small" type="button" @click="toggleMcp(server)">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    @click="openEdit('mcp', server.id)"
+                  >
+                    {{ t('management.assistant.edit') }}
+                  </button>
+                  <button class="button button--small" type="button" @click="toggle('mcp', server)">
                     {{
                       server.enabled
                         ? t('management.assistant.disable')
                         : t('management.assistant.enable')
                     }}
                   </button>
-                  <button class="button button--small" type="button" @click="deleteMcp(server)">
+                  <button
+                    class="button button--small button--danger"
+                    type="button"
+                    @click="requestDelete('mcp', server)"
+                  >
                     {{ t('management.assistant.remove') }}
                   </button>
                 </div>
@@ -556,29 +567,14 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
             </tr>
           </tbody>
         </table>
+        <EmptyState v-else :title="t('management.assistant.mcpEmpty')" />
       </TabsContent>
 
+      <!-- Skills -->
       <TabsContent value="skills" class="tabs-content settings-card">
-        <p class="field-hint">{{ t('management.assistant.skillHint') }}</p>
-        <div class="form-field">
-          <label for="skill-name">{{ t('management.assistant.skillName') }}</label>
-          <input id="skill-name" v-model="skillForm.name" class="input" placeholder="exam-review" />
-        </div>
-        <div class="form-field">
-          <label for="skill-desc">{{ t('management.assistant.skillDescription') }}</label>
-          <input id="skill-desc" v-model="skillForm.description" class="input" />
-        </div>
-        <div class="form-field">
-          <label for="skill-content">{{ t('management.assistant.skillContent') }}</label>
-          <textarea
-            id="skill-content"
-            v-model="skillForm.content"
-            class="input"
-            rows="6"
-          ></textarea>
-        </div>
-        <div class="button-row">
-          <button class="button" type="button" @click="createSkill">
+        <div class="settings-card__toolbar">
+          <p class="field-hint">{{ t('management.assistant.skillHint') }}</p>
+          <button class="button button--primary" type="button" @click="openCreate('skill')">
             {{ t('management.assistant.create') }}
           </button>
         </div>
@@ -594,9 +590,9 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
           <tbody>
             <tr v-for="skill in skills" :key="skill.id">
               <td>{{ skill.name }}</td>
-              <td>{{ skill.description }}</td>
+              <td class="table-secondary__clamp">{{ skill.description }}</td>
               <td>
-                <span class="badge" :class="{ 'badge--success': skill.enabled }">{{
+                <span class="badge" :class="skill.enabled ? 'badge--green' : ''">{{
                   skill.enabled
                     ? t('management.assistant.enabledOn')
                     : t('management.assistant.enabledOff')
@@ -604,14 +600,29 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
               </td>
               <td>
                 <div class="button-row">
-                  <button class="button button--small" type="button" @click="toggleSkill(skill)">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    @click="openEdit('skill', skill.id)"
+                  >
+                    {{ t('management.assistant.edit') }}
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    @click="toggle('skill', skill)"
+                  >
                     {{
                       skill.enabled
                         ? t('management.assistant.disable')
                         : t('management.assistant.enable')
                     }}
                   </button>
-                  <button class="button button--small" type="button" @click="deleteSkill(skill)">
+                  <button
+                    class="button button--small button--danger"
+                    type="button"
+                    @click="requestDelete('skill', skill)"
+                  >
                     {{ t('management.assistant.remove') }}
                   </button>
                 </div>
@@ -619,7 +630,209 @@ async function deleteSkill(skill: AssistantSkillView): Promise<void> {
             </tr>
           </tbody>
         </table>
+        <EmptyState v-else :title="t('management.assistant.skillEmpty')" />
       </TabsContent>
     </TabsRoot>
+
+    <!-- 搜索服务弹窗：创建与编辑共用 -->
+    <ConfirmDialog
+      v-model:open="dialogOpen"
+      :title="dialogTitle"
+      :busy="busy"
+      :confirm-label="t('management.assistant.save')"
+      @confirm="dialog?.kind === 'provider' && saveProvider()"
+    >
+      <div v-if="dialog?.kind === 'provider'" class="form-grid">
+        <AppFormField id="search-kind" :label="t('management.assistant.searchKind')">
+          <AppSelect id="search-kind" v-model="providerForm.kind" :items="searchKindOptions" />
+        </AppFormField>
+        <AppFormField id="search-name" :label="t('management.assistant.displayName')">
+          <input id="search-name" v-model="providerForm.displayName" class="input" />
+        </AppFormField>
+        <AppFormField id="search-url" label="Base URL" class="form-field--full">
+          <input
+            id="search-url"
+            v-model="providerForm.baseUrl"
+            class="input"
+            :placeholder="t('management.assistant.baseUrlHint')"
+          />
+        </AppFormField>
+        <AppFormField
+          v-if="providerForm.kind === 'openai_responses'"
+          id="search-model"
+          label="Model"
+        >
+          <input id="search-model" v-model="providerForm.modelKey" class="input" />
+        </AppFormField>
+        <AppFormField v-if="providerForm.kind !== 'searxng'" id="search-key" label="API Key">
+          <input
+            id="search-key"
+            v-model="providerForm.apiKey"
+            class="input"
+            type="password"
+            :placeholder="editingProvider ? t('management.assistant.apiKeyKeep') : ''"
+          />
+        </AppFormField>
+        <div class="form-field form-field--full">
+          <AppCheckbox v-model="providerForm.enabled">
+            {{ t('management.assistant.enabledOn') }}
+          </AppCheckbox>
+        </div>
+      </div>
+    </ConfirmDialog>
+
+    <!-- MCP 弹窗：创建与编辑共用 -->
+    <ConfirmDialog
+      v-model:open="dialogOpen"
+      :title="dialogTitle"
+      :busy="busy"
+      :confirm-label="t('management.assistant.save')"
+      @confirm="dialog?.kind === 'mcp' && saveMcp()"
+    >
+      <div v-if="dialog?.kind === 'mcp'" class="form-grid">
+        <AppFormField id="mcp-name" :label="t('management.assistant.mcpName')">
+          <input
+            id="mcp-name"
+            v-model="mcpForm.name"
+            class="input"
+            :disabled="Boolean(editingMcp)"
+          />
+        </AppFormField>
+        <AppFormField id="mcp-transport" label="Transport">
+          <AppSelect id="mcp-transport" v-model="mcpForm.transport" :items="mcpTransportOptions" />
+        </AppFormField>
+        <template v-if="mcpForm.transport === 'stdio'">
+          <AppFormField id="mcp-command" label="Command">
+            <input id="mcp-command" v-model="mcpForm.command" class="input" />
+          </AppFormField>
+          <AppFormField id="mcp-args" label="Args">
+            <input id="mcp-args" v-model="mcpForm.args" class="input" placeholder="npx -y server" />
+          </AppFormField>
+          <AppFormField
+            id="mcp-env"
+            label="ENV"
+            class="form-field--full"
+            :hint="editingMcp?.envConfigured ? t('management.assistant.secretKeepHint') : undefined"
+          >
+            <textarea
+              id="mcp-env"
+              v-model="mcpForm.env"
+              class="input"
+              rows="2"
+              placeholder="KEY=value"
+            ></textarea>
+          </AppFormField>
+          <div v-if="editingMcp?.envConfigured" class="form-field form-field--full">
+            <AppCheckbox v-model="mcpForm.clearEnv">
+              {{ t('management.assistant.mcpClearEnv') }}
+            </AppCheckbox>
+          </div>
+        </template>
+        <template v-else>
+          <AppFormField id="mcp-url" label="URL" class="form-field--full">
+            <input id="mcp-url" v-model="mcpForm.url" class="input" />
+          </AppFormField>
+          <AppFormField
+            id="mcp-headers"
+            label="Headers"
+            class="form-field--full"
+            :hint="
+              editingMcp?.headersConfigured ? t('management.assistant.secretKeepHint') : undefined
+            "
+          >
+            <textarea
+              id="mcp-headers"
+              v-model="mcpForm.headers"
+              class="input"
+              rows="2"
+              placeholder="Authorization: Bearer ..."
+            ></textarea>
+          </AppFormField>
+          <div v-if="editingMcp?.headersConfigured" class="form-field form-field--full">
+            <AppCheckbox v-model="mcpForm.clearHeaders">
+              {{ t('management.assistant.mcpClearHeaders') }}
+            </AppCheckbox>
+          </div>
+        </template>
+        <AppFormField id="mcp-timeout" :label="t('management.assistant.mcpTimeout')">
+          <input
+            id="mcp-timeout"
+            v-model.number="mcpForm.timeoutSeconds"
+            class="input"
+            type="number"
+            min="5"
+            max="600"
+          />
+        </AppFormField>
+        <AppFormField id="mcp-exposure" label="Exposure">
+          <AppSelect id="mcp-exposure" v-model="mcpForm.exposure" :items="mcpExposureOptions" />
+        </AppFormField>
+        <div class="form-field form-field--full">
+          <AppCheckbox v-model="mcpForm.enabled">
+            {{ t('management.assistant.enabledOn') }}
+          </AppCheckbox>
+        </div>
+      </div>
+    </ConfirmDialog>
+
+    <!-- Skill 弹窗：创建与编辑共用 -->
+    <ConfirmDialog
+      v-model:open="dialogOpen"
+      :title="dialogTitle"
+      :busy="busy"
+      :confirm-label="t('management.assistant.save')"
+      @confirm="dialog?.kind === 'skill' && saveSkill()"
+    >
+      <div v-if="dialog?.kind === 'skill'" class="form-grid">
+        <AppFormField
+          id="skill-name"
+          :label="t('management.assistant.skillName')"
+          :hint="editingSkill ? t('management.assistant.skillNameImmutable') : undefined"
+        >
+          <input
+            id="skill-name"
+            v-model="skillForm.name"
+            class="input"
+            placeholder="exam-review"
+            :disabled="Boolean(editingSkill)"
+          />
+        </AppFormField>
+        <div class="form-field">
+          <AppCheckbox v-model="skillForm.enabled">
+            {{ t('management.assistant.enabledOn') }}
+          </AppCheckbox>
+        </div>
+        <AppFormField
+          id="skill-desc"
+          :label="t('management.assistant.skillDescription')"
+          class="form-field--full"
+        >
+          <input id="skill-desc" v-model="skillForm.description" class="input" />
+        </AppFormField>
+        <AppFormField
+          id="skill-content"
+          :label="t('management.assistant.skillContent')"
+          class="form-field--full"
+        >
+          <textarea
+            id="skill-content"
+            v-model="skillForm.content"
+            class="input"
+            rows="8"
+          ></textarea>
+        </AppFormField>
+      </div>
+    </ConfirmDialog>
+
+    <!-- 删除确认 -->
+    <ConfirmDialog
+      v-model:open="deleteOpen"
+      :title="t('management.assistant.deleteTitle')"
+      :description="t('management.assistant.deleteDescription', { name: deleteTargetName })"
+      :confirm-label="t('management.assistant.remove')"
+      danger
+      :busy="deleteBusy"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>

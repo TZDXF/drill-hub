@@ -6,6 +6,7 @@ import { useLearning } from '../injection';
 import type { ArchiveEntry, ArchiveResourceType } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
@@ -130,10 +131,9 @@ onMounted(load);
       :description="t('management.archive.description')"
     />
     <form class="card filter-bar" @submit.prevent="load">
-      <div class="form-field">
-        <label for="archive-type">{{ t('management.archive.resourceType') }}</label
-        ><AppSelect id="archive-type" v-model="type" :items="typeOptions" />
-      </div>
+      <AppFormField id="archive-type" :label="t('management.archive.resourceType')">
+        <AppSelect id="archive-type" v-model="type" :items="typeOptions" />
+      </AppFormField>
       <button class="button" type="submit">{{ t('management.common.applyFilter') }}</button>
     </form>
     <div v-if="loading" class="loading-block">

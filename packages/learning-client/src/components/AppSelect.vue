@@ -20,6 +20,8 @@ import AppIcon from './AppIcon.vue';
 
 const { t } = useI18n();
 
+defineOptions({ inheritAttrs: false });
+
 export interface AppSelectItem {
   value: string;
   label: string;
@@ -40,7 +42,7 @@ const model = defineModel<string>({ required: true });
 
 <template>
   <SelectRoot v-model="model" :disabled="disabled">
-    <SelectTrigger :id="id" class="select">
+    <SelectTrigger :id="id" v-bind="$attrs" class="select">
       <SelectValue :placeholder="placeholder ?? t('components.select.placeholder')" />
       <SelectIcon class="select__icon"><AppIcon name="down" :size="16" /></SelectIcon>
     </SelectTrigger>

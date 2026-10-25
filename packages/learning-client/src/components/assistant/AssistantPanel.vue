@@ -13,6 +13,7 @@ import { useAssistant } from '../../assistant/store';
 import { buildHistory } from '../../assistant/turns';
 import { errorMessage } from '../../utils';
 import AppIcon from '../AppIcon.vue';
+import AppTooltip from '../AppTooltip.vue';
 import MessageResponse from '../ai-elements/message/MessageResponse.vue';
 import AssistantComposer from './AssistantComposer.vue';
 import AssistantProcessLine from './AssistantProcessLine.vue';
@@ -129,25 +130,27 @@ watch(
             </DropdownMenuContent>
           </DropdownMenuPortal>
         </DropdownMenuRoot>
-        <button
-          class="icon-button"
-          type="button"
-          :aria-label="t('components.assistant.layoutSplit')"
-          :title="t('components.assistant.layoutSplit')"
-          @click="assistant.setLayout('split')"
-        >
-          <AppIcon name="panel" :size="17" />
-        </button>
-        <button
-          class="icon-button"
-          type="button"
-          :aria-label="t('components.assistant.close')"
-          :title="t('components.assistant.close')"
-          data-testid="assistant-close"
-          @click="assistant.closePanel()"
-        >
-          <AppIcon name="close" :size="17" />
-        </button>
+        <AppTooltip :label="t('components.assistant.layoutSplit')">
+          <button
+            class="icon-button"
+            type="button"
+            :aria-label="t('components.assistant.layoutSplit')"
+            @click="assistant.setLayout('split')"
+          >
+            <AppIcon name="panel" :size="17" />
+          </button>
+        </AppTooltip>
+        <AppTooltip :label="t('components.assistant.close')">
+          <button
+            class="icon-button"
+            type="button"
+            :aria-label="t('components.assistant.close')"
+            data-testid="assistant-close"
+            @click="assistant.closePanel()"
+          >
+            <AppIcon name="close" :size="17" />
+          </button>
+        </AppTooltip>
       </div>
     </header>
 

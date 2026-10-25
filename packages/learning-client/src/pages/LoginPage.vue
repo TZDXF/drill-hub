@@ -6,6 +6,7 @@ import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
 import AuthLayout from '../components/AuthLayout.vue';
 import AppIcon from '../components/AppIcon.vue';
+import AppFormField from '../components/AppFormField.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 
 const { t } = useI18n();
@@ -77,8 +78,7 @@ onMounted(() => {
       <span class="badge badge--green">{{ t('management.login.verified') }}</span>
     </div>
     <form class="auth-form" @submit.prevent="submit">
-      <div class="form-field">
-        <label for="username">{{ t('management.login.username') }}</label>
+      <AppFormField id="username" :label="t('management.login.username')">
         <input
           id="username"
           v-model="username"
@@ -88,9 +88,8 @@ onMounted(() => {
           required
           autofocus
         />
-      </div>
-      <div class="form-field">
-        <label for="password">{{ t('management.login.password') }}</label>
+      </AppFormField>
+      <AppFormField id="password" :label="t('management.login.password')">
         <input
           id="password"
           v-model="password"
@@ -100,7 +99,7 @@ onMounted(() => {
           autocomplete="current-password"
           required
         />
-      </div>
+      </AppFormField>
       <button class="button button--primary button--large" type="submit" :disabled="busy">
         <span v-if="busy" class="spinner" />{{
           busy ? t('management.login.submitting') : t('management.login.submit')

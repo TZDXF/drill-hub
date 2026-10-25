@@ -18,6 +18,7 @@ import { cycleThemePreference, themePreference } from '../theme';
 import { errorMessage } from '../utils';
 import AppIcon from './AppIcon.vue';
 import AppScrollArea from './AppScrollArea.vue';
+import AppTooltip from './AppTooltip.vue';
 import AssistantPanel from './assistant/AssistantPanel.vue';
 
 const { t } = useI18n();
@@ -224,16 +225,17 @@ async function logout() {
       <header class="topbar">
         <h2>{{ title }}</h2>
         <div class="flex items-center gap-3.5">
-          <button
-            class="icon-button"
-            type="button"
-            data-testid="assistant-toggle"
-            :aria-label="t('components.assistant.open')"
-            :title="t('components.assistant.open')"
-            @click="assistant.state.open ? assistant.closePanel() : assistant.openPanel()"
-          >
-            <AppIcon name="assistant" :size="18" />
-          </button>
+          <AppTooltip :label="t('components.assistant.open')">
+            <button
+              class="icon-button"
+              type="button"
+              data-testid="assistant-toggle"
+              :aria-label="t('components.assistant.open')"
+              @click="assistant.state.open ? assistant.closePanel() : assistant.openPanel()"
+            >
+              <AppIcon name="assistant" :size="18" />
+            </button>
+          </AppTooltip>
           <button
             v-if="learning.platform.kind === 'web'"
             class="button button--small"
@@ -244,16 +246,17 @@ async function logout() {
           >
             中 / EN
           </button>
-          <button
-            class="icon-button"
-            type="button"
-            data-testid="desktop-theme-toggle"
-            :aria-label="t('components.theme.switch')"
-            :title="themeLabel"
-            @click="cycleThemePreference"
-          >
-            <AppIcon :name="themeIcon" :size="18" />
-          </button>
+          <AppTooltip :label="themeLabel">
+            <button
+              class="icon-button"
+              type="button"
+              data-testid="desktop-theme-toggle"
+              :aria-label="t('components.theme.switch')"
+              @click="cycleThemePreference"
+            >
+              <AppIcon :name="themeIcon" :size="18" />
+            </button>
+          </AppTooltip>
           <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
               <button class="user-trigger" type="button">

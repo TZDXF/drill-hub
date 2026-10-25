@@ -6,6 +6,7 @@ import { useLearning } from '../injection';
 import type { PasswordResetResult } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -209,23 +210,32 @@ onMounted(load);
       :busy="creating"
       @confirm="createUser"
       ><div class="form-grid">
-        <div class="form-field form-field--full">
-          <label for="new-user-name">{{ t('management.users.field.displayName') }}</label
-          ><input id="new-user-name" v-model="displayName" class="input" required />
-        </div>
-        <div class="form-field form-field--full">
-          <label for="new-user-username">{{ t('management.users.field.username') }}</label
-          ><input
+        <AppFormField
+          class="form-field--full"
+          id="new-user-name"
+          :label="t('management.users.field.displayName')"
+        >
+          <input id="new-user-name" v-model="displayName" class="input" required />
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="new-user-username"
+          :label="t('management.users.field.username')"
+        >
+          <input
             id="new-user-username"
             v-model="username"
             class="input"
             autocomplete="off"
             required
           />
-        </div>
-        <div class="form-field form-field--full">
-          <label for="new-user-password">{{ t('management.users.field.password') }}</label
-          ><input
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="new-user-password"
+          :label="t('management.users.field.password')"
+        >
+          <input
             id="new-user-password"
             v-model="password"
             class="input"
@@ -234,7 +244,7 @@ onMounted(load);
             minlength="4"
             required
           />
-        </div></div
+        </AppFormField></div
     ></ConfirmDialog>
     <ConfirmDialog
       :open="Boolean(statusUser)"

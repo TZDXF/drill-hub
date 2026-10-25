@@ -6,6 +6,7 @@ import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
 import AuthLayout from '../components/AuthLayout.vue';
 import AppIcon from '../components/AppIcon.vue';
+import AppFormField from '../components/AppFormField.vue';
 
 const { t } = useI18n();
 const learning = useLearning();
@@ -60,8 +61,7 @@ async function submit() {
     </template>
 
     <form class="auth-form" @submit.prevent="submit">
-      <div class="form-field">
-        <label for="current-password">{{ t('management.password.current') }}</label>
+      <AppFormField id="current-password" :label="t('management.password.current')">
         <div class="password-input">
           <input
             id="current-password"
@@ -85,10 +85,9 @@ async function submit() {
             <AppIcon :name="showCurrentPassword ? 'eye-off' : 'eye'" :size="18" />
           </button>
         </div>
-      </div>
+      </AppFormField>
 
-      <div class="form-field">
-        <label for="new-password">{{ t('management.password.new') }}</label>
+      <AppFormField id="new-password" :label="t('management.password.new')">
         <div class="password-input">
           <input
             id="new-password"
@@ -115,10 +114,9 @@ async function submit() {
         <p id="new-password-hint" class="field-hint">
           {{ t('management.password.newHint') }}
         </p>
-      </div>
+      </AppFormField>
 
-      <div class="form-field">
-        <label for="confirm-password">{{ t('management.password.confirm') }}</label>
+      <AppFormField id="confirm-password" :label="t('management.password.confirm')">
         <div class="password-input">
           <input
             id="confirm-password"
@@ -147,7 +145,7 @@ async function submit() {
         <p v-if="confirmationError" id="confirm-password-error" class="field-error" role="alert">
           {{ confirmationError }}
         </p>
-      </div>
+      </AppFormField>
 
       <button
         class="button button--primary button--large"

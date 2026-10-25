@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import type { TokenUsageReport } from '@drill-hub/contracts';
 import { useLearning } from '../injection';
 import { errorMessage } from '../utils';
@@ -9,6 +10,7 @@ import AppScrollArea from '../components/AppScrollArea.vue';
 import AppSelect from '../components/AppSelect.vue';
 import EmptyState from '../components/EmptyState.vue';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();
@@ -28,6 +30,7 @@ const scopeOptions = computed(() => [
   { value: 'me', label: t('management.usage.scopeMe') },
   { value: 'admin', label: t('management.usage.scopeAdmin') },
 ]);
+const dailyOpen = ref(false);
 const number = (value: number) => n(value);
 const peak = computed(() =>
   Math.max(1, ...(report.value?.daily.map((day) => day.totalTokens) ?? [])),
@@ -74,14 +77,12 @@ onBeforeUnmount(() => {
       </template>
     </PageHeader>
     <div class="card filter-bar">
-      <div class="form-field">
-        <label for="usage-days">{{ t('management.usage.range') }}</label>
+      <AppFormField id="usage-days" :label="t('management.usage.range')">
         <AppSelect id="usage-days" v-model="days" :items="dayOptions" />
-      </div>
-      <div v-if="isAdmin" class="form-field">
-        <label for="usage-scope">{{ t('management.usage.scopeLabel') }}</label>
+      </AppFormField>
+      <AppFormField v-if="isAdmin" id="usage-scope" :label="t('management.usage.scopeLabel')">
         <AppSelect id="usage-scope" v-model="scope" :items="scopeOptions" />
-      </div>
+      </AppFormField>
       <p class="muted small usage-filter-hint">
         {{ t('management.usage.scopeHint', { timezone: timezone }) }}
       </p>
@@ -199,40 +200,45 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </AppScrollArea>
-          <details class="usage-daily-details">
-            <summary>{{ t('management.usage.dailyDetails') }}</summary>
-            <AppScrollArea orientation="horizontal" type="auto">
-              <table class="data-table">
-                <caption class="sr-only">
-                  {{
-                    t('management.usage.dailyCaption')
-                  }}
-                </caption>
-                <thead>
-                  <tr>
-                    <th>{{ t('management.usage.col.date') }}</th>
-                    <th>{{ t('management.usage.col.input') }}</th>
-                    <th>{{ t('management.usage.col.output') }}</th>
-                    <th>{{ t('management.usage.col.knownTotal') }}</th>
-                    <th>{{ t('management.usage.col.calls') }}</th>
-                    <th>{{ t('management.usage.col.failed') }}</th>
-                    <th>{{ t('management.usage.col.unknown') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="day in report.daily" :key="day.date">
-                    <td>{{ day.date }}</td>
-                    <td>{{ number(day.promptTokens) }}</td>
-                    <td>{{ number(day.completionTokens) }}</td>
-                    <td>{{ number(day.totalTokens) }}</td>
-                    <td>{{ number(day.calls) }}</td>
-                    <td>{{ number(day.failedCalls) }}</td>
-                    <td>{{ number(day.unknownUsageCalls) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </AppScrollArea>
-          </details>
+          <CollapsibleRoot v-model:open="dailyOpen" class="usage-daily-details">
+            <CollapsibleTrigger class="usage-daily-details__trigger">
+              <AppIcon name="down" :size="13" />
+              {{ t('management.usage.dailyDetails') }}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <AppScrollArea orientation="horizontal" type="auto">
+                <table class="data-table">
+                  <caption class="sr-only">
+                    {{
+                      t('management.usage.dailyCaption')
+                    }}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th>{{ t('management.usage.col.date') }}</th>
+                      <th>{{ t('management.usage.col.input') }}</th>
+                      <th>{{ t('management.usage.col.output') }}</th>
+                      <th>{{ t('management.usage.col.knownTotal') }}</th>
+                      <th>{{ t('management.usage.col.calls') }}</th>
+                      <th>{{ t('management.usage.col.failed') }}</th>
+                      <th>{{ t('management.usage.col.unknown') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="day in report.daily" :key="day.date">
+                      <td>{{ day.date }}</td>
+                      <td>{{ number(day.promptTokens) }}</td>
+                      <td>{{ number(day.completionTokens) }}</td>
+                      <td>{{ number(day.totalTokens) }}</td>
+                      <td>{{ number(day.calls) }}</td>
+                      <td>{{ number(day.failedCalls) }}</td>
+                      <td>{{ number(day.unknownUsageCalls) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </AppScrollArea>
+            </CollapsibleContent>
+          </CollapsibleRoot>
         </section>
         <section aria-labelledby="usage-models-title">
           <div class="section-heading">
@@ -392,11 +398,25 @@ onBeforeUnmount(() => {
 .usage-daily-details {
   margin-top: 12px;
 }
-.usage-daily-details summary {
+.usage-daily-details__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
   color: var(--teal);
   font-size: 13px;
-  padding: 8px 0;
+}
+.usage-daily-details__trigger:hover {
+  text-decoration: underline;
+}
+.usage-daily-details__trigger .app-icon {
+  transition: transform 0.15s ease;
+}
+.usage-daily-details[data-state='open'] .usage-daily-details__trigger .app-icon {
+  transform: rotate(180deg);
 }
 .usage-model-key {
   overflow-wrap: anywhere;

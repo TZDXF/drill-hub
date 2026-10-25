@@ -5,6 +5,7 @@ import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type {
   DiscoveredProviderModel,
   GradingProfile,
+  ModelCatalogMatch,
   ModelConnectionView,
   ModelProtocol,
   ProviderModel,
@@ -15,6 +16,7 @@ import type { ModelAdapter } from '../types';
 import { errorMessage, formatDate } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
 import AppIcon from '../components/AppIcon.vue';
+import AppFormField from '../components/AppFormField.vue';
 import EmptyState from '../components/EmptyState.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AppSelect from '../components/AppSelect.vue';
@@ -44,6 +46,19 @@ const connectionTesting = ref(false);
 const modelOpen = ref(false);
 const modelKey = ref('');
 const modelName = ref('');
+const editingModel = ref<ProviderModel | null>(null);
+const contextWindow = ref<number | null>(null);
+const maxTokens = ref<number | null>(null);
+const reasoning = ref(false);
+const inputImage = ref(false);
+const costInput = ref<number | null>(null);
+const costOutput = ref<number | null>(null);
+const costCacheRead = ref<number | null>(null);
+const costCacheWrite = ref<number | null>(null);
+const catalogQuery = ref('');
+const catalogSearching = ref(false);
+const catalogSearched = ref(false);
+const catalogMatches = ref<ModelCatalogMatch[]>([]);
 const discoverOpen = ref(false);
 const discovering = ref(false);
 const discoveredModels = ref<DiscoveredProviderModel[]>([]);
@@ -329,21 +344,96 @@ async function importDiscoveredModels() {
     busy.value = false;
   }
 }
-async function addModel() {
+function openModelDialog(model: ProviderModel | null) {
+  editingModel.value = model;
+  modelKey.value = model?.modelKey ?? '';
+  modelName.value = model?.displayName ?? '';
+  contextWindow.value = model?.contextWindow ?? null;
+  maxTokens.value = model?.maxTokens ?? null;
+  reasoning.value = model?.reasoning ?? false;
+  inputImage.value = model?.input?.includes('image') ?? false;
+  costInput.value = model?.costPerMillion?.input ?? null;
+  costOutput.value = model?.costPerMillion?.output ?? null;
+  costCacheRead.value = model?.costPerMillion?.cacheRead ?? null;
+  costCacheWrite.value = model?.costPerMillion?.cacheWrite ?? null;
+  catalogQuery.value = '';
+  catalogMatches.value = [];
+  modelOpen.value = true;
+}
+
+async function searchCatalog() {
+  const query = catalogQuery.value.trim();
+  if (query.length < 2) return;
+  catalogSearching.value = true;
+  try {
+    catalogMatches.value = await learning.get<ModelCatalogMatch[]>(
+      `/admin/models-catalog?q=${encodeURIComponent(query)}`,
+    );
+    catalogSearched.value = true;
+  } catch (reason) {
+    catalogMatches.value = [];
+    catalogSearched.value = true;
+    learning.notify.error(t('management.models.catalogFailed'), errorMessage(reason));
+  } finally {
+    catalogSearching.value = false;
+  }
+}
+
+/** 用 models.dev 的匹配结果回填默认参数与价格（美元/百万 tokens）。 */
+function applyCatalogMatch(match: ModelCatalogMatch) {
+  if (!editingModel.value) modelKey.value = match.modelId;
+  if (!modelName.value || editingModel.value) modelName.value = match.name ?? match.modelId;
+  contextWindow.value = match.contextWindow;
+  maxTokens.value = match.maxTokens;
+  reasoning.value = match.reasoning;
+  inputImage.value = match.input.includes('image');
+  costInput.value = match.costPerMillion?.input ?? null;
+  costOutput.value = match.costPerMillion?.output ?? null;
+  costCacheRead.value = match.costPerMillion?.cacheRead ?? null;
+  costCacheWrite.value = match.costPerMillion?.cacheWrite ?? null;
+  learning.notify.success(
+    t('management.models.catalogApplied'),
+    `${match.providerName} / ${match.modelId}`,
+  );
+}
+
+async function saveModel() {
   if (!selected.value) return;
   busy.value = true;
   try {
-    await learning.post<ProviderModel>(`/admin/model-connections/${selected.value.id}/models`, {
-      modelKey: modelKey.value,
+    const hasCost = costInput.value !== null && costOutput.value !== null;
+    const costPerMillion = hasCost
+      ? {
+          input: costInput.value!,
+          output: costOutput.value!,
+          cacheRead: costCacheRead.value ?? 0,
+          cacheWrite: costCacheWrite.value ?? 0,
+        }
+      : null;
+    const payload = {
       displayName: modelName.value,
-    });
+      contextWindow: contextWindow.value || null,
+      maxTokens: maxTokens.value || null,
+      reasoning: reasoning.value,
+      input: inputImage.value ? ['text', 'image'] : ['text'],
+      ...(hasCost || editingModel.value ? { costPerMillion } : {}),
+    };
+    if (editingModel.value) {
+      await learning.patch(`/admin/provider-models/${editingModel.value.id}`, {
+        ...payload,
+        expectedRevision: editingModel.value.revision,
+      });
+    } else {
+      await learning.post<ProviderModel>(`/admin/model-connections/${selected.value.id}/models`, {
+        modelKey: modelKey.value,
+        ...payload,
+      });
+    }
     modelOpen.value = false;
-    modelKey.value = '';
-    modelName.value = '';
     await loadModels();
     learning.notify.success(
-      t('management.models.modelAdded'),
-      t('management.models.modelAddedDesc'),
+      editingModel.value ? t('management.models.modelSaved') : t('management.models.modelAdded'),
+      modelName.value,
     );
   } catch (reason) {
     learning.notify.error(t('management.models.addModelFailed'), errorMessage(reason));
@@ -651,7 +741,7 @@ onMounted(() => void load(true));
                     :size="15"
                   />{{ t('management.models.discover') }}
                 </button>
-                <button class="button button--small" type="button" @click="modelOpen = true">
+                <button class="button button--small" type="button" @click="openModelDialog(null)">
                   <AppIcon name="plus" :size="15" />{{ t('management.models.addModel') }}
                 </button>
               </div>
@@ -703,6 +793,20 @@ onMounted(() => void load(true));
                             })
                           : t('management.models.notTested')
                       }}</span
+                      ><span v-if="model.contextWindow">{{
+                        t('management.models.contextSummary', {
+                          context: Math.round(model.contextWindow / 1000),
+                        })
+                      }}</span
+                      ><span v-if="model.costPerMillion">{{
+                        t('management.models.costSummary', {
+                          input: model.costPerMillion.input,
+                          output: model.costPerMillion.output,
+                        })
+                      }}</span
+                      ><span v-if="model.reasoning" class="badge badge--teal">{{
+                        t('management.models.reasoningTag')
+                      }}</span
                       ><span v-if="model.testError" class="badge badge--red">{{
                         t('management.models.gradingTestFailed')
                       }}</span>
@@ -726,6 +830,13 @@ onMounted(() => void load(true));
                       <span v-if="testing === model.id" class="spinner" />{{
                         t('management.models.gradingTest')
                       }}</button
+                    ><button
+                      class="button button--small"
+                      type="button"
+                      :disabled="busy"
+                      @click="openModelDialog(model)"
+                    >
+                      {{ t('management.assistant.edit') }}</button
                     ><button
                       class="button button--small"
                       type="button"
@@ -867,22 +978,32 @@ onMounted(() => void load(true));
         </button>
       </template>
       <div class="form-grid">
-        <div class="form-field form-field--full">
-          <label for="connection-name">{{ t('management.models.field.connectionName') }}</label
-          ><input id="connection-name" v-model="connectionName" class="input" required />
-        </div>
-        <div class="form-field form-field--full">
-          <label for="connection-protocol">{{ t('management.models.field.protocol') }}</label
-          ><AppSelect
+        <AppFormField
+          class="form-field--full"
+          id="connection-name"
+          :label="t('management.models.field.connectionName')"
+        >
+          <input id="connection-name" v-model="connectionName" class="input" required />
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="connection-protocol"
+          :label="t('management.models.field.protocol')"
+        >
+          <AppSelect
             id="connection-protocol"
             v-model="protocolValue"
             :items="protocolOptions"
             :disabled="Boolean(editingConnection)"
           />
-        </div>
-        <div class="form-field form-field--full">
-          <label for="connection-url">{{ t('management.models.field.apiUrl') }}</label
-          ><input
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="connection-url"
+          :label="t('management.models.field.apiUrl')"
+          :hint="t('management.models.field.apiUrlHint')"
+        >
+          <input
             id="connection-url"
             v-model="baseUrl"
             class="input"
@@ -890,11 +1011,14 @@ onMounted(() => void load(true));
             required
             placeholder="https://provider.example.com/v1"
           />
-          <p class="field-hint">{{ t('management.models.field.apiUrlHint') }}</p>
-        </div>
-        <div class="form-field form-field--full">
-          <label for="connection-key">{{ t('management.models.field.apiKey') }}</label
-          ><input
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="connection-key"
+          :label="t('management.models.field.apiKey')"
+          :hint="t('management.models.field.apiKeyHint')"
+        >
+          <input
             id="connection-key"
             v-model="apiKey"
             class="input"
@@ -902,8 +1026,7 @@ onMounted(() => void load(true));
             autocomplete="new-password"
             :required="!editingConnection"
           />
-          <p class="field-hint">{{ t('management.models.field.apiKeyHint') }}</p>
-        </div>
+        </AppFormField>
       </div>
     </ConfirmDialog>
     <ConfirmDialog
@@ -915,15 +1038,14 @@ onMounted(() => void load(true));
       :busy="busy"
       @confirm="importDiscoveredModels"
     >
-      <div class="form-field">
-        <label for="discovery-filter">{{ t('management.models.field.discoveryFilter') }}</label
-        ><input
+      <AppFormField id="discovery-filter" :label="t('management.models.field.discoveryFilter')">
+        <input
           id="discovery-filter"
           v-model="discoveryFilter"
           class="input"
           :placeholder="t('management.models.field.discoveryFilterPlaceholder')"
         />
-      </div>
+      </AppFormField>
       <div class="model-discovery-toolbar">
         <span class="field-hint">{{
           t('management.models.discoveryCount', {
@@ -985,21 +1107,155 @@ onMounted(() => void load(true));
     </ConfirmDialog>
     <ConfirmDialog
       v-model:open="modelOpen"
-      :title="t('management.models.modelIdTitle')"
+      :title="
+        editingModel ? t('management.models.modelEditTitle') : t('management.models.modelIdTitle')
+      "
       :description="t('management.models.modelIdDesc')"
       :confirm-label="t('management.models.modelIdConfirm')"
       :busy="busy"
-      @confirm="addModel"
+      :confirm-disabled="!editingModel && !modelKey.trim()"
+      @confirm="saveModel"
       ><div class="form-grid">
-        <div class="form-field form-field--full">
-          <label for="model-key">{{ t('management.models.field.modelKey') }}</label
-          ><input id="model-key" v-model="modelKey" class="input" required autocomplete="off" />
+        <AppFormField
+          class="form-field--full"
+          id="model-key"
+          :label="t('management.models.field.modelKey')"
+        >
+          <input
+            id="model-key"
+            v-model="modelKey"
+            class="input"
+            required
+            autocomplete="off"
+            :disabled="Boolean(editingModel)"
+          />
+        </AppFormField>
+        <AppFormField
+          class="form-field--full"
+          id="model-name"
+          :label="t('management.models.field.modelName')"
+        >
+          <input id="model-name" v-model="modelName" class="input" required />
+        </AppFormField>
+        <AppFormField id="model-context" :label="t('management.models.field.contextWindow')">
+          <input
+            id="model-context"
+            v-model.number="contextWindow"
+            class="input"
+            type="number"
+            min="1"
+            placeholder="128000"
+          />
+        </AppFormField>
+        <AppFormField id="model-max-tokens" :label="t('management.models.field.maxTokens')">
+          <input
+            id="model-max-tokens"
+            v-model.number="maxTokens"
+            class="input"
+            type="number"
+            min="1"
+            placeholder="16384"
+          />
+        </AppFormField>
+        <div class="form-field form-field--full model-dialog__checks">
+          <AppCheckbox v-model="reasoning">{{
+            t('management.models.field.reasoning')
+          }}</AppCheckbox>
+          <AppCheckbox v-model="inputImage">{{
+            t('management.models.field.inputImage')
+          }}</AppCheckbox>
         </div>
-        <div class="form-field form-field--full">
-          <label for="model-name">{{ t('management.models.field.modelName') }}</label
-          ><input id="model-name" v-model="modelName" class="input" required />
-        </div></div
-    ></ConfirmDialog>
+        <AppFormField id="cost-input" :label="t('management.models.field.costInput')">
+          <input
+            id="cost-input"
+            v-model.number="costInput"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </AppFormField>
+        <AppFormField id="cost-output" :label="t('management.models.field.costOutput')">
+          <input
+            id="cost-output"
+            v-model.number="costOutput"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </AppFormField>
+        <AppFormField id="cost-cache-read" :label="t('management.models.field.costCacheRead')">
+          <input
+            id="cost-cache-read"
+            v-model.number="costCacheRead"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </AppFormField>
+        <AppFormField id="cost-cache-write" :label="t('management.models.field.costCacheWrite')">
+          <input
+            id="cost-cache-write"
+            v-model.number="costCacheWrite"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </AppFormField>
+        <p class="field-hint form-field--full">{{ t('management.models.costUnitHint') }}</p>
+        <AppFormField
+          class="form-field--full model-dialog__catalog"
+          id="catalog-query"
+          :label="t('management.models.catalogTitle')"
+        >
+          <div class="model-dialog__catalog-row">
+            <input
+              id="catalog-query"
+              v-model="catalogQuery"
+              class="input"
+              :placeholder="t('management.models.catalogPlaceholder')"
+              @keydown.enter.prevent="searchCatalog"
+            />
+            <button
+              class="button"
+              type="button"
+              :disabled="catalogSearching || catalogQuery.trim().length < 2"
+              @click="searchCatalog"
+            >
+              <span v-if="catalogSearching" class="spinner" /><AppIcon
+                v-else
+                name="search"
+                :size="15"
+              />
+              {{ t('management.models.catalogSearch') }}
+            </button>
+          </div>
+          <ul v-if="catalogMatches.length" class="model-dialog__matches">
+            <li v-for="match in catalogMatches" :key="`${match.providerId}/${match.modelId}`">
+              <button type="button" @click="applyCatalogMatch(match)">
+                <strong>{{ match.name ?? match.modelId }}</strong>
+                <span>{{ match.providerName }} · {{ match.modelId }}</span>
+                <span v-if="match.costPerMillion">{{
+                  t('management.models.costSummary', {
+                    input: match.costPerMillion.input,
+                    output: match.costPerMillion.output,
+                  })
+                }}</span>
+              </button>
+            </li>
+          </ul>
+          <p
+            v-else-if="!catalogSearching && catalogQuery.trim().length >= 2 && catalogSearched"
+            class="field-hint"
+          >
+            {{ t('management.models.catalogEmpty') }}
+          </p>
+        </AppFormField>
+      </div></ConfirmDialog
+    >
     <ConfirmDialog
       v-model:open="profileOpen"
       :title="
@@ -1017,12 +1273,14 @@ onMounted(() => void load(true));
       :confirm-disabled="!profileFormValid"
       @confirm="saveProfile"
       ><div class="form-grid">
-        <div class="form-field form-field--full">
-          <label for="profile-model">{{ t('management.models.field.profileModel') }}</label
-          ><AppSelect id="profile-model" v-model="providerModelId" :items="profileModelOptions" />
-        </div>
-        <div class="form-field">
-          <label for="profile-concurrency">{{ t('management.models.field.concurrency') }}</label>
+        <AppFormField
+          class="form-field--full"
+          id="profile-model"
+          :label="t('management.models.field.profileModel')"
+        >
+          <AppSelect id="profile-model" v-model="providerModelId" :items="profileModelOptions" />
+        </AppFormField>
+        <AppFormField id="profile-concurrency" :label="t('management.models.field.concurrency')">
           <input
             id="profile-concurrency"
             v-model.number="concurrency"
@@ -1032,9 +1290,8 @@ onMounted(() => void load(true));
             max="20"
             required
           />
-        </div>
-        <div class="form-field">
-          <label for="timeout-ms">{{ t('management.models.field.timeoutMs') }}</label>
+        </AppFormField>
+        <AppFormField id="timeout-ms" :label="t('management.models.field.timeoutMs')">
           <input
             id="timeout-ms"
             v-model.number="timeoutMs"
@@ -1044,9 +1301,8 @@ onMounted(() => void load(true));
             max="120000"
             required
           />
-        </div>
-        <div class="form-field">
-          <label for="max-retries">{{ t('management.models.field.maxRetries') }}</label>
+        </AppFormField>
+        <AppFormField id="max-retries" :label="t('management.models.field.maxRetries')">
           <input
             id="max-retries"
             v-model.number="maxRetries"
@@ -1056,7 +1312,7 @@ onMounted(() => void load(true));
             max="5"
             required
           />
-        </div>
+        </AppFormField>
         <div class="form-field--full">
           <AppCheckbox v-model="isDefault" :disabled="editingProfile?.isDefault">{{
             t('management.models.field.setDefaultProfile')
@@ -1125,6 +1381,54 @@ onMounted(() => void load(true));
 }
 .provider-model-card .list-card__body h3,
 .provider-model-card .list-card__body p {
+  overflow-wrap: anywhere;
+}
+.model-dialog__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.model-dialog__catalog-row {
+  display: flex;
+  gap: 8px;
+}
+.model-dialog__catalog-row .input {
+  flex: 1;
+}
+.model-dialog__matches {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.model-dialog__matches li + li {
+  border-top: 1px solid var(--line);
+}
+.model-dialog__matches button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.model-dialog__matches button:hover {
+  background: var(--teal-soft);
+}
+.model-dialog__matches strong {
+  font-size: 13px;
+}
+.model-dialog__matches span {
+  color: var(--ink-faint);
   overflow-wrap: anywhere;
 }
 @media (max-width: 640px) {

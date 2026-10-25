@@ -18,6 +18,7 @@ import { questionIndexFromQuery } from '../questionNavigation';
 import { asAttemptView, emptyAnswer, questionTypeLabels } from '../types';
 import { clone, errorMessage, isApiError, formatOptionLabel } from '../utils';
 import AppIcon from '../components/AppIcon.vue';
+import AppFormField from '../components/AppFormField.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
 import PlanOutlineNav from '../components/PlanOutlineNav.vue';
@@ -928,11 +929,12 @@ function confirmLeave() {
                   />
                 </div>
               </div>
-              <div v-else class="form-field">
-                <label :for="`answer-${slide.item.id}`">{{
-                  t('learning.attempt.yourAnswer')
-                }}</label
-                ><textarea
+              <AppFormField
+                v-else
+                :id="`answer-${slide.item.id}`"
+                :label="t('learning.attempt.yourAnswer')"
+              >
+                <textarea
                   :id="`answer-${slide.item.id}`"
                   class="textarea"
                   style="min-height: 220px"
@@ -941,7 +943,7 @@ function confirmLeave() {
                   :placeholder="t('learning.attempt.answerPlaceholder')"
                   @input="setText(slide.item, ($event.target as HTMLTextAreaElement).value)"
                 />
-              </div>
+              </AppFormField>
               <div class="attempt-actions">
                 <div
                   v-if="saving[slide.item.id] || saveErrors[slide.item.id]"

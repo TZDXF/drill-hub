@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import {
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogOverlay,
-  DialogPortal,
-  DialogRoot,
-  DialogTitle,
-} from 'reka-ui';
 import type { LearningPlan } from '@drill-hub/contracts';
+import AppDialog from './AppDialog.vue';
 import AppIcon from './AppIcon.vue';
-import AppScrollArea from './AppScrollArea.vue';
 import PlanOutline from './PlanOutline.vue';
 
 const { t } = useI18n();
@@ -53,49 +44,31 @@ onBeforeUnmount(() => {
     :plan="plan"
     :current-task-id="currentTaskId"
   />
-  <DialogRoot v-model:open="open">
-    <button
-      class="plan-outline-fab"
-      :class="{ 'plan-outline-fab--raised': fabRaised }"
-      type="button"
-      :aria-label="t('components.planOutline.fabLabel')"
-      aria-haspopup="dialog"
-      :aria-expanded="open"
-      @click="open = true"
-    >
-      <AppIcon name="plan" :size="19" />
-      <span>{{ t('components.planOutline.fabText') }}</span>
-    </button>
-    <DialogPortal>
-      <DialogOverlay class="dialog-overlay" />
-      <DialogContent class="question-nav-sheet plan-outline-sheet" @click.capture="onOutlineClick">
-        <div class="question-nav-sheet__handle" aria-hidden="true" />
-        <div class="dialog-heading">
-          <div>
-            <DialogTitle class="dialog-title">{{ plan.title }}</DialogTitle>
-            <DialogDescription class="dialog-description">
-              {{
-                t('components.planOutline.sheetDescription', {
-                  done: completedCount,
-                  total: tasks.length,
-                })
-              }}
-            </DialogDescription>
-          </div>
-          <DialogClose as-child>
-            <button
-              class="icon-button"
-              type="button"
-              :aria-label="t('components.planOutline.closeLabel')"
-            >
-              <AppIcon name="close" />
-            </button>
-          </DialogClose>
-        </div>
-        <AppScrollArea class="dialog-body" viewport-class="dialog-body__viewport">
-          <PlanOutline :plan="plan" :current-task-id="currentTaskId" />
-        </AppScrollArea>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
+  <button
+    class="plan-outline-fab"
+    :class="{ 'plan-outline-fab--raised': fabRaised }"
+    type="button"
+    :aria-label="t('components.planOutline.fabLabel')"
+    aria-haspopup="dialog"
+    :aria-expanded="open"
+    @click="open = true"
+  >
+    <AppIcon name="plan" :size="19" />
+    <span>{{ t('components.planOutline.fabText') }}</span>
+  </button>
+  <AppDialog
+    v-model:open="open"
+    class="question-nav-sheet plan-outline-sheet"
+    :title="plan.title"
+    :description="
+      t('components.planOutline.sheetDescription', { done: completedCount, total: tasks.length })
+    "
+    :close-label="t('components.planOutline.closeLabel')"
+    @click.capture="onOutlineClick"
+  >
+    <template #top>
+      <div class="question-nav-sheet__handle" aria-hidden="true" />
+    </template>
+    <PlanOutline :plan="plan" :current-task-id="currentTaskId" />
+  </AppDialog>
 </template>

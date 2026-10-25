@@ -13,6 +13,7 @@ import { useLearning } from '../injection';
 import type { AgentTokenCreated } from '../types';
 import { copyTextToClipboard, errorMessage, formatDate, isApiError } from '../utils';
 import PageHeader from '../components/PageHeader.vue';
+import AppFormField from '../components/AppFormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 import EmptyState from '../components/EmptyState.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
@@ -341,16 +342,19 @@ onMounted(load);
       :confirm-disabled="!name.trim() || !scopes.length"
       @confirm="create"
       ><div class="form-grid">
-        <div class="form-field form-field--full">
-          <label for="token-name">{{ t('management.tokens.field.name') }}</label
-          ><input
+        <AppFormField
+          class="form-field--full"
+          id="token-name"
+          :label="t('management.tokens.field.name')"
+        >
+          <input
             id="token-name"
             v-model="name"
             class="input"
             required
             :placeholder="t('management.tokens.field.namePlaceholder')"
           />
-        </div>
+        </AppFormField>
         <div class="form-field form-field--full">
           <label id="token-expiry-label">{{ t('management.tokens.field.expires') }}</label>
           <AppDateTimePicker

@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import {
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogOverlay,
-  DialogPortal,
-  DialogRoot,
-  DialogTitle,
-} from 'reka-ui';
-import AppIcon from './AppIcon.vue';
-import AppScrollArea from './AppScrollArea.vue';
+import { DialogClose } from 'reka-ui';
+import AppDialog from './AppDialog.vue';
 
 const { t } = useI18n();
 
@@ -31,60 +22,30 @@ const emit = defineEmits<{ confirm: [] }>();
 </script>
 
 <template>
-  <DialogRoot v-model:open="open">
-    <DialogPortal>
-      <DialogOverlay class="dialog-overlay" />
-      <DialogContent
-        class="dialog-content"
-        @escape-key-down="busy && $event.preventDefault()"
-        @pointer-down-outside="busy && $event.preventDefault()"
+  <AppDialog
+    v-model:open="open"
+    class="dialog-content"
+    :title="title"
+    :description="description"
+    :busy="busy"
+  >
+    <slot />
+    <template #actions>
+      <slot name="actions" />
+      <DialogClose as-child>
+        <button class="button" type="button" :disabled="busy">
+          {{ cancelLabel ?? t('components.confirm.cancel') }}
+        </button>
+      </DialogClose>
+      <button
+        class="button"
+        :class="danger ? 'button--danger' : 'button--primary'"
+        type="button"
+        :disabled="busy || confirmDisabled"
+        @click="emit('confirm')"
       >
-        <div class="dialog-heading">
-          <div>
-            <DialogTitle class="dialog-title">{{ title }}</DialogTitle>
-            <DialogDescription v-if="description" class="dialog-description">{{
-              description
-            }}</DialogDescription>
-          </div>
-          <DialogClose as-child>
-            <button
-              class="icon-button"
-              type="button"
-              :aria-label="t('components.confirm.close')"
-              :disabled="busy"
-            >
-              <AppIcon name="close" />
-            </button>
-          </DialogClose>
-        </div>
-        <AppScrollArea
-          class="dialog-body"
-          viewport-class="dialog-body__viewport"
-          orientation="vertical"
-          type="hover"
-        >
-          <slot />
-        </AppScrollArea>
-        <div class="dialog-actions">
-          <slot name="actions" />
-          <DialogClose as-child>
-            <button class="button" type="button" :disabled="busy">
-              {{ cancelLabel ?? t('components.confirm.cancel') }}
-            </button>
-          </DialogClose>
-          <button
-            class="button"
-            :class="danger ? 'button--danger' : 'button--primary'"
-            type="button"
-            :disabled="busy || confirmDisabled"
-            @click="emit('confirm')"
-          >
-            <span v-if="busy" class="spinner" />{{
-              confirmLabel ?? t('components.confirm.confirm')
-            }}
-          </button>
-        </div>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
+        <span v-if="busy" class="spinner" />{{ confirmLabel ?? t('components.confirm.confirm') }}
+      </button>
+    </template>
+  </AppDialog>
 </template>

@@ -3,6 +3,8 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAssistant } from '../../assistant/store';
 import AppIcon from '../AppIcon.vue';
+import AppTooltip from '../AppTooltip.vue';
+import AssistantModelSelect from './AssistantModelSelect.vue';
 
 const { t } = useI18n();
 const assistant = useAssistant();
@@ -29,6 +31,9 @@ function onInputKey(event: KeyboardEvent) {
 
 <template>
   <footer class="assistant-panel__footer">
+    <div class="assistant-composer__toolbar">
+      <AssistantModelSelect />
+    </div>
     <div class="assistant-composer">
       <textarea
         v-model="input"
@@ -38,29 +43,29 @@ function onInputKey(event: KeyboardEvent) {
         data-testid="assistant-input"
         @keydown="onInputKey"
       ></textarea>
-      <button
-        v-if="busy"
-        class="assistant-composer__button"
-        type="button"
-        data-testid="assistant-cancel"
-        :aria-label="t('components.assistant.stop')"
-        :title="t('components.assistant.stop')"
-        @click="assistant.cancelTurn()"
-      >
-        <AppIcon name="square" :size="15" />
-      </button>
-      <button
-        v-else
-        class="assistant-composer__button"
-        type="button"
-        data-testid="assistant-send"
-        :disabled="!input.trim()"
-        :aria-label="t('components.assistant.send')"
-        :title="t('components.assistant.send')"
-        @click="submit"
-      >
-        <AppIcon name="send" :size="15" />
-      </button>
+      <AppTooltip v-if="busy" :label="t('components.assistant.stop')">
+        <button
+          class="assistant-composer__button"
+          type="button"
+          data-testid="assistant-cancel"
+          :aria-label="t('components.assistant.stop')"
+          @click="assistant.cancelTurn()"
+        >
+          <AppIcon name="square" :size="15" />
+        </button>
+      </AppTooltip>
+      <AppTooltip v-else :label="t('components.assistant.send')">
+        <button
+          class="assistant-composer__button"
+          type="button"
+          data-testid="assistant-send"
+          :disabled="!input.trim()"
+          :aria-label="t('components.assistant.send')"
+          @click="submit"
+        >
+          <AppIcon name="send" :size="15" />
+        </button>
+      </AppTooltip>
     </div>
   </footer>
 </template>
