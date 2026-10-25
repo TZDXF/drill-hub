@@ -3540,7 +3540,6 @@
 .assistant-model-select {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   max-width: 240px;
   padding: 4px 8px;
   border: 1px solid var(--line);
@@ -3563,34 +3562,14 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.assistant-model-select__chevron {
-  flex-shrink: 0;
-  opacity: 0.7;
-}
 .assistant-model-menu {
   min-width: 260px;
   max-width: 320px;
-}
-.assistant-model-menu__item {
-  align-items: flex-start;
-}
-.assistant-model-menu__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
 }
 .assistant-model-menu__name {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.assistant-model-menu__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  color: var(--ink-faint);
-  font-size: 11px;
 }
 .assistant-model-menu__empty {
   padding: 10px;

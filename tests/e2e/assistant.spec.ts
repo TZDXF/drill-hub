@@ -11,6 +11,48 @@ async function login(page: Page) {
 }
 
 test.describe('内置学习助手', () => {
+  test('模型选择只显示名称，支持选择模型和切回自动选择', async ({ page }) => {
+    const names = ['LongCat 2.5 Preview', 'MiniMax-M3.1-Flash', 'agnes-2.5-flash'];
+    await page.route('**/api/v1/me/assistant/models', async (route) => {
+      await route.fulfill({
+        json: {
+          data: names.map((displayName, index) => ({
+            id: `model-${index}`,
+            connectionId: `connection-${index}`,
+            connectionName: index === 0 ? 'home' : '其他供应商',
+            modelKey: displayName,
+            displayName,
+            reasoning: true,
+            contextWindow: 1_000_000,
+            maxTokens: 8192,
+            costPerMillion: { input: 0.75, output: 2.95, cacheRead: 0, cacheWrite: 0 },
+          })),
+        },
+      });
+    });
+    await login(page);
+    await page.goto('/assistant');
+
+    const trigger = page.getByTestId('assistant-model-select');
+    await expect(trigger).toBeEnabled();
+    await expect(trigger).toHaveText('自动选择');
+    await expect(trigger.locator('svg')).toHaveCount(0);
+    await trigger.click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toHaveText(
+      /^\s*自动选择\s*LongCat 2\.5 Preview\s*MiniMax-M3\.1-Flash\s*agnes-2\.5-flash\s*$/,
+    );
+    await expect(menu.getByRole('menuitemradio')).toHaveText(['自动选择', ...names]);
+    await expect(menu.locator('svg')).toHaveCount(0);
+    await expect(menu.getByRole('menuitemradio', { checked: true })).toHaveText('自动选择');
+    await page.getByRole('menuitemradio', { name: names[1], exact: true }).click();
+    await expect(trigger).toHaveText(names[1]!);
+    await trigger.click();
+    await expect(menu.getByRole('menuitemradio', { checked: true })).toHaveText(names[1]!);
+    await page.getByRole('menuitemradio', { name: '自动选择', exact: true }).click();
+    await expect(trigger).toHaveText('自动选择');
+  });
+
   test('删除对话需确认，支持取消、失败重试并阻止重复提交', async ({ page, isMobile }) => {
     await login(page);
     const threads = ['待删除的对话', '保留的对话'].map((title, index) => ({
