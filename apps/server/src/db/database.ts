@@ -26,18 +26,42 @@ import { AppError } from '../core/errors.js';
 interface Queue {
   tail: Promise<void>;
 }
+export type DatabaseDriver = 'sqlite' | 'postgres';
+export interface DatabaseOpenOptions {
+  driver?: DatabaseDriver;
+  /** SQLite 文件路径或 ':memory:'；driver 为 postgres 时忽略。 */
+  database?: string;
+  /** Postgres 连接串；driver 为 postgres 时必填。 */
+  url?: string;
+}
 export class Database {
   private constructor(
     private source: DataSource,
     private manager: EntityManager,
     private queue: Queue,
+    private readonly dialect: DatabaseDriver,
     private inTransaction = false,
   ) {}
-  static async open(database: string) {
-    if (database !== ':memory:') await mkdir(dirname(database), { recursive: true });
+  static async open(target: string | DatabaseOpenOptions = {}) {
+    const options: DatabaseOpenOptions =
+      typeof target === 'string' ? { driver: 'sqlite', database: target } : target;
+    const driver = options.driver ?? 'sqlite';
+    if (driver === 'postgres' && !options.url)
+      throw new Error('Postgres 数据库需要提供 DATABASE_URL');
+    if (driver === 'sqlite' && (options.database ?? ':memory:') !== ':memory:')
+      await mkdir(dirname(options.database!), { recursive: true });
     const source = new DataSource({
-      type: 'better-sqlite3',
-      database,
+      ...(driver === 'postgres'
+        ? { type: 'postgres' as const, url: options.url! }
+        : {
+            type: 'better-sqlite3' as const,
+            database: options.database ?? ':memory:',
+            prepareDatabase(db: { pragma: (statement: string) => unknown }) {
+              db.pragma('foreign_keys = ON');
+              db.pragma('busy_timeout = 5000');
+              if (options.database !== ':memory:') db.pragma('journal_mode = WAL');
+            },
+          }),
       entities: schemas,
       migrations: [
         InitialSchema1792195200000,
@@ -49,15 +73,10 @@ export class Database {
       synchronize: false,
       logging: false,
       invalidWhereValuesBehavior: { null: 'sql-null', undefined: 'throw' },
-      prepareDatabase(db) {
-        db.pragma('foreign_keys = ON');
-        db.pragma('busy_timeout = 5000');
-        if (database !== ':memory:') db.pragma('journal_mode = WAL');
-      },
     });
     await source.initialize();
     await source.runMigrations();
-    return new Database(source, source.manager, { tail: Promise.resolve() });
+    return new Database(source, source.manager, { tail: Promise.resolve() }, driver);
   }
   private async locked<T>(fn: () => Promise<T>): Promise<T> {
     if (this.inTransaction) return fn();
@@ -152,9 +171,44 @@ export class Database {
     if (this.inTransaction) return fn(this);
     return this.locked(() =>
       this.source.transaction((manager) =>
-        fn(new Database(this.source, manager, this.queue, true)),
+        fn(new Database(this.source, manager, this.queue, this.dialect, true)),
       ),
     );
+  }
+  /** Raw SQL 片段中的标识符统一加引号，避免 PG 把混合大小写标识符折叠为小写。 */
+  private quotePath(path: string): string {
+    return path
+      .split('.')
+      .map((part) => `"${part}"`)
+      .join('.');
+  }
+  private usageFieldExpression(field: string): string {
+    const usage = this.quotePath('u.usage');
+    return this.dialect === 'postgres'
+      ? `COALESCE(SUM(CAST(${usage}::jsonb ->> '${field}' AS numeric)), 0)`
+      : `COALESCE(SUM(json_extract(${usage}, '$.${field}')), 0)`;
+  }
+  private usageDayExpression(): string {
+    const createdAt = this.quotePath('u.createdAt');
+    return this.dialect === 'postgres'
+      ? `to_char((${createdAt}::timestamptz + CAST(:offset AS integer) * interval '1 minute') AT TIME ZONE 'UTC', 'YYYY-MM-DD')`
+      : `date(${createdAt}, :offset)`;
+  }
+  /** PG 的 bigint/numeric 聚合经驱动返回字符串；按契约归一为 number。 */
+  private normalizeUsageTotals<T extends Partial<TokenUsageTotals>>(row: T): T {
+    for (const field of [
+      'calls',
+      'failedCalls',
+      'unknownUsageCalls',
+      'modelTestCalls',
+      'promptTokens',
+      'completionTokens',
+      'totalTokens',
+    ] as const) {
+      const value = row[field];
+      if (value !== undefined) (row as Record<string, unknown>)[field] = Number(value);
+    }
+    return row;
   }
   async summarizeModelUsage(
     ownerId: string | undefined,
@@ -166,44 +220,51 @@ export class Database {
       const query = this.manager
         .getRepository('modelUsage')
         .createQueryBuilder('u')
-        .where('u.createdAt >= :from AND u.createdAt < :until', { from, until });
-      if (ownerId !== undefined) query.andWhere('u.ownerId = :ownerId', { ownerId });
+        .where('"u"."createdAt" >= :from AND "u"."createdAt" < :until', { from, until });
+      if (ownerId !== undefined) query.andWhere('"u"."ownerId" = :ownerId', { ownerId });
       query
         .select('COUNT(*)', 'calls')
         .addSelect(
-          "COALESCE(SUM(CASE WHEN u.status = 'failed' THEN 1 ELSE 0 END), 0)",
+          'COALESCE(SUM(CASE WHEN "u"."status" = \'failed\' THEN 1 ELSE 0 END), 0)',
           'failedCalls',
         )
         .addSelect(
-          'COALESCE(SUM(CASE WHEN u.usage IS NULL THEN 1 ELSE 0 END), 0)',
+          'COALESCE(SUM(CASE WHEN "u"."usage" IS NULL THEN 1 ELSE 0 END), 0)',
           'unknownUsageCalls',
         )
         .addSelect(
-          "COALESCE(SUM(CASE WHEN u.purpose = 'model_test' THEN 1 ELSE 0 END), 0)",
+          'COALESCE(SUM(CASE WHEN "u"."purpose" = \'model_test\' THEN 1 ELSE 0 END), 0)',
           'modelTestCalls',
         );
       for (const field of ['promptTokens', 'completionTokens', 'totalTokens']) {
-        query.addSelect(`COALESCE(SUM(json_extract(u.usage, '$.${field}')), 0)`, field);
+        query.addSelect(this.usageFieldExpression(field), field);
       }
-      const totals = await query.clone().getRawOne<TokenUsageTotals>();
-      const date = 'date(u.createdAt, :offset)';
+      const totals = this.normalizeUsageTotals(
+        (await query.clone().getRawOne<TokenUsageTotals>())!,
+      );
+      const date = this.usageDayExpression();
       const daily = await query
         .clone()
         .addSelect(date, 'date')
-        .setParameter('offset', `${utcOffsetMinutes} minutes`)
+        .setParameter(
+          'offset',
+          this.dialect === 'postgres' ? utcOffsetMinutes : `${utcOffsetMinutes} minutes`,
+        )
         .groupBy(date)
         .orderBy(date, 'ASC')
         .getRawMany<TokenUsageReport['daily'][number]>();
+      for (const day of daily) this.normalizeUsageTotals(day);
       const models = await query
         .clone()
-        .addSelect('u.connectionId', 'connectionId')
-        .addSelect('u.modelKey', 'modelKey')
-        .groupBy('u.connectionId')
-        .addGroupBy('u.modelKey')
-        .orderBy('totalTokens', 'DESC')
-        .addOrderBy('u.connectionId', 'ASC')
-        .addOrderBy('u.modelKey', 'ASC')
+        .addSelect('"u"."connectionId"', 'connectionId')
+        .addSelect('"u"."modelKey"', 'modelKey')
+        .groupBy('"u"."connectionId"')
+        .addGroupBy('"u"."modelKey"')
+        .orderBy('"totalTokens"', 'DESC')
+        .addOrderBy('"u"."connectionId"', 'ASC')
+        .addOrderBy('"u"."modelKey"', 'ASC')
         .getRawMany<TokenUsageReport['models'][number]>();
+      for (const model of models) this.normalizeUsageTotals(model);
       return { totals: totals!, daily, models };
     });
   }
@@ -217,7 +278,7 @@ export class Database {
       const query = this.manager
         .getRepository(table)
         .createQueryBuilder('l')
-        .leftJoin('users', 'u', 'u.id = l.ownerId');
+        .leftJoin('users', 'u', '"u"."id" = "l"."ownerId"');
       const fields =
         table === 'auditLogs'
           ? [
@@ -238,10 +299,10 @@ export class Database {
               revision: '',
               ...definitions[table],
             });
-      query.select(fields.map((field) => `l.${field} AS "${field}"`));
-      if (table !== 'loginLogs') query.addSelect('u.username', 'username');
-      if (filters.from) query.andWhere('l.createdAt >= :from', { from: filters.from });
-      if (filters.until) query.andWhere('l.createdAt < :until', { until: filters.until });
+      query.select(fields.map((field) => `"l"."${field}" AS "${field}"`));
+      if (table !== 'loginLogs') query.addSelect('"u"."username"', 'username');
+      if (filters.from) query.andWhere('"l"."createdAt" >= :from', { from: filters.from });
+      if (filters.until) query.andWhere('"l"."createdAt" < :until', { until: filters.until });
       if (filters.q) {
         const columns =
           table === 'auditLogs'
@@ -257,25 +318,28 @@ export class Database {
                   'l.errorCode',
                 ]
               : ['l.username', 'l.ownerId', 'l.requestId', 'l.ip', 'l.errorCode'];
-        query.andWhere(
-          '(' +
-            columns.map((column) => `instr(lower(${column}), lower(:q)) > 0`).join(' OR ') +
-            ')',
-          { q: filters.q },
-        );
+        const contains = (column: string) => {
+          const quoted = this.quotePath(column);
+          return this.dialect === 'postgres'
+            ? `strpos(lower(${quoted}), lower(:q)) > 0`
+            : `instr(lower(${quoted}), lower(:q)) > 0`;
+        };
+        query.andWhere('(' + columns.map((column) => contains(column)).join(' OR ') + ')', {
+          q: filters.q,
+        });
       }
       if (table !== 'auditLogs' && filters.channel)
-        query.andWhere('l.channel = :channel', { channel: filters.channel });
+        query.andWhere('"l"."channel" = :channel', { channel: filters.channel });
       if (table !== 'auditLogs' && filters.statusCode)
-        query.andWhere('l.statusCode = :status', { status: filters.statusCode });
+        query.andWhere('"l"."statusCode" = :status', { status: filters.statusCode });
       if (table === 'apiLogs' && filters.method)
-        query.andWhere('l.method = :method', { method: filters.method });
+        query.andWhere('"l"."method" = :method', { method: filters.method });
       if (table === 'loginLogs' && filters.outcome)
-        query.andWhere('l.outcome = :outcome', { outcome: filters.outcome });
+        query.andWhere('"l"."outcome" = :outcome', { outcome: filters.outcome });
       const total = await query.getCount();
       const items = await query
-        .orderBy('l.createdAt', 'DESC')
-        .addOrderBy('l.id', 'DESC')
+        .orderBy('"l"."createdAt"', 'DESC')
+        .addOrderBy('"l"."id"', 'DESC')
         .offset((filters.page - 1) * filters.pageSize)
         .limit(filters.pageSize)
         .getRawMany<{ auditLogs: AuditLogView; apiLogs: ApiLogView; loginLogs: LoginLogView }[K]>();

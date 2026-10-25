@@ -14,7 +14,9 @@ export interface Actor {
   assistantTurnId?: string;
 }
 export interface ServerConfig {
+  databaseDriver: 'sqlite' | 'postgres';
   databasePath: string;
+  databaseUrl?: string;
   host: string;
   port: number;
   encryptionKey: string;

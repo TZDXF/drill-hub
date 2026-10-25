@@ -10,7 +10,11 @@ if (!username || !password) {
   );
   process.exitCode = 1;
 } else {
-  const db = await Database.open(config.databasePath);
+  const db = await Database.open({
+    driver: config.databaseDriver,
+    database: config.databasePath,
+    url: config.databaseUrl,
+  });
   try {
     const user = await createUser(db, {
       username,

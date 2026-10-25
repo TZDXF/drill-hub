@@ -95,6 +95,24 @@ async function main() {
   assert.equal(service.build, undefined, '用户部署不应依赖源码构建');
   assert.equal(service.environment.DATABASE_PATH, '/app/data/drill-hub.sqlite');
   assert.equal(service.environment.NODE_ENV, 'production');
+  assert.equal(service.environment.DATABASE_DRIVER, 'sqlite', '默认部署应使用 SQLite');
+  const withPostgres = JSON.parse(
+    docker(
+      'compose',
+      '--env-file',
+      '.env.example',
+      '--profile',
+      'postgres',
+      'config',
+      '--format',
+      'json',
+    ),
+  ) as typeof compose;
+  assert.equal(
+    withPostgres.services['postgres']?.image,
+    'postgres:17-alpine',
+    'postgres profile 应提供内置 PostgreSQL 服务',
+  );
 
   const missingKey = spawnSync(
     'docker',

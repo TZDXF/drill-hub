@@ -7,6 +7,13 @@ import type { ServerConfig } from './context.js';
 const workspaceRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise<ServerConfig> {
   const production = overrides.production ?? process.env.NODE_ENV === 'production';
+  const databaseDriver =
+    overrides.databaseDriver ?? (process.env.DATABASE_DRIVER ?? 'sqlite').trim().toLowerCase();
+  if (databaseDriver !== 'sqlite' && databaseDriver !== 'postgres')
+    throw new Error("Invalid DATABASE_DRIVER: expected 'sqlite' or 'postgres'");
+  const databaseUrl = overrides.databaseUrl ?? process.env.DATABASE_URL;
+  if (databaseDriver === 'postgres' && !databaseUrl)
+    throw new Error('DATABASE_DRIVER=postgres requires DATABASE_URL');
   const databasePath =
     overrides.databasePath ??
     resolve(workspaceRoot, process.env.DATABASE_PATH ?? '.data/drill-hub.sqlite');
@@ -64,10 +71,12 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
     throw new Error('Invalid ACCESS_LOG_RETENTION_DAYS');
   return {
     trustedProxies,
+    databaseDriver,
+    databasePath,
+    databaseUrl,
     allowPrivateModelUrls: overrides.allowPrivateModelUrls ?? privateUrls === 'true',
     allowPrivateSearchUrls: overrides.allowPrivateSearchUrls ?? privateSearchUrls === 'true',
     accessLogRetentionDays,
-    databasePath,
     host: overrides.host ?? process.env.HOST ?? (production ? '127.0.0.1' : '0.0.0.0'),
     port,
     encryptionKey,

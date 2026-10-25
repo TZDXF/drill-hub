@@ -18,7 +18,7 @@ Drill Hub 是面向 Agent 协作的学习工作台。外部 Agent 通过服务�
 ## 目录与职责
 
 ```text
-apps/server              Fastify + SQLite + TypeORM 服务端与 Agent API
+apps/server              Fastify + SQLite/PostgreSQL + TypeORM 服务端与 Agent API
 apps/web                 Vue 3 Web 入口及 Web 平台适配
 apps/mobile              Tauri 2 Android 外壳及移动平台适配
 packages/contracts       共享 DTO、枚举与 API 契约
@@ -40,7 +40,7 @@ docs                     设计文档；其中可能包含尚未实现的后续�
 ## 技术栈
 
 - Node.js 24、pnpm 12.4.1、TypeScript 5.9。
-- 服务端：Fastify 5、better-sqlite3、TypeORM 0.3；内置助手基于 Pi（`@earendil-works/pi-coding-agent`、`@earendil-works/pi-ai`，仅服务端依赖）。
+- 服务端：Fastify 5、better-sqlite3（默认）与 pg（可选 PostgreSQL）、TypeORM 0.3；内置助手基于 Pi（`@earendil-works/pi-coding-agent`、`@earendil-works/pi-ai`，仅服务端依赖）。
 - 前端：Vue 3、Vite 8、Reka UI、Vue Router、离线 Iconify Lucide 图标。
 - Android：Tauri 2，Rust 工程位于 `apps/mobile/src-tauri`。
 - 测试：Vitest 5、Playwright 1.64。
@@ -77,7 +77,7 @@ pnpm exec playwright install chromium
 - 入口：`apps/server/src/app.ts`；数据库封装：`apps/server/src/db/database.ts`；表定义：`apps/server/src/db/schema.ts`。
 - 业务模块位于 `apps/server/src/modules/auth`、`learning`、`grading`。
 - TypeORM 使用 `synchronize: false` 和显式 migration。修改表结构时必须同时保证实体定义与当前 migration/初始化路径一致。
-- SQLite 默认单实例、单文件部署。模型调用不得持有数据库长事务。
+- SQLite 默认单实例、单文件部署；`DATABASE_DRIVER=postgres` 加 `DATABASE_URL` 可切换 PostgreSQL（Docker Compose 提供 `postgres` profile）。模型调用不得持有数据库长事务。
 - 服务端是答案、评分、考试截止时间、分数、所有权和归档状态的唯一事实来源；客户端提交的 `score`、`maxScore`、`correct`、`submittedAt` 等事实字段必须拒绝。
 - 修改操作通常使用 `revision` / `expectedRevision` 做乐观并发控制；版本冲突返回 409，禁止静默覆盖。
 - API 成功响应为 `{ data, meta }`，错误为 `{ error: { code, message, fields? }, meta }`。

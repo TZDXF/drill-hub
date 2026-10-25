@@ -33,7 +33,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   config.publicUrl = config.publicUrl?.trim()
     ? normalizePublicBaseUrl(config.publicUrl)
     : undefined;
-  const db = await Database.open(config.databasePath);
+  const db = await Database.open({
+    driver: config.databaseDriver,
+    database: config.databasePath,
+    url: config.databaseUrl,
+  });
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: 1024 * 1024,

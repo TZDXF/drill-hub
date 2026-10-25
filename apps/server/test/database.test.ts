@@ -7,6 +7,26 @@ import { DataSource } from 'typeorm';
 import { InitialSchema1792195200000, AddAnswerLinks1792195200001 } from '../src/db/schema.js';
 import { baseRecord } from '../src/core/ids.js';
 describe('SQLite storage and migrations', () => {
+  it('opens via the options form with an explicit sqlite driver', async () => {
+    const db = await Database.open({ driver: 'sqlite', database: ':memory:' });
+    try {
+      await db.insert('topics', {
+        ...baseRecord(),
+        ownerId: 'owner',
+        title: '配置式打开',
+        goalText: '',
+        archivedAt: null,
+      });
+      expect(await db.list('topics')).toHaveLength(1);
+    } finally {
+      await db.close();
+    }
+  });
+  it('rejects a postgres driver without a connection URL', async () => {
+    await expect(Database.open({ driver: 'postgres' })).rejects.toThrow(
+      'Postgres 数据库需要提供 DATABASE_URL',
+    );
+  });
   it('migrates, rolls back transactions and rejects stale versions', async () => {
     const db = await Database.open(':memory:');
     try {
