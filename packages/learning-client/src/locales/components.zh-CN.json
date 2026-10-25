@@ -56,8 +56,6 @@
     "offlineDescription": "未保存的答案不会被视为已提交。",
     "onlineTitle": "网络连接已恢复",
     "onlineDescription": "可以继续保存答案与读取最新状态。",
-    "connectionWeb": "Web 会话",
-    "connectionAndroid": "Android 已连接",
     "roleAdmin": "管理员",
     "roleLearner": "学习者",
     "menuPersonal": "个人设置",

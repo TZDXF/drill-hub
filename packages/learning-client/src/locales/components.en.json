@@ -61,8 +61,6 @@
     "offlineDescription": "Unsaved answers do not count as submitted.",
     "onlineTitle": "Network connection restored",
     "onlineDescription": "You can save answers and load the latest status again.",
-    "connectionWeb": "Web session",
-    "connectionAndroid": "Android connected",
     "menuPersonal": "Personal settings",
     "menuAdminModels": "System model settings",
     "menuLogout": "Sign out",

@@ -378,32 +378,6 @@
     color: var(--teal);
     box-shadow: inset 3px 0 var(--teal);
   }
-  .sidebar-server {
-    margin-top: auto;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 14px 10px 0;
-    border-top: 1px solid var(--line);
-    color: var(--ink-soft);
-  }
-  .sidebar-server > div {
-    min-width: 0;
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .sidebar-server strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ink);
-    font-size: 12px;
-  }
-  .sidebar-server span {
-    font-size: 11px;
-  }
   .status-dot {
     width: 7px;
     height: 7px;

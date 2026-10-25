@@ -209,20 +209,6 @@ async function logout() {
           </template>
         </nav>
       </AppScrollArea>
-      <div class="sidebar-server">
-        <AppIcon name="server" :size="17" />
-        <div>
-          <strong>{{
-            learning.state.serverInfo?.displayName ?? learning.state.connection?.displayName
-          }}</strong
-          ><span>{{
-            learning.platform.kind === 'web'
-              ? t('components.shell.connectionWeb')
-              : t('components.shell.connectionAndroid')
-          }}</span>
-        </div>
-        <span class="status-dot" :class="{ offline: !learning.state.online }" />
-      </div>
     </aside>
 
     <aside
