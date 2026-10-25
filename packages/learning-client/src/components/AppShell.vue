@@ -23,7 +23,7 @@ import AssistantPanel from '#learning-client/components/assistant/AssistantPanel
 
 const { t } = useI18n();
 
-const { toggleLocale } = useLocale();
+const { locale, toggleLocale } = useLocale();
 const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
 const themeIcon = computed(() => themeIcons[themePreference.value]);
 const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
@@ -244,7 +244,7 @@ async function logout() {
             :aria-label="t('components.language.switch')"
             @click="toggleLocale"
           >
-            中 / EN
+            {{ locale === 'zh-CN' ? '中' : 'EN' }}
           </button>
           <AppTooltip :label="themeLabel">
             <button

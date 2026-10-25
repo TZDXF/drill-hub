@@ -36,6 +36,7 @@ test('中英切换默认中文，两个入口按视口展示，并持久保存�
     await page.getByTestId('settings-language-toggle').click();
   } else {
     await expect(desktopToggle).toBeVisible();
+    await expect(desktopToggle).toHaveText('中');
     const avatar = page.locator('.topbar .avatar');
     const toggleBox = await desktopToggle.boundingBox();
     const avatarBox = await avatar.boundingBox();
@@ -43,6 +44,7 @@ test('中英切换默认中文，两个入口按视口展示，并持久保存�
     await desktopToggle.click();
   }
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  if (!mobile) await expect(desktopToggle).toHaveText('EN');
   await expect(
     page.getByRole('navigation', {
       name: mobile ? 'Mobile main navigation' : 'Main navigation',
@@ -65,6 +67,7 @@ test('中英切换默认中文，两个入口按视口展示，并持久保存�
   );
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  if (!mobile) await expect(desktopToggle).toHaveText('EN');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(englishHeading);
   if (mobile) {
     await page.goto('/settings');
@@ -73,6 +76,7 @@ test('中英切换默认中文，两个入口按视口展示，并持久保存�
     await desktopToggle.click();
   }
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  if (!mobile) await expect(desktopToggle).toHaveText('中');
   await page.goto('/topics');
   await expect(
     page.getByRole('heading', { name: '学习主题', exact: true, level: 1 }),
