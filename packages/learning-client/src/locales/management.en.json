@@ -610,7 +610,8 @@
       "mcpServerDelete": "Delete MCP server",
       "assistantSkillCreate": "Create assistant skill",
       "assistantSkillUpdate": "Update assistant skill",
-      "assistantSkillDelete": "Delete assistant skill"
+      "assistantSkillDelete": "Delete assistant skill",
+      "assistantThreadFork": "Fork assistant conversation"
     }
   },
   "assistant": {

@@ -1,12 +1,18 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
+  AssistantImageAttachment,
   AssistantModelOption,
+  AssistantQueueMode,
   AssistantRouteName,
   AssistantThread,
   AssistantTurnView,
   McpServerView,
   SearchProviderView,
 } from '@drill-hub/contracts';
+import {
+  forkAssistantThread,
+  readAssistantThread,
+} from '#server/modules/assistant/conversation.js';
 import { baseRecord, now } from '#server/core/ids.js';
 import { AppError } from '#server/core/errors.js';
 import { assertProviderHost } from '#server/core/provider-network.js';
@@ -117,6 +123,39 @@ function pageContextText(raw: unknown): string | null {
   return `[当前页面：${parts.join(' ')}]`;
 }
 
+function imageAttachments(value: unknown): AssistantImageAttachment[] {
+  if (value === undefined) return [];
+  assert(Array.isArray(value) && value.length <= 4, 'INVALID_IMAGES', '最多附加 4 张图片', 422);
+  const allowed = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+  return value.map((entry) => {
+    assert(
+      entry && typeof entry === 'object' && !Array.isArray(entry),
+      'INVALID_IMAGES',
+      '图片格式无效',
+      422,
+    );
+    const image = entry as Record<string, unknown>;
+    assert(
+      typeof image.name === 'string' &&
+        image.name.length <= 200 &&
+        typeof image.mimeType === 'string' &&
+        allowed.has(image.mimeType) &&
+        typeof image.data === 'string' &&
+        /^[A-Za-z0-9+/]*={0,2}$/.test(image.data) &&
+        image.data.length > 0 &&
+        image.data.length <= 7_000_000,
+      'INVALID_IMAGES',
+      '图片仅支持 PNG、JPEG、WebP、GIF，单张不超过 5 MB',
+      422,
+    );
+    return {
+      name: image.name,
+      mimeType: image.mimeType,
+      data: image.data,
+    } as AssistantImageAttachment;
+  });
+}
+
 function sseWrite(reply: FastifyReply, frame: string): void {
   if (!reply.raw.writableEnded) reply.raw.write(frame);
 }
@@ -150,24 +189,41 @@ export function registerAssistantRoutes(
   app.get(`${API_PREFIX}/me/assistant/threads/:id`, async (request) => {
     const actor = await ctx.requireUser(request);
     const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
-    const messages = await ctx.db.list('assistantMessages', { threadId: thread.id });
-    const events = await ctx.db.list('assistantEvents', { threadId: thread.id });
-    const orderedMessages = [...messages].sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.id.localeCompare(right.id)
-        : left.createdAt.localeCompare(right.createdAt),
+    const before = query(request).before;
+    assert(
+      before === undefined || typeof before === 'string',
+      'INVALID_BEFORE',
+      'before 无效',
+      400,
     );
-    const activeTurn = await findActiveTurn(ctx, thread.id);
-    const turns = await ctx.db.list('assistantTurns', { threadId: thread.id });
-    return {
-      data: {
-        thread: threadView(thread),
-        turns: turns.map(turnView),
-        messages: orderedMessages.map(({ ownerId: _ownerId, ...view }) => view),
-        events: assistantEventViews([...events].sort((left, right) => left.seq - right.seq)),
-        activeTurn: activeTurn ? turnView(activeTurn) : null,
-      },
-    };
+    const limit = Number(query(request).limit ?? 40);
+    assert(
+      Number.isInteger(limit) && limit >= 1 && limit <= 100,
+      'INVALID_LIMIT',
+      'limit 必须在 1 到 100 之间',
+      400,
+    );
+    return { data: await readAssistantThread(ctx, thread, before, limit) };
+  });
+
+  app.post(`${API_PREFIX}/me/assistant/threads/:id/fork`, async (request, reply) => {
+    const actor = await ctx.requireUser(request);
+    const source = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
+    const input = body(request);
+    const turnId = requiredString(input, 'turnId', 128);
+    const mode = input.mode === 'before' ? 'before' : input.mode === 'through' ? 'through' : null;
+    assert(mode, 'INVALID_FORK_MODE', '分叉位置无效', 422);
+    try {
+      const thread = await forkAssistantThread(ctx, actor, source, turnId, mode);
+      reply.code(201);
+      return { data: thread };
+    } catch (error) {
+      if (error instanceof Error && error.message === 'FORK_ACTIVE_TURN')
+        throw new AppError(409, 'FORK_ACTIVE_TURN', '进行中的轮次不能作为分叉终点');
+      if (error instanceof Error && error.message === 'FORK_TURN_NOT_FOUND')
+        throw new AppError(404, 'NOT_FOUND', '资源不存在');
+      throw error;
+    }
   });
 
   app.patch(`${API_PREFIX}/me/assistant/threads/:id`, async (request) => {
@@ -186,7 +242,12 @@ export function registerAssistantRoutes(
     const actor = await ctx.requireUser(request);
     const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
     await ctx.db.transaction(async (tx) => {
-      for (const table of ['assistantEvents', 'assistantMessages', 'assistantTurns'] as const) {
+      for (const table of [
+        'assistantEvents',
+        'assistantMessages',
+        'assistantTurns',
+        'assistantQueuedMessages',
+      ] as const) {
         for (const record of await tx.list(table, { threadId: thread.id }))
           await tx.delete(table, record.id);
       }
@@ -199,12 +260,21 @@ export function registerAssistantRoutes(
 
   app.post(
     `${API_PREFIX}/me/assistant/threads/:id/messages`,
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { bodyLimit: 30_000_000, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const actor = await ctx.requireUser(request);
       const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
       const input = body(request);
-      const content = requiredString(input, 'content', 20000);
+      const images = imageAttachments(input.images);
+      assert(
+        typeof input.content === 'string' &&
+          input.content.trim().length <= 20000 &&
+          (input.content.trim().length > 0 || images.length > 0),
+        'INVALID_CONTENT',
+        '请输入问题或添加图片',
+        422,
+      );
+      const content = input.content.trim();
       const promptContext = pageContextText(input.pageContext);
       const providerModelId =
         input.providerModelId === undefined || input.providerModelId === null
@@ -224,8 +294,21 @@ export function registerAssistantRoutes(
         );
       }
       const active = await findActiveTurn(ctx, thread.id);
-      if (active)
-        throw new AppError(409, 'ACTIVE_TURN_EXISTS', '当前对话仍在处理上一条消息，请稍候');
+      const pending = await ctx.db.list('assistantQueuedMessages', { threadId: thread.id });
+      if (active || pending.length) {
+        const mode: AssistantQueueMode = input.mode === 'steer' ? 'steer' : 'followUp';
+        const queuedMessage = await assistant.queueMessage({
+          ownerId: actor.userId,
+          threadId: thread.id,
+          content,
+          mode,
+          promptContext,
+          providerModelId,
+          images,
+        });
+        reply.code(202);
+        return { data: { turn: null, userMessage: null, queuedMessage } };
+      }
       const handle = await createTurn(
         ctx,
         actor.userId,
@@ -233,6 +316,7 @@ export function registerAssistantRoutes(
         content,
         promptContext,
         providerModelId,
+        images,
       );
       const title = thread.title === '新对话' ? content.slice(0, 30) || thread.title : thread.title;
       await ctx.db.update('assistantThreads', thread.id, thread.revision, {
@@ -256,6 +340,32 @@ export function registerAssistantRoutes(
       };
     },
   );
+
+  app.patch(`${API_PREFIX}/me/assistant/queued-messages/:id`, async (request) => {
+    const actor = await ctx.requireUser(request);
+    const queued = await owned(ctx.db, 'assistantQueuedMessages', params(request).id, actor.userId);
+    const input = body(request);
+    const content = requiredString(input, 'content', 20000);
+    const mode: AssistantQueueMode = input.mode === 'steer' ? 'steer' : 'followUp';
+    const updated = await ctx.db.update(
+      'assistantQueuedMessages',
+      queued.id,
+      expectedRevision(input),
+      { content, mode },
+    );
+    await assistant.notifyQueue(queued.threadId);
+    const { ownerId: _ownerId, promptContext: _promptContext, ...view } = updated;
+    return { data: view };
+  });
+
+  app.delete(`${API_PREFIX}/me/assistant/queued-messages/:id`, async (request, reply) => {
+    const actor = await ctx.requireUser(request);
+    const queued = await owned(ctx.db, 'assistantQueuedMessages', params(request).id, actor.userId);
+    await ctx.db.delete('assistantQueuedMessages', queued.id);
+    await assistant.notifyQueue(queued.threadId);
+    reply.code(204);
+    return reply.send();
+  });
 
   app.get(`${API_PREFIX}/me/assistant/threads/:id/events`, async (request) => {
     const actor = await ctx.requireUser(request);
@@ -301,8 +411,23 @@ export function registerAssistantRoutes(
         );
         return;
       }
-      if (frame.kind === 'text_delta' && frame.delta) {
-        sseWrite(reply, `event: text_delta\ndata: ${JSON.stringify({ delta: frame.delta })}\n\n`);
+      if ((frame.kind === 'text_delta' || frame.kind === 'reasoning_delta') && frame.delta) {
+        sseWrite(
+          reply,
+          `event: ${frame.kind}\ndata: ${JSON.stringify({ delta: frame.delta })}\n\n`,
+        );
+      }
+      if (frame.kind === 'snapshot') {
+        sseWrite(
+          reply,
+          `event: snapshot\ndata: ${JSON.stringify({ content: frame.content ?? '', reasoning: frame.reasoning ?? '' })}\n\n`,
+        );
+      }
+      if (frame.kind === 'queue') {
+        sseWrite(
+          reply,
+          `event: queue\ndata: ${JSON.stringify({ queued: frame.queued ?? [] })}\n\n`,
+        );
       }
     };
     const unsubscribe = assistant.subscribe(thread.id, listener);
@@ -314,6 +439,17 @@ export function registerAssistantRoutes(
     request.raw.on('close', close);
     // 先订阅后回放：重叠事件按 seq 去重，断线期间落库的事件不会丢失。
     await assistant.replay(thread.id, lastSeq, listener);
+    const active = await findActiveTurn(ctx, thread.id);
+    if (active) {
+      const message = await ctx.db.get('assistantMessages', active.assistantMessageId);
+      if (message)
+        listener({
+          kind: 'snapshot',
+          content: message.content,
+          reasoning: message.reasoning ?? '',
+        });
+    }
+    await assistant.notifyQueue(thread.id);
   });
 
   app.post(`${API_PREFIX}/me/assistant/turns/:id/cancel`, async (request, reply) => {

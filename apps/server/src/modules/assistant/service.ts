@@ -1,11 +1,20 @@
 import type { FastifyInstance } from 'fastify';
-import type { AssistantEventView, ModelTokenUsage } from '@drill-hub/contracts';
+import type {
+  AssistantEventView,
+  AssistantQueueMode,
+  AssistantQueuedMessage,
+  ModelTokenUsage,
+} from '@drill-hub/contracts';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { AppError } from '#server/core/errors.js';
 import { baseRecord, id, now } from '#server/core/ids.js';
 import { signInternalToken } from '#server/core/internal-auth.js';
 import type { Actor, AppContext, AssistantService } from '#server/core/context.js';
-import type { AssistantEventRecord, AssistantTurnRecord } from '#server/db/records.js';
+import type {
+  AssistantEventRecord,
+  AssistantQueuedMessageRecord,
+  AssistantTurnRecord,
+} from '#server/db/records.js';
 import { createAssistantTools } from '#server/modules/assistant/tools.js';
 import { PiSessionFactory } from '#server/modules/assistant/pi-session.js';
 
@@ -15,9 +24,12 @@ const TEXT_FLUSH_INTERVAL_MS = 1000;
 const INTERNAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AssistantStreamFrame {
-  kind: 'event' | 'text_delta' | 'heartbeat';
+  kind: 'event' | 'text_delta' | 'reasoning_delta' | 'snapshot' | 'queue' | 'heartbeat';
   event?: AssistantEventView;
   delta?: string;
+  content?: string;
+  reasoning?: string;
+  queued?: AssistantQueuedMessage[];
 }
 
 export type StreamListener = (frame: AssistantStreamFrame) => void;
@@ -25,9 +37,21 @@ export type StreamListener = (frame: AssistantStreamFrame) => void;
 export interface AssistantServiceImpl extends AssistantService {
   /** 将已创建的一轮对话加入执行队列（各线程互不阻塞，不限制同时执行的轮数）。 */
   enqueue(turnId: string): void;
+  queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage>;
+  notifyQueue(threadId: string): Promise<void>;
   subscribe(threadId: string, listener: StreamListener): () => void;
   /** SSE 订阅时回放断线期间落库的事件，跳过监听器已收到的序号。 */
   replay(threadId: string, afterSeq: number, listener: StreamListener): Promise<void>;
+}
+
+export interface QueueMessageInput {
+  ownerId: string;
+  threadId: string;
+  content: string;
+  mode: AssistantQueueMode;
+  promptContext: string | null;
+  providerModelId: string | null;
+  images: import('@drill-hub/contracts').AssistantImageAttachment[];
 }
 
 export interface TurnHandle {
@@ -44,6 +68,7 @@ export function createAssistantService(
   const seqCounters = new Map<string, number>();
   const listeners = new Map<string, Set<StreamListener>>();
   const active = new Map<string, { abort: AbortController; session: AgentSession | null }>();
+  const draining = new Set<string>();
 
   async function nextSeq(threadId: string): Promise<number> {
     let last = seqCounters.get(threadId);
@@ -119,8 +144,81 @@ export function createAssistantService(
   }
 
   function enqueueTurn(turnId: string): void {
-    // 每轮独立执行：同线程的互斥由 ACTIVE_TURN_EXISTS 保证，跨线程不设并发上限。
+    // 每轮独立执行：同线程由活动 turn 与持久化队列保证顺序，跨线程不设并发上限。
     void runTurnNow(turnId).catch(() => {});
+  }
+
+  function queuedView(record: AssistantQueuedMessageRecord): AssistantQueuedMessage {
+    const { ownerId: _ownerId, promptContext: _promptContext, ...view } = record;
+    return view;
+  }
+
+  async function queuedMessages(threadId: string): Promise<AssistantQueuedMessageRecord[]> {
+    const rows = await ctx.db.list('assistantQueuedMessages', { threadId });
+    return rows.sort((left, right) =>
+      left.createdAt === right.createdAt
+        ? left.id.localeCompare(right.id)
+        : left.createdAt.localeCompare(right.createdAt),
+    );
+  }
+
+  async function notifyQueue(threadId: string): Promise<void> {
+    broadcast(threadId, {
+      kind: 'queue',
+      queued: (await queuedMessages(threadId)).map(queuedView),
+    });
+  }
+
+  async function queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage> {
+    const row: AssistantQueuedMessageRecord = { ...baseRecord(), ...input };
+    await ctx.db.insert('assistantQueuedMessages', row);
+    await notifyQueue(input.threadId);
+    if (input.mode === 'steer') {
+      const current = (await ctx.db.list('assistantTurns', { threadId: input.threadId })).find(
+        (turn) => turn.status === 'queued' || turn.status === 'running',
+      );
+      const entry = current ? active.get(current.id) : null;
+      if (entry) {
+        entry.abort.abort();
+        try {
+          await entry.session?.abort();
+        } catch {
+          /* cancellation is finalized by runTurnNow */
+        }
+      }
+    }
+    void drainThread(input.threadId).catch(() => {});
+    return queuedView(row);
+  }
+
+  async function drainThread(threadId: string): Promise<void> {
+    if (draining.has(threadId)) return;
+    draining.add(threadId);
+    try {
+      const running = (await ctx.db.list('assistantTurns', { threadId })).some(
+        (turn) => turn.status === 'queued' || turn.status === 'running',
+      );
+      if (running) return;
+      while (true) {
+        const next = (await queuedMessages(threadId))[0];
+        if (!next) return;
+        const handle = await createTurn(
+          ctx,
+          next.ownerId,
+          threadId,
+          next.content,
+          next.promptContext,
+          next.providerModelId,
+          next.images,
+        );
+        await ctx.db.delete('assistantQueuedMessages', next.id);
+        await notifyQueue(threadId);
+        await runTurnNow(handle.turnId);
+      }
+    } finally {
+      draining.delete(threadId);
+      await notifyQueue(threadId);
+    }
   }
 
   async function finishTurn(
@@ -138,6 +236,7 @@ export function createAssistantService(
     content: string,
     status: string,
     code: string | null,
+    reasoning: string | null = null,
   ) {
     const message = await ctx.db.get('assistantMessages', messageId);
     if (!message) return;
@@ -145,6 +244,7 @@ export function createAssistantService(
       content,
       status: status as 'complete' | 'failed' | 'interrupted',
       errorCode: code,
+      reasoning,
     });
   }
 
@@ -209,6 +309,7 @@ export function createAssistantService(
     let usedModel: { connectionId: string; modelKey: string; providerModelId: string } | null =
       null;
     let accumulated = '';
+    let accumulatedReasoning = '';
     let usageTotal: ModelTokenUsage | null = null;
     const controller = new AbortController();
     active.set(turnId, { abort: controller, session: null });
@@ -240,6 +341,10 @@ export function createAssistantService(
           if (inner?.type === 'text_delta' && inner.delta) {
             accumulated += inner.delta;
             broadcast(turn.threadId, { kind: 'text_delta', delta: inner.delta });
+          }
+          if (inner?.type === 'thinking_delta' && inner.delta) {
+            accumulatedReasoning += inner.delta;
+            broadcast(turn.threadId, { kind: 'reasoning_delta', delta: inner.delta });
           }
           return;
         }
@@ -296,6 +401,7 @@ export function createAssistantService(
               message && message.status === 'streaming'
                 ? ctx.db.update('assistantMessages', message.id, message.revision, {
                     content: accumulated,
+                    reasoning: accumulatedReasoning || null,
                   })
                 : undefined,
             )
@@ -306,10 +412,25 @@ export function createAssistantService(
       const currentUser = await ctx.db.get('assistantMessages', turn.userMessageId);
       const contextPrefix = turn.promptContext ? `${turn.promptContext}\n\n` : '';
       // 不再设置单轮超时；用户可随时通过 cancelTurn 主动取消。
-      await session.prompt(contextPrefix + formatPrompt(history, currentUser?.content ?? ''));
+      if (controller.signal.aborted)
+        throw new AppError(409, 'ASSISTANT_TURN_CANCELLED', '本轮对话已取消');
+      const images = (currentUser?.images ?? []).map((image) => ({
+        type: 'image' as const,
+        data: image.data,
+        mimeType: image.mimeType,
+      }));
+      await session.prompt(contextPrefix + formatPrompt(history, currentUser?.content ?? ''), {
+        images,
+      });
 
       const finalText = session.getLastAssistantText() ?? accumulated;
-      await finishMessage(turn.assistantMessageId, finalText || accumulated, 'complete', null);
+      await finishMessage(
+        turn.assistantMessageId,
+        finalText || accumulated,
+        'complete',
+        null,
+        accumulatedReasoning || null,
+      );
       await finishTurn(turnId, 'succeeded', null);
       await recordUsage(turn.ownerId, turnId, true, usageTotal, usedModel!);
       await emit(turn.ownerId, turn.threadId, turnId, 'status', { phase: 'turn_completed' });
@@ -326,6 +447,7 @@ export function createAssistantService(
         accumulated,
         cancelled ? 'interrupted' : 'failed',
         code,
+        accumulatedReasoning || null,
       );
       await finishTurn(turnId, cancelled ? 'cancelled' : 'failed', code);
       if (usedModel) await recordUsage(turn.ownerId, turnId, false, usageTotal, usedModel);
@@ -343,6 +465,7 @@ export function createAssistantService(
         await ctx.db.update('assistantThreads', threadRecord.id, threadRecord.revision, {
           lastMessageAt: now(),
         });
+      void drainThread(turn.threadId).catch(() => {});
     }
   }
 
@@ -350,7 +473,11 @@ export function createAssistantService(
     const messages = await ctx.db.list('assistantMessages', { threadId });
     const ordered = [...messages].sort((left, right) =>
       left.createdAt === right.createdAt
-        ? left.id.localeCompare(right.id)
+        ? left.role === right.role
+          ? left.id.localeCompare(right.id)
+          : left.role === 'user'
+            ? -1
+            : 1
         : left.createdAt.localeCompare(right.createdAt),
     );
     const cutoff = ordered.findIndex((message) => message.id === beforeMessageId);
@@ -371,6 +498,8 @@ export function createAssistantService(
 
   return {
     enqueue: enqueueTurn,
+    queueMessage,
+    notifyQueue,
     async runTurnNow(turnId) {
       await runTurnNow(turnId);
     },
@@ -398,6 +527,9 @@ export function createAssistantService(
       )) {
         await failTurn(turn.id, 'ASSISTANT_RESTARTED', turn.assistantMessageId);
       }
+      const queued = await ctx.db.list('assistantQueuedMessages', {});
+      for (const threadId of new Set(queued.map((entry) => entry.threadId)))
+        void drainThread(threadId).catch(() => {});
     },
     stop() {
       for (const [, entry] of active) {
@@ -423,6 +555,7 @@ export async function createTurn(
   content: string,
   promptContext: string | null = null,
   providerModelId: string | null = null,
+  images: import('@drill-hub/contracts').AssistantImageAttachment[] = [],
 ): Promise<TurnHandle> {
   const userMessage = {
     ...baseRecord(),
@@ -430,6 +563,8 @@ export async function createTurn(
     threadId,
     role: 'user' as const,
     content,
+    reasoning: null,
+    images,
     status: 'complete' as const,
     errorCode: null,
   };
@@ -440,6 +575,8 @@ export async function createTurn(
     threadId,
     role: 'assistant' as const,
     content: '',
+    reasoning: null,
+    images: [],
     status: 'streaming' as const,
     errorCode: null,
   };

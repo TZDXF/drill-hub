@@ -13,6 +13,7 @@ import {
   AddAccessLogs1792368000001,
   AddAssistantTables1792448000000,
   ReworkAssistantConfig1792450000000,
+  ExpandAssistantConversation1793000000000,
 } from '#server/db/schema.js';
 import type {
   AuditLogView,
@@ -71,6 +72,7 @@ export class Database {
         AddAccessLogs1792368000001,
         AddAssistantTables1792448000000,
         ReworkAssistantConfig1792450000000,
+        ExpandAssistantConversation1793000000000,
       ],
       synchronize: false,
       logging: false,

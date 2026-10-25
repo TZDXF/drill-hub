@@ -113,6 +113,7 @@ const actionLabelKeys: Record<string, string> = {
   'mcp-server.create': 'management.audit.action.mcpServerCreate',
   'mcp-server.update': 'management.audit.action.mcpServerUpdate',
   'mcp-server.delete': 'management.audit.action.mcpServerDelete',
+  'assistant.thread.fork': 'management.audit.action.assistantThreadFork',
   'assistant-skill.create': 'management.audit.action.assistantSkillCreate',
   'assistant-skill.update': 'management.audit.action.assistantSkillUpdate',
   'assistant-skill.delete': 'management.audit.action.assistantSkillDelete',

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '#server/app.js';
 import { signInternalToken } from '#server/core/internal-auth.js';
+import { baseRecord } from '#server/core/ids.js';
 import { createUser } from '#server/modules/auth/index.js';
 import { runSearch } from '#server/modules/assistant/search.js';
 import type { SearchProviderRecord } from '#server/db/records.js';
@@ -663,7 +664,7 @@ describe('built-in assistant', () => {
     expect(usage[0]).toMatchObject({ modelKey: 'assistant-model', status: 'succeeded' });
   });
 
-  it('rejects concurrent turns on one thread and isolates threads per owner', async () => {
+  it('queues concurrent turns on one thread and isolates threads per owner', async () => {
     const { app, admin } = await setupApp();
     let releaseModel: (() => void) | undefined;
     const gate = new Promise<Response>((resolve) => {
@@ -685,14 +686,20 @@ describe('built-in assistant', () => {
       headers: admin,
       payload: { content: '再问一个' },
     });
-    expect(second.statusCode).toBe(409);
-    expect(second.json().error.code).toBe('ACTIVE_TURN_EXISTS');
+    expect(second.statusCode).toBe(202);
+    expect(second.json().data.queuedMessage.content).toBe('再问一个');
     releaseModel?.();
-    await pollUntil(app, admin, thread.id, (data) =>
-      data.events.some(
-        (event) => event.type === 'status' && event.payload.phase === 'turn_completed',
-      ),
+    await pollUntil(
+      app,
+      admin,
+      thread.id,
+      (data) =>
+        data.events.filter(
+          (event) => event.type === 'status' && event.payload.phase === 'turn_completed',
+        ).length === 2,
     );
+    const queuedAfter = await app.ctx.db.list('assistantQueuedMessages', { threadId: thread.id });
+    expect(queuedAfter).toHaveLength(0);
     // 其他用户不可见他人线程。
     const created = await app.inject({
       method: 'POST',
@@ -718,6 +725,139 @@ describe('built-in assistant', () => {
     });
     expect(foreign.statusCode).toBe(404);
     void otherHeaders;
+  });
+
+  it('edits and removes persistent follow-up messages before they run', async () => {
+    const { app, admin } = await setupApp();
+    let releaseModel: (() => void) | undefined;
+    const gate = new Promise<Response>((resolve) => {
+      releaseModel = () => resolve(sseResponse(assistantTextRound('完成')));
+    });
+    installProvider({ assistant: () => gate });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '第一条' },
+    });
+    const queued = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '待修改', mode: 'followUp' },
+    });
+    expect(queued.statusCode).toBe(202);
+    const item = queued.json().data.queuedMessage;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/me/assistant/queued-messages/${item.id}`,
+      headers: admin,
+      payload: { content: '已修改', mode: 'followUp', expectedRevision: item.revision },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data.content).toBe('已修改');
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/me/assistant/queued-messages/${item.id}`,
+      headers: admin,
+    });
+    expect(removed.statusCode).toBe(204);
+    releaseModel?.();
+    await pollUntil(app, admin, thread.id, (data) =>
+      data.events.some(
+        (event) => event.type === 'status' && event.payload.phase === 'turn_completed',
+      ),
+    );
+    expect(await app.ctx.db.list('assistantQueuedMessages', { threadId: thread.id })).toHaveLength(
+      0,
+    );
+  });
+
+  it('paginates history and forks a settled turn without changing the source', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const thread = await createThread(app, admin);
+    const turnIds: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const stamp = `2026-01-01T00:00:0${index}.000Z`;
+      const user = {
+        ...baseRecord(),
+        ownerId,
+        threadId: thread.id,
+        role: 'user' as const,
+        content: `问题 ${index}`,
+        reasoning: null,
+        images: [],
+        status: 'complete' as const,
+        errorCode: null,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      const answer = {
+        ...baseRecord(),
+        ownerId,
+        threadId: thread.id,
+        role: 'assistant' as const,
+        content: `回答 ${index}`,
+        reasoning: '推理',
+        images: [],
+        status: 'complete' as const,
+        errorCode: null,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      const turn = {
+        ...baseRecord(),
+        ownerId,
+        threadId: thread.id,
+        userMessageId: user.id,
+        assistantMessageId: answer.id,
+        status: 'succeeded' as const,
+        errorCode: null,
+        promptContext: null,
+        providerModelId: null,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      await app.ctx.db.insert('assistantMessages', user);
+      await app.ctx.db.insert('assistantMessages', answer);
+      await app.ctx.db.insert('assistantTurns', turn);
+      turnIds.push(turn.id);
+    }
+    const page = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/assistant/threads/${thread.id}?limit=2`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(page.statusCode).toBe(200);
+    expect(page.json().data.messages).toHaveLength(2);
+    expect(page.json().data.hasOlder).toBe(true);
+    const older = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/assistant/threads/${thread.id}?limit=2&before=${page.json().data.oldestMessageId}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(older.json().data.messages[0].content).toBe('问题 1');
+    const fork = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/fork`,
+      headers: admin,
+      payload: { turnId: turnIds[1], mode: 'through' },
+    });
+    expect(fork.statusCode).toBe(201);
+    const branch = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/assistant/threads/${fork.json().data.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(branch.json().data.messages).toHaveLength(4);
+    const original = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/assistant/threads/${thread.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(original.json().data.messages).toHaveLength(6);
   });
 
   it('internal tokens authenticate as the invoking user but never as admin', async () => {

@@ -19,6 +19,11 @@ export interface AssistantActionItem extends AssistantActionDescriptor {
   seq: number;
   running: boolean;
   failed: boolean;
+  name?: string;
+  args?: Record<string, unknown>;
+  result?: string;
+  createdAt?: string;
+  durationMs?: number | null;
 }
 
 export interface AssistantTurnItem {
@@ -29,6 +34,9 @@ export interface AssistantTurnItem {
   /** 完成轮的耗时；进行中为 null。 */
   durationMs: number | null;
   failed: boolean;
+  reasoning: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
   /** 该轮正在进行（含 turns 记录缺失的乐观轮）。 */
   active: boolean;
 }
@@ -48,7 +56,9 @@ export interface AssistantHistoryInput {
 function turnActions(turnId: string, events: AssistantEventView[]): AssistantActionItem[] {
   const turnEvents = events.filter((event) => event.turnId === turnId);
   const results = new Map<string, AssistantEventView>();
+  const calls = new Map<string, AssistantEventView>();
   for (const event of turnEvents) {
+    if (event.type === 'tool_call') calls.set(String(event.payload?.toolCallId ?? ''), event);
     if (event.type === 'tool_result') {
       const callId = String(event.payload?.toolCallId ?? '');
       if (callId) results.set(callId, event);
@@ -68,6 +78,24 @@ function turnActions(turnId: string, events: AssistantEventView[]): AssistantAct
         const result = results.get(String(event.payload?.toolCallId ?? ''));
         running = !result;
         failed = result?.payload?.isError === true;
+        const call = calls.get(String(event.payload?.toolCallId ?? ''));
+        const start = call ? Date.parse(call.createdAt) : NaN;
+        const end = result ? Date.parse(result.createdAt) : NaN;
+        const durationMs =
+          Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null;
+        if (descriptor)
+          items.push({
+            ...descriptor,
+            seq: event.seq,
+            running,
+            failed,
+            name: String(event.payload?.name ?? ''),
+            args: event.payload?.args as Record<string, unknown> | undefined,
+            result: typeof result?.payload?.summary === 'string' ? result.payload.summary : '',
+            createdAt: event.createdAt,
+            durationMs,
+          });
+        continue;
       }
     } else if (event.type === 'ui_action') {
       descriptor = describeUiAction(event.payload?.action as AssistantUiAction | undefined);
@@ -94,6 +122,12 @@ function buildTurnItem(turn: AssistantTurnView, input: AssistantHistoryInput): A
     actions: turnActions(turn.id, input.events),
     durationMs: turnDuration(turn),
     failed: turn.status === 'failed' || turn.status === 'cancelled',
+    reasoning:
+      input.messages.find((message) => message.id === turn.assistantMessageId)?.reasoning ?? null,
+    errorMessage:
+      (input.events.find((event) => event.turnId === turn.id && event.type === 'error')?.payload
+        ?.message as string) ?? null,
+    startedAt: turn.createdAt,
     active: turn.id === input.activeTurnId,
   };
 }
@@ -112,6 +146,9 @@ function optimisticActiveTurn(
     actions,
     durationMs: null,
     failed: false,
+    reasoning: null,
+    errorMessage: null,
+    startedAt: null,
     active: true,
   };
 }

@@ -533,12 +533,35 @@ export interface AssistantThread extends BaseRecord {
   lastMessageAt: string;
 }
 export type AssistantMessageStatus = 'complete' | 'streaming' | 'failed' | 'interrupted';
+export interface AssistantImageAttachment {
+  name: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  /** Base64 image data, without a data-url prefix. */
+  data: string;
+}
 export interface AssistantMessageView extends BaseRecord {
   threadId: string;
   role: 'user' | 'assistant';
   content: string;
+  reasoning: string | null;
+  images: AssistantImageAttachment[];
   status: AssistantMessageStatus;
   errorCode: string | null;
+}
+export type AssistantQueueMode = 'steer' | 'followUp';
+export interface AssistantQueuedMessage extends BaseRecord {
+  threadId: string;
+  content: string;
+  mode: AssistantQueueMode;
+  providerModelId: string | null;
+  images: AssistantImageAttachment[];
+}
+export interface AssistantTimelineTurn {
+  id: string;
+  userMessageId: string;
+  question: string;
+  answer: string;
+  createdAt: string;
 }
 export type AssistantEventType = 'status' | 'tool_call' | 'tool_result' | 'ui_action' | 'error';
 export interface AssistantEventView {
@@ -565,6 +588,10 @@ export interface AssistantThreadDetail {
   messages: AssistantMessageView[];
   events: AssistantEventView[];
   activeTurn: AssistantTurnView | null;
+  queued: AssistantQueuedMessage[];
+  timeline: AssistantTimelineTurn[];
+  hasOlder: boolean;
+  oldestMessageId: string | null;
 }
 export interface AssistantStatus {
   modelConfigured: boolean;

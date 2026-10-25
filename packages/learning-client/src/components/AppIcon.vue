@@ -43,6 +43,15 @@ import square from '@iconify-icons/lucide/square';
 import trash from '@iconify-icons/lucide/trash-2';
 import messageSquare from '@iconify-icons/lucide/message-square';
 import search from '@iconify-icons/lucide/search';
+import copy from '@iconify-icons/lucide/copy';
+import pencil from '@iconify-icons/lucide/pencil';
+import quote from '@iconify-icons/lucide/text-quote';
+import branch from '@iconify-icons/lucide/git-branch';
+import rotate from '@iconify-icons/lucide/rotate-ccw';
+import paperclip from '@iconify-icons/lucide/paperclip';
+import arrowDown from '@iconify-icons/lucide/arrow-down';
+import list from '@iconify-icons/lucide/list';
+import brain from '@iconify-icons/lucide/brain';
 
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 });
 
@@ -90,6 +99,15 @@ const icons: Record<string, IconifyIcon> = {
   trash,
   message: messageSquare,
   search,
+  copy,
+  edit: pencil,
+  quote,
+  branch,
+  retry: rotate,
+  paperclip,
+  arrowDown,
+  list,
+  brain,
 };
 
 const icon = computed(() => icons[props.name] ?? icons.book);

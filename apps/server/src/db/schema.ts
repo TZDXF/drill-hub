@@ -206,6 +206,8 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     threadId: 'text',
     role: 'text',
     content: 'text',
+    reasoning: 'text?',
+    images: 'json',
     status: 'text',
     errorCode: 'text?',
   },
@@ -226,6 +228,15 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     errorCode: 'text?',
     promptContext: 'text?',
     providerModelId: 'text?',
+  },
+  assistantQueuedMessages: {
+    ownerId: 'text',
+    threadId: 'text',
+    content: 'text',
+    mode: 'text',
+    promptContext: 'text?',
+    providerModelId: 'text?',
+    images: 'json',
   },
   searchProviders: {
     displayName: 'text',
@@ -306,6 +317,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
           'assistantMessages',
           'assistantEvents',
           'assistantTurns',
+          'assistantQueuedMessages',
           'searchProviders',
           'mcpServers',
           'assistantSkills',
@@ -355,6 +367,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
             'assistantMessages',
             'assistantEvents',
             'assistantTurns',
+            'assistantQueuedMessages',
             'searchProviders',
             'mcpServers',
             'assistantSkills',
@@ -564,5 +577,54 @@ export class ReworkAssistantConfig1792450000000 implements MigrationInterface {
       const table = await runner.getTable('providerModels');
       if (table?.findColumnByName(name)) await runner.dropColumn('providerModels', name);
     }
+  }
+}
+
+/** Streaming reasoning, image input, persistent follow-up queues and conversation forking. */
+export class ExpandAssistantConversation1793000000000 implements MigrationInterface {
+  name = 'ExpandAssistantConversation1793000000000';
+  async up(runner: QueryRunner) {
+    const messages = await runner.getTable('assistantMessages');
+    if (messages && !messages.findColumnByName('reasoning'))
+      await runner.addColumn(
+        'assistantMessages',
+        new TableColumn({ name: 'reasoning', type: 'text', isNullable: true }),
+      );
+    if (messages && !messages.findColumnByName('images'))
+      await runner.addColumn(
+        'assistantMessages',
+        new TableColumn({ name: 'images', type: 'text', isNullable: false, default: "'[]'" }),
+      );
+    if (!(await runner.hasTable('assistantQueuedMessages'))) {
+      await runner.createTable(
+        new Table({
+          name: 'assistantQueuedMessages',
+          columns: Object.entries({ ...common, ...definitions.assistantQueuedMessages }).map(
+            ([key, field]) => ({
+              name: key,
+              type: field === 'json' ? 'text' : field.replace('?', ''),
+              isPrimary: key === 'id',
+              isNullable: field.endsWith('?'),
+            }),
+          ),
+        }),
+      );
+      await runner.createIndex(
+        'assistantQueuedMessages',
+        new TableIndex({
+          name: 'ix_assistant_queue_thread_created',
+          columnNames: ['threadId', 'createdAt', 'id'],
+        }),
+      );
+    }
+  }
+  async down(runner: QueryRunner) {
+    if (await runner.hasTable('assistantQueuedMessages'))
+      await runner.dropTable('assistantQueuedMessages');
+    const messages = await runner.getTable('assistantMessages');
+    if (messages?.findColumnByName('images'))
+      await runner.dropColumn('assistantMessages', 'images');
+    if (messages?.findColumnByName('reasoning'))
+      await runner.dropColumn('assistantMessages', 'reasoning');
   }
 }

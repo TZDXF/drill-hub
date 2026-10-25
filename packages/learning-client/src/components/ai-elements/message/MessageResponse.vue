@@ -16,6 +16,8 @@ import InfographicPreview from '#learning-client/components/infographic/Infograp
 const props = defineProps<{
   content?: string;
   class?: HTMLAttributes['class'];
+  streaming?: boolean;
+  wrapCode?: boolean;
 }>();
 
 const slots = useSlots();
@@ -29,6 +31,7 @@ const slotContent = computed(() => {
   return text || undefined;
 });
 const md = computed(() => slotContent.value ?? props.content ?? '');
+const wrapCode = computed(() => props.wrapCode !== false);
 
 // 不传 cdnOptions：扩展只从本地依赖加载。Mermaid 内容来自外部 Agent，使用 strict 安全级别。
 // beautiful-mermaid 会在输出的 SVG 中内嵌 Google Fonts @import；剥离该引用并改用系统字体，保持离线渲染。
@@ -61,7 +64,8 @@ const previewers = {
 <template>
   <Markdown
     :content="md"
-    :class="props.class"
+    :mode="props.streaming ? 'streaming' : 'static'"
+    :class="[props.class, { 'assistant-code-wrap': wrapCode }]"
     :extensions="extensions"
     :previewers="previewers"
     v-bind="$attrs"

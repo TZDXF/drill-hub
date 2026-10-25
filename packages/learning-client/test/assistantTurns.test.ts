@@ -18,6 +18,8 @@ function message(
     threadId: 'thread-1',
     role,
     content,
+    reasoning: null,
+    images: [],
     status: 'complete',
     errorCode: null,
     createdAt,

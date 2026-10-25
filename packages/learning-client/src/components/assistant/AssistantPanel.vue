@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   DropdownMenuContent,
@@ -9,60 +9,92 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui';
+import type {
+  AssistantImageAttachment,
+  AssistantMessageView,
+  AssistantQueueMode,
+  AssistantQueuedMessage,
+  AssistantTimelineTurn,
+} from '@drill-hub/contracts';
 import { useAssistant } from '#learning-client/assistant/store';
-import { buildHistory } from '#learning-client/assistant/turns';
+import { useAssistantHistory } from '#learning-client/assistant/history';
+import {
+  buildPromptWithQuotes,
+  parsePromptQuotes,
+  type AssistantSelectionQuote,
+} from '#learning-client/assistant/selection';
+import { useConversationScroll } from '#learning-client/assistant/useConversationScroll';
 import { errorMessage } from '#learning-client/utils';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
+import AppDialog from '#learning-client/components/AppDialog.vue';
 import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 import MessageResponse from '#learning-client/components/ai-elements/message/MessageResponse.vue';
 import AssistantComposer from '#learning-client/components/assistant/AssistantComposer.vue';
-import AssistantProcessLine from '#learning-client/components/assistant/AssistantProcessLine.vue';
+import AssistantTurn from '#learning-client/components/assistant/AssistantTurn.vue';
+import AssistantUserMessage from '#learning-client/components/assistant/AssistantUserMessage.vue';
+import AssistantVirtualItem from '#learning-client/components/assistant/AssistantVirtualItem.vue';
+import AssistantQueue from '#learning-client/components/assistant/AssistantQueue.vue';
+import AssistantTimeline from '#learning-client/components/assistant/AssistantTimeline.vue';
+import AssistantSelectionMenu from '#learning-client/components/assistant/AssistantSelectionMenu.vue';
 
 const { t } = useI18n();
 const assistant = useAssistant();
 const state = assistant.state;
-
-const messageList = ref<HTMLElement | null>(null);
+const { history } = useAssistantHistory(state);
+const content = ref<HTMLElement | null>(null);
+const scroll = useConversationScroll(content);
+const draft = ref('');
+const quotes = ref<AssistantSelectionQuote[]>([]);
+const composer = ref<InstanceType<typeof AssistantComposer> | null>(null);
+const sending = ref(false);
 const threadToDelete = ref<{ id: string; title: string } | null>(null);
 const deletingThread = ref(false);
 const deleteError = ref('');
-
+const previewImage = ref<AssistantImageAttachment | null>(null);
+const quoteToEdit = ref<AssistantSelectionQuote | null>(null);
+const quoteComment = ref('');
+const copied = ref(false);
+const now = ref(Date.now());
+let clock: ReturnType<typeof setInterval> | null = null;
+const busy = computed(() => Boolean(state.activeTurnId));
 const currentThread = computed(
   () => state.threads.find((thread) => thread.id === state.currentThreadId) ?? null,
 );
-
-/** 按轮组装：用户消息 → 过程折叠行 → 助手回复；乐观活动轮追加在末尾。 */
-const history = computed(() =>
-  buildHistory({
-    messages: state.messages,
-    turns: state.turns,
-    events: state.events,
-    activeTurnId: state.activeTurnId,
-    streamingText: state.streamingText,
-  }),
+const lastUserId = computed(() =>
+  [...history.value].reverse().find((item) => item.kind === 'turn' && item.turn.userMessage)
+    ?.kind === 'turn'
+    ? (
+        [...history.value]
+          .reverse()
+          .find((item) => item.kind === 'turn' && item.turn.userMessage) as Extract<
+          (typeof history.value)[number],
+          { kind: 'turn' }
+        >
+      ).turn.userMessage?.id
+    : null,
 );
-
-const streaming = computed(() => Boolean(state.streamingText));
-
 function itemKey(item: (typeof history.value)[number], index: number): string {
-  if (item.kind === 'message') return item.message.id;
-  return item.turn.turnId ?? `turn-${index}`;
+  return item.kind === 'message' ? item.message.id : (item.turn.turnId ?? `turn-${index}`);
 }
-
+function notifyCopied() {
+  copied.value = true;
+  window.setTimeout(() => {
+    copied.value = false;
+  }, 1600);
+}
 function requestRemoveThread() {
-  if (!currentThread.value || deletingThread.value) return;
-  threadToDelete.value = { id: currentThread.value.id, title: currentThread.value.title };
-  deleteError.value = '';
+  if (currentThread.value && !deletingThread.value) {
+    threadToDelete.value = { id: currentThread.value.id, title: currentThread.value.title };
+    deleteError.value = '';
+  }
 }
-
 async function removeThread() {
   if (!threadToDelete.value || deletingThread.value) return;
-  const threadId = threadToDelete.value.id;
   deletingThread.value = true;
   deleteError.value = '';
   try {
-    await assistant.deleteThread(threadId);
+    await assistant.deleteThread(threadToDelete.value.id);
     threadToDelete.value = null;
   } catch (reason) {
     deleteError.value = errorMessage(reason);
@@ -70,65 +102,192 @@ async function removeThread() {
     deletingThread.value = false;
   }
 }
-
 async function switchThread(threadId: string) {
   try {
     await assistant.selectThread(threadId);
+    scroll.scrollToBottom();
   } catch (reason) {
     state.error = errorMessage(reason);
   }
 }
-
 async function createThread() {
   try {
     await assistant.newThread();
+    scroll.scrollToBottom();
   } catch (reason) {
     state.error = errorMessage(reason);
   }
 }
-
-watch(
-  () => [state.messages.length, state.turns.length, state.streamingText, state.events.length],
-  async () => {
+async function submit(mode: AssistantQueueMode) {
+  if (sending.value) return;
+  const text = draft.value;
+  const selectedQuotes = [...quotes.value];
+  const images = [...(composer.value?.images ?? [])];
+  sending.value = true;
+  try {
+    await assistant.send(buildPromptWithQuotes(text, selectedQuotes), { images, mode });
+    composer.value?.clear();
+    draft.value = '';
+    quotes.value = [];
+    scroll.scrollToBottom();
+  } catch {
+    draft.value = text;
+    quotes.value = selectedQuotes;
+  } finally {
+    sending.value = false;
+  }
+}
+async function editMessage(message: AssistantMessageView) {
+  const turn = state.turns.find((item) => item.userMessageId === message.id);
+  if (!turn || busy.value) return;
+  try {
+    await assistant.forkThread(turn.id, 'before');
+    const parsed = parsePromptQuotes(message.content);
+    draft.value = parsed.visibleContent;
+    quotes.value = parsed.quotes;
     await nextTick();
-    messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' });
+    scroll.scrollToBottom();
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function forkTurn(turnId: string) {
+  try {
+    await assistant.forkThread(turnId, 'through');
+    scroll.scrollToBottom();
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function retryTurn(item: Extract<(typeof history.value)[number], { kind: 'turn' }>['turn']) {
+  if (!item.turnId || !item.userMessage) return;
+  const message = item.userMessage;
+  try {
+    await assistant.forkThread(item.turnId, 'before');
+    await assistant.send(message.content, { images: message.images });
+    scroll.scrollToBottom();
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function navigateTimeline(turn: AssistantTimelineTurn) {
+  try {
+    const id = await assistant.revealTurn(turn.id);
+    if (id) await scroll.scrollToMessage(id);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function onHistoryScroll() {
+  scroll.onScroll();
+  const viewport = scroll.viewport.value;
+  if (
+    !viewport ||
+    !scroll.userScrolled.value ||
+    viewport.scrollTop > 500 ||
+    !state.hasOlder ||
+    state.historyLoading
+  )
+    return;
+  const height = viewport.scrollHeight;
+  const threadId = state.currentThreadId;
+  scroll.stop();
+  try {
+    await assistant.loadOlder();
+    await nextTick();
+    if (viewport.isConnected && state.currentThreadId === threadId)
+      viewport.scrollTop += viewport.scrollHeight - height;
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+function addQuote(quote: AssistantSelectionQuote) {
+  if (!quotes.value.some((item) => item.text === quote.text)) quotes.value.push(quote);
+}
+function editQuote(quote: AssistantSelectionQuote) {
+  quoteToEdit.value = quote;
+  quoteComment.value = quote.comment ?? '';
+}
+function saveQuote() {
+  if (quoteToEdit.value) quoteToEdit.value.comment = quoteComment.value.trim();
+  quoteToEdit.value = null;
+}
+async function updateQueue(item: AssistantQueuedMessage, text: string, mode: AssistantQueueMode) {
+  try {
+    await assistant.updateQueued(item.id, text, mode);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+async function removeQueue(item: AssistantQueuedMessage) {
+  try {
+    await assistant.removeQueued(item.id);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
+}
+watch(
+  () => state.activeTurnId,
+  (active) => {
+    if (active && !clock)
+      clock = setInterval(() => {
+        now.value = Date.now();
+      }, 1000);
+    if (!active && clock) {
+      clearInterval(clock);
+      clock = null;
+    }
+  },
+  { immediate: true },
+);
+watch(
+  () => state.currentThreadId,
+  () => {
+    draft.value = '';
+    quotes.value = [];
   },
 );
+onBeforeUnmount(() => {
+  if (clock) clearInterval(clock);
+});
 </script>
 
 <template>
   <div class="assistant-panel" data-testid="assistant-panel">
     <header class="assistant-panel__header">
       <div class="assistant-panel__title" :title="currentThread?.title ?? ''">
-        <AppIcon name="assistant" :size="17" />
-        <strong>{{ currentThread?.title || t('components.assistant.title') }}</strong>
+        <AppIcon name="assistant" :size="17" /><strong>{{
+          currentThread?.title || t('components.assistant.title')
+        }}</strong>
       </div>
       <div class="assistant-panel__actions">
         <DropdownMenuRoot>
-          <DropdownMenuTrigger as-child>
-            <button
+          <DropdownMenuTrigger as-child
+            ><button
               class="icon-button"
               type="button"
               data-testid="assistant-threads"
               :aria-label="t('components.assistant.threads')"
               :title="t('components.assistant.threads')"
             >
-              <AppIcon name="message" :size="17" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuContent class="dropdown-content" align="end" :side-offset="6">
+              <AppIcon name="message" :size="17" /></button
+          ></DropdownMenuTrigger>
+          <DropdownMenuPortal
+            ><DropdownMenuContent
+              class="dropdown-content assistant-thread-menu"
+              align="end"
+              :side-offset="6"
+            >
               <DropdownMenuItem
-                v-for="thread in state.threads.slice(0, 8)"
+                v-for="thread in state.threads"
                 :key="thread.id"
                 class="dropdown-item"
                 @select="switchThread(thread.id)"
-              >
-                <AppIcon
+                ><AppIcon
                   :name="thread.id === state.currentThreadId ? 'check' : 'message'"
                   :size="16"
-                />{{ thread.title }}
-              </DropdownMenuItem>
+                /><span>{{ thread.title }}</span></DropdownMenuItem
+              >
               <DropdownMenuSeparator class="dropdown-separator" />
               <DropdownMenuItem class="dropdown-item" @select="createThread"
                 ><AppIcon name="plus" :size="16" />{{
@@ -143,89 +302,114 @@ watch(
                   t('components.assistant.deleteThread')
                 }}</DropdownMenuItem
               >
-            </DropdownMenuContent>
-          </DropdownMenuPortal>
+            </DropdownMenuContent></DropdownMenuPortal
+          >
         </DropdownMenuRoot>
-        <AppTooltip :label="t('components.assistant.layoutSplit')">
-          <button
+        <AppTooltip :label="t('components.assistant.layoutSplit')"
+          ><button
             class="icon-button"
             type="button"
             :aria-label="t('components.assistant.layoutSplit')"
             @click="assistant.setLayout('split')"
           >
-            <AppIcon name="panel" :size="17" />
-          </button>
-        </AppTooltip>
-        <AppTooltip :label="t('components.assistant.close')">
-          <button
+            <AppIcon name="panel" :size="17" /></button
+        ></AppTooltip>
+        <AppTooltip :label="t('components.assistant.close')"
+          ><button
             class="icon-button"
             type="button"
             :aria-label="t('components.assistant.close')"
             data-testid="assistant-close"
             @click="assistant.closePanel()"
           >
-            <AppIcon name="close" :size="17" />
-          </button>
-        </AppTooltip>
+            <AppIcon name="close" :size="17" /></button
+        ></AppTooltip>
       </div>
     </header>
-
-    <div ref="messageList" class="assistant-panel__messages" data-testid="assistant-messages">
-      <p v-if="!history.length" class="assistant-panel__empty">
-        {{ t('components.assistant.welcome') }}
-      </p>
-      <template v-for="(item, index) in history" :key="itemKey(item, index)">
-        <template v-if="item.kind === 'turn'">
-          <div
-            v-if="item.turn.userMessage"
-            class="assistant-message assistant-message--user"
-            data-testid="assistant-user-message"
-          >
-            {{ item.turn.userMessage.content }}
-          </div>
-          <AssistantProcessLine
-            :actions="item.turn.actions"
-            :active="item.turn.active"
-            :streaming="streaming"
-            :duration-ms="item.turn.durationMs"
-            :failed="item.turn.failed"
-          />
-          <div
-            v-if="item.turn.active && streaming"
-            class="assistant-message assistant-message--streaming"
-            data-testid="assistant-reply"
-          >
-            <MessageResponse :content="state.streamingText" class="assistant-markdown" />
-          </div>
-          <div
-            v-else-if="item.turn.assistantMessage"
-            class="assistant-message"
-            data-testid="assistant-reply"
-          >
-            <MessageResponse
-              :content="item.turn.assistantMessage.content || ' '"
-              class="assistant-markdown"
-            />
-          </div>
-        </template>
-        <div
-          v-else
-          class="assistant-message"
-          :class="{ 'assistant-message--user': item.message.role === 'user' }"
-          :data-testid="item.message.role === 'user' ? 'assistant-user-message' : 'assistant-reply'"
-        >
-          <template v-if="item.message.role === 'user'">{{ item.message.content }}</template>
-          <MessageResponse
-            v-else
-            :content="item.message.content || ' '"
-            class="assistant-markdown"
-          />
+    <div class="assistant-conversation">
+      <div
+        :ref="scroll.viewport"
+        class="assistant-panel__messages assistant-viewport"
+        data-testid="assistant-messages"
+        role="log"
+        :aria-label="t('components.assistant.title')"
+        tabindex="0"
+        @scroll="onHistoryScroll"
+      >
+        <div ref="content" class="assistant-message-content">
+          <p v-if="state.historyLoading" class="assistant-history-loading" role="status">
+            {{ t('components.assistant.historyLoading') }}
+          </p>
+          <p v-if="!history.length" class="assistant-panel__empty">
+            {{ t('components.assistant.welcome') }}
+          </p>
+          <template v-for="(item, index) in history" :key="itemKey(item, index)">
+            <AssistantVirtualItem
+              :pinned="index >= history.length - 4"
+              :live="item.kind === 'turn' && item.turn.active"
+            >
+              <AssistantTurn
+                v-if="item.kind === 'turn'"
+                :item="item.turn"
+                :streaming-text="state.streamingText"
+                :streaming-reasoning="state.streamingReasoning"
+                :now="now"
+                :can-edit="item.turn.userMessage?.id === lastUserId"
+                :busy="busy"
+                @edit="editMessage"
+                @fork="forkTurn"
+                @retry="retryTurn"
+                @copy="notifyCopied"
+                @preview="previewImage = $event"
+              />
+              <AssistantUserMessage
+                v-else-if="item.message.role === 'user'"
+                :message="item.message"
+                :busy="busy"
+                @copy="notifyCopied"
+                @preview="previewImage = $event"
+              />
+              <div
+                v-else
+                class="assistant-message assistant-message--assistant"
+                :data-message-id="item.message.id"
+                data-testid="assistant-reply"
+              >
+                <MessageResponse
+                  :content="item.message.content || ' '"
+                  class="assistant-markdown"
+                />
+              </div>
+            </AssistantVirtualItem>
+          </template>
+          <p v-if="state.error" class="assistant-panel__error" role="alert">{{ state.error }}</p>
         </div>
-      </template>
-      <p v-if="state.error" class="assistant-panel__error">{{ state.error }}</p>
+      </div>
+      <AssistantTimeline :turns="state.timeline" @navigate="navigateTimeline" />
+      <AppTooltip v-if="!scroll.atBottom.value" :label="t('components.assistant.backToBottom')"
+        ><button
+          class="assistant-scroll-bottom"
+          type="button"
+          :aria-label="t('components.assistant.backToBottom')"
+          @click="scroll.scrollToBottom(true)"
+        >
+          <AppIcon name="arrowDown" :size="17" /></button
+      ></AppTooltip>
+      <AssistantSelectionMenu :root="scroll.viewport" @quote="addQuote" />
     </div>
-
-    <AssistantComposer />
+    <AssistantQueue :items="state.queued" @update="updateQueue" @remove="removeQueue" />
+    <AssistantComposer
+      ref="composer"
+      v-model:text="draft"
+      v-model:quotes="quotes"
+      :busy="busy"
+      :sending="sending"
+      @submit="submit"
+      @edit-quote="editQuote"
+    />
+    <span v-if="copied" class="assistant-copied" role="status">{{
+      t('components.assistant.copied')
+    }}</span>
     <ConfirmDialog
       :open="Boolean(threadToDelete)"
       :title="t('components.assistant.deleteThreadTitle')"
@@ -239,8 +423,37 @@ watch(
       danger
       @update:open="!$event && !deletingThread && (threadToDelete = null)"
       @confirm="removeThread"
+      ><p v-if="deleteError" class="assistant-panel__error" role="alert">
+        {{ deleteError }}
+      </p></ConfirmDialog
     >
-      <p v-if="deleteError" class="assistant-panel__error" role="alert">{{ deleteError }}</p>
-    </ConfirmDialog>
+    <AppDialog
+      class="dialog-content"
+      :open="Boolean(previewImage)"
+      :title="previewImage?.name ?? ''"
+      @update:open="!$event && (previewImage = null)"
+      ><img
+        v-if="previewImage"
+        class="assistant-image-preview"
+        :src="`data:${previewImage.mimeType};base64,${previewImage.data}`"
+        :alt="previewImage.name"
+    /></AppDialog>
+    <AppDialog
+      class="dialog-content"
+      :open="Boolean(quoteToEdit)"
+      :title="t('components.assistant.editQuote')"
+      @update:open="!$event && (quoteToEdit = null)"
+    >
+      <textarea
+        v-model="quoteComment"
+        class="assistant-quote-comment"
+        rows="3"
+        :placeholder="t('components.assistant.quoteComment')"
+      /><template #actions
+        ><button class="button button--primary" type="button" @click="saveQuote">
+          {{ t('components.assistant.saveQuote') }}
+        </button></template
+      ></AppDialog
+    >
   </div>
 </template>

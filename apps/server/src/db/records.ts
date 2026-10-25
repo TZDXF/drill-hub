@@ -114,6 +114,8 @@ export interface AssistantMessageRecord extends BaseRecord {
   threadId: string;
   role: AssistantMessageView['role'];
   content: string;
+  reasoning: string | null;
+  images: import('@drill-hub/contracts').AssistantImageAttachment[];
   status: AssistantMessageView['status'];
   errorCode: string | null;
 }
@@ -124,6 +126,15 @@ export interface AssistantEventRecord extends BaseRecord {
   seq: number;
   type: AssistantEventView['type'];
   payload: Record<string, unknown>;
+}
+export interface AssistantQueuedMessageRecord extends BaseRecord {
+  ownerId: string;
+  threadId: string;
+  content: string;
+  mode: import('@drill-hub/contracts').AssistantQueueMode;
+  promptContext: string | null;
+  providerModelId: string | null;
+  images: import('@drill-hub/contracts').AssistantImageAttachment[];
 }
 export interface AssistantTurnRecord extends BaseRecord {
   ownerId: string;
@@ -181,6 +192,7 @@ export interface DatabaseTables {
   assistantMessages: AssistantMessageRecord;
   assistantEvents: AssistantEventRecord;
   assistantTurns: AssistantTurnRecord;
+  assistantQueuedMessages: AssistantQueuedMessageRecord;
   searchProviders: SearchProviderRecord;
   mcpServers: McpServerRecord;
   assistantSkills: AssistantSkillRecord;

@@ -11,7 +11,7 @@
 ## 2. 架构与一轮对话的生命周期
 
 ```text
-POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerModelId 按轮选择模型）
+POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerModelId、图片与队列模式）
   → Pi 会话工厂：
      · pi-ai Model<'openai-completions'>（按轮 providerModelId 选择；缺省回退到最早的启用模型，
        baseUrl/密钥从 modelConnections 解密后内存注入 setRuntimeApiKey，不落盘；
@@ -24,13 +24,18 @@ POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerM
 GET /me/assistant/threads/:id/stream?after=<seq>（SSE；断线游标补齐）
 GET /me/assistant/threads/:id/events?after=<seq>（按游标读取持久化事件，客户端不用于轮询）
 GET /me/assistant/models（对话可选模型：仅返回启用模型及其启用连接，含价格与默认参数）
+GET /me/assistant/threads/:id?before=<messageId>&limit=<1..100>（按消息分页读取，保留时间线）
+POST /me/assistant/threads/:id/fork（before/through 复制历史到新对话，原对话不变）
+PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息）
 ```
 
-- turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn（409 `ACTIVE_TURN_EXISTS`）。
+- turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn。活动期间的第二条消息进入服务端持久化队列：`followUp` 等本轮结束后执行，`steer` 取消当前生成并优先执行；队列在重连和服务重启后仍可恢复。
 - 不再限制同时执行的对话轮数、单轮超时与搜索结果上限；用户可随时取消（`POST /me/assistant/turns/:id/cancel`）。
 - 模型选择在对话中完成：输入框上方按供应商分组选择（或"自动选择"），选择随该轮请求发送；无效/停用的模型在提交时立即 422 `INVALID_MODEL`。
 - 进程重启不恢复模型中间态：重启时未完成 turn 标记为失败（`ASSISTANT_RESTARTED`）并广播错误事件。
-- 文本增量每秒 flush 到 `assistantMessages.content`；流式中断时保留已生成部分。
+- 文本与推理增量每秒 flush 到消息记录；SSE 同时提供增量、活动消息快照和队列快照。流式中断时保留已生成部分，客户端在终稿返回前保持同一棵回复渲染树。
+- 用户消息最多附 4 张 PNG/JPEG/WebP/GIF 图片（单张 5 MB）；图片只在本人消息与当轮模型请求中使用。
+- 对话界面提供历史虚拟化、时间线跳转、滚动跟随解除/恢复、复制、编辑重发、重试、分叉、划词引用与批注。
 
 ## 3. 工具集与白名单
 
@@ -92,6 +97,6 @@ GET /me/assistant/models（对话可选模型：仅返回启用模型及其启�
 ## 10. 当前边界
 
 - 助手写操作没有逐条人工确认；依赖每轮写操作限额与审计追溯。
-- 同一账号多设备同时打开助手时，各自订阅同一事件流，消息以服务端为准（无跨设备推送，重开面板拉取全量）。
+- 同一账号多设备同时打开助手时，各自订阅同一事件流，消息以服务端为准；没有额外的离线同步机制，重开面板按分页拉取历史。
 - 会话历史以扁平消息列表注入 prompt（最近 20 条），不做向量检索或自动摘要压缩。
 - 评分适配器与助手模型共用供应商连接，但不共用评分配置；`GET /me/assistant/models` 仅返回模型与所属连接均已启用的模型。
