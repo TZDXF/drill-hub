@@ -256,12 +256,46 @@
     "welcome": "你好！我是学习助手，可以帮你查询学习进度、整理错题、创建练习或打开任意学习页面。请问需要什么帮助？",
     "thinking": "正在思考…",
     "layoutSplit": "并排布局",
-    "events": {
-      "toolCall": "正在调用 {name}…",
-      "toolDone": "{name} 完成",
-      "toolFailed": "{name} 失败",
-      "navigated": "已打开页面：{route}",
-      "layoutChanged": "已调整布局"
+    "processSummary": "执行了 {seconds} 秒 · {count} 项操作",
+    "processCount": "{count} 项操作",
+    "turnFailed": "本轮未能完成",
+    "actions": {
+      "running": "正在{action}…",
+      "search": "搜索资料：{query}",
+      "createTopic": "创建学习主题{title}",
+      "updateTopic": "更新学习主题{title}",
+      "createPlan": "创建学习计划{title}",
+      "updatePlan": "更新学习计划",
+      "createContent": "创建学习内容{title}",
+      "updateContent": "更新学习内容",
+      "createQuestions": "创建练习题",
+      "updateQuestion": "更新练习题",
+      "createAssessment": "创建练习考试{title}",
+      "updateAssessment": "更新练习考试",
+      "startAttempt": "开始作答",
+      "saveAnswer": "记录作答",
+      "submitItem": "提交单题作答",
+      "submitAttempt": "交卷",
+      "voidAttempt": "作废作答",
+      "startPractice": "发起错题重练",
+      "updateMastery": "更新错题掌握状态",
+      "completeTask": "完成任务",
+      "restore": "恢复归档资源",
+      "navigate": "打开页面：{route}",
+      "routes": {
+        "home": "首页",
+        "topics": "主题列表",
+        "topic": "主题详情",
+        "plan": "学习计划",
+        "content": "学习内容",
+        "assessment": "练习考试",
+        "attempt": "作答",
+        "report": "作答报告",
+        "wrong-questions": "错题本",
+        "wrong-question-detail": "错题详情",
+        "history": "历史记录",
+        "archive": "归档"
+      }
     }
   }
 }

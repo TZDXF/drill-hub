@@ -267,6 +267,9 @@ describe('built-in assistant', () => {
       url: `/api/v1/me/assistant/threads/${thread.id}`,
       headers: { cookie: admin.cookie },
     });
+    const turns = detail.json().data.turns as { status: string }[];
+    expect(turns).toHaveLength(1);
+    expect(turns[0].status).toBe('succeeded');
     const messages = detail.json().data.messages as {
       role: string;
       status: string;

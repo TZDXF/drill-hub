@@ -256,12 +256,46 @@
     "welcome": "Hi! I am your learning assistant. I can check your progress, organize wrong questions, create exercises, and open any page for you. How can I help?",
     "thinking": "Thinking…",
     "layoutSplit": "Side-by-side layout",
-    "events": {
-      "toolCall": "Calling {name}…",
-      "toolDone": "{name} finished",
-      "toolFailed": "{name} failed",
-      "navigated": "Opened page: {route}",
-      "layoutChanged": "Layout adjusted"
+    "processSummary": "Ran {seconds}s · {count} actions",
+    "processCount": "{count} actions",
+    "turnFailed": "This turn did not finish",
+    "actions": {
+      "running": "Working on {action}…",
+      "search": "Search the web: {query}",
+      "createTopic": "Create learning topic{title}",
+      "updateTopic": "Update learning topic{title}",
+      "createPlan": "Create learning plan{title}",
+      "updatePlan": "Update learning plan",
+      "createContent": "Create learning content{title}",
+      "updateContent": "Update learning content",
+      "createQuestions": "Create practice questions",
+      "updateQuestion": "Update practice question",
+      "createAssessment": "Create assessment{title}",
+      "updateAssessment": "Update assessment",
+      "startAttempt": "Start an attempt",
+      "saveAnswer": "Record an answer",
+      "submitItem": "Submit an answer item",
+      "submitAttempt": "Submit an attempt",
+      "voidAttempt": "Void an attempt",
+      "startPractice": "Start wrong-question practice",
+      "updateMastery": "Update mastery status",
+      "completeTask": "Complete a plan task",
+      "restore": "Restore archived resource",
+      "navigate": "Open page: {route}",
+      "routes": {
+        "home": "Home",
+        "topics": "Topics",
+        "topic": "Topic detail",
+        "plan": "Learning plan",
+        "content": "Learning content",
+        "assessment": "Assessment",
+        "attempt": "Attempt",
+        "report": "Attempt report",
+        "wrong-questions": "Wrong questions",
+        "wrong-question-detail": "Wrong question detail",
+        "history": "Learning history",
+        "archive": "Archive"
+      }
     }
   }
 }

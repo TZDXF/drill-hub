@@ -51,6 +51,7 @@ export interface AssistantState {
   chatWidth: number;
   threads: AssistantThread[];
   currentThreadId: string | null;
+  turns: AssistantTurnView[];
   messages: AssistantMessageView[];
   events: AssistantEventView[];
   activeTurnId: string | null;
@@ -74,6 +75,7 @@ const state = reactive<AssistantState>({
   chatWidth: 400,
   threads: [],
   currentThreadId: null,
+  turns: [],
   messages: [],
   events: [],
   activeTurnId: null,
@@ -120,11 +122,13 @@ async function selectThread(threadId: string): Promise<void> {
   state.error = '';
   const detail = await learning().get<{
     thread: AssistantThread;
+    turns: AssistantTurnView[];
     messages: AssistantMessageView[];
     events: AssistantEventView[];
     activeTurn: AssistantTurnView | null;
   }>(`/me/assistant/threads/${threadId}`);
   if (state.currentThreadId !== threadId) return;
+  state.turns = detail.turns ?? [];
   state.messages = detail.messages;
   state.events = detail.events;
   state.activeTurnId = detail.activeTurn?.id ?? null;
@@ -143,6 +147,7 @@ async function deleteThread(threadId: string): Promise<void> {
   await loadThreads();
   if (state.currentThreadId === threadId) {
     state.currentThreadId = null;
+    state.turns = [];
     state.messages = [];
     state.events = [];
     state.activeTurnId = null;

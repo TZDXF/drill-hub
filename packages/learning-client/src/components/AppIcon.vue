@@ -42,6 +42,7 @@ import panelLeft from '@iconify-icons/lucide/panel-left';
 import square from '@iconify-icons/lucide/square';
 import trash from '@iconify-icons/lucide/trash-2';
 import messageSquare from '@iconify-icons/lucide/message-square';
+import search from '@iconify-icons/lucide/search';
 
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 });
 
@@ -88,6 +89,7 @@ const icons: Record<string, IconifyIcon> = {
   square,
   trash,
   message: messageSquare,
+  search,
 };
 
 const icon = computed(() => icons[props.name] ?? icons.book);

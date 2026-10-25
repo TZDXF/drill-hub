@@ -153,9 +153,11 @@ export function registerAssistantRoutes(
         : left.createdAt.localeCompare(right.createdAt),
     );
     const activeTurn = await findActiveTurn(ctx, thread.id);
+    const turns = await ctx.db.list('assistantTurns', { threadId: thread.id });
     return {
       data: {
         thread: threadView(thread),
+        turns: turns.map(turnView),
         messages: orderedMessages.map(({ ownerId: _ownerId, ...view }) => view),
         events: assistantEventViews([...events].sort((left, right) => left.seq - right.seq)),
         activeTurn: activeTurn ? turnView(activeTurn) : null,

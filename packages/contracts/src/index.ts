@@ -550,6 +550,7 @@ export interface AssistantTurnView extends BaseRecord {
 }
 export interface AssistantThreadDetail {
   thread: AssistantThread;
+  turns: AssistantTurnView[];
   messages: AssistantMessageView[];
   events: AssistantEventView[];
   activeTurn: AssistantTurnView | null;

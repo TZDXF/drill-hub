@@ -84,6 +84,7 @@ test.describe('内置学习助手', () => {
                 updatedAt: new Date().toISOString(),
                 revision: 1,
               },
+              turns: [],
               messages: [],
               events: [],
               activeTurn: null,
@@ -196,7 +197,7 @@ test.describe('内置学习助手', () => {
       await page.goto('/assistant');
       await expect(page.getByTestId('assistant-panel')).toBeVisible();
     } else {
-      // 桌面保持并排布局，事件卡展示工具调用过程。
+      // 桌面保持并排布局，活动轮显示单行状态（含“正在思考…”或关键操作）。
       await expect(page.getByTestId('assistant-event-card')).toBeVisible();
       await expect(page.getByTestId('assistant-panel')).toBeVisible();
       await expect(page.locator('.app-layout--assistant')).toBeVisible();
