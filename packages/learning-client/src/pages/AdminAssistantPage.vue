@@ -636,6 +636,7 @@ async function testProvider(provider: SearchProviderView): Promise<void> {
 
     <!-- 搜索服务弹窗：创建与编辑共用 -->
     <ConfirmDialog
+      v-if="dialog?.kind === 'provider'"
       v-model:open="dialogOpen"
       :title="dialogTitle"
       :busy="busy"
@@ -683,6 +684,7 @@ async function testProvider(provider: SearchProviderView): Promise<void> {
 
     <!-- MCP 弹窗：创建与编辑共用 -->
     <ConfirmDialog
+      v-if="dialog?.kind === 'mcp'"
       v-model:open="dialogOpen"
       :title="dialogTitle"
       :busy="busy"
@@ -777,6 +779,7 @@ async function testProvider(provider: SearchProviderView): Promise<void> {
 
     <!-- Skill 弹窗：创建与编辑共用 -->
     <ConfirmDialog
+      v-if="dialog?.kind === 'skill'"
       v-model:open="dialogOpen"
       :title="dialogTitle"
       :busy="busy"
