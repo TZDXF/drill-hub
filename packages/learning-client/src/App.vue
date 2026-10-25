@@ -28,7 +28,7 @@ async function changeServer() {
 </script>
 
 <template>
-  <ToastProvider>
+  <ToastProvider disable-swipe>
     <div v-if="!learning.state.ready" class="boot-screen" aria-live="polite">
       <div class="brand-mark brand-mark--large"><AppIcon name="book" :size="28" /></div>
       <strong>{{ t('core.boot.preparing') }}</strong>
