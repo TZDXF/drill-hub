@@ -3,11 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp } from '../src/app.js';
-import { Database } from '../src/db/database.js';
-import { baseRecord } from '../src/core/ids.js';
-import { createUser } from '../src/modules/auth/index.js';
-import { hashSecret } from '../src/core/security.js';
+import { createApp } from '#server/app.js';
+import { Database } from '#server/db/database.js';
+import { baseRecord } from '#server/core/ids.js';
+import { createUser } from '#server/modules/auth/index.js';
+import { hashSecret } from '#server/core/security.js';
 
 const ADMIN = 'audit_admin';
 const PASSWORD = 'Audit-test-only-password-42!';

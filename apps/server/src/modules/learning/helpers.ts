@@ -1,9 +1,13 @@
 import type { Attempt, LearningTask, WrongQuestion } from '@drill-hub/contracts';
-import { baseRecord, now } from '../../core/ids.js';
-import type { AppContext } from '../../core/context.js';
-import type { Database } from '../../db/database.js';
-import { scoreToMinor } from './scores.js';
-import { answerStatus, isLearningAttempt, qualifiesForTaskCompletion } from './attempt-policy.js';
+import { baseRecord, now } from '#server/core/ids.js';
+import type { AppContext } from '#server/core/context.js';
+import type { Database } from '#server/db/database.js';
+import { scoreToMinor } from '#server/modules/learning/scores.js';
+import {
+  answerStatus,
+  isLearningAttempt,
+  qualifiesForTaskCompletion,
+} from '#server/modules/learning/attempt-policy.js';
 
 /**
  * Derive only the aggregate attempt status. This function has no I/O and does not

@@ -1,6 +1,6 @@
 # 模型评分任务与外部逐项评分
 
-[API 索引与通用协议](../api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
+[API 索引与通用协议](@skill/references/api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
 
 | 方法 | 路径                                       | scope             | 成功状态 | 说明               |
 | ---- | ------------------------------------------ | ----------------- | -------- | ------------------ |
@@ -35,7 +35,7 @@
 - `feedback`: string；`createdAt`: string；`modelId?`: string；`reason?`: string。
 - `CriterionGrade`: `{ criterionId, levelId, evidence: string[], explanation, maxScore, score }`，未标类型的字段均为 string。
 
-完全未答项（`answerStatus: "unanswered"`）在交卷后由系统记零分，`source: "system"`，不标为模型或 Agent 评分，也不计错题；报告以 `unansweredCount` 单列。部分作答（`partial`）不是部分得分，答错仍可计入正式有效作答的错题。测试和作废作答的答案、评分及历史保留，但不贡献学习统计、错题或任务完成，见[副作用表](results.md#副作用表)。
+完全未答项（`answerStatus: "unanswered"`）在交卷后由系统记零分，`source: "system"`，不标为模型或 Agent 评分，也不计错题；报告以 `unansweredCount` 单列。部分作答（`partial`）不是部分得分，答错仍可计入正式有效作答的错题。测试和作废作答的答案、评分及历史保留，但不贡献学习统计、错题或任务完成，见[副作用表](@skill/references/resources/results.md#副作用表)。
 
 `answerStatus: unanswered|partial|answered` 与 `gradingStatus: not_started|pending|running|failed|completed` 分开：完全未答不再是评分状态，未开始评分用 `not_started`；`cancelled` 只属于评分任务状态，不是作答项的 `gradingStatus`。
 
@@ -94,7 +94,7 @@ GET /api/v1/agent/grading-queue
 
 ### 首次提交逐项评分
 
-以下示例使用[题目页](questions.md)的两项 rubric，但题目须以 `external_rubric` 创建；假设已锁定答案如下：
+以下示例使用[题目页](@skill/references/resources/questions.md)的两项 rubric，但题目须以 `external_rubric` 创建；假设已锁定答案如下：
 
 ```json
 { "text": "事务全部成功或全部回滚" }

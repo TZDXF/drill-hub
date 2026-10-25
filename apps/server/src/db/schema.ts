@@ -1,6 +1,6 @@
 import { EntitySchema, Table, TableColumn, TableIndex } from 'typeorm';
 import type { MigrationInterface, QueryRunner } from 'typeorm';
-import type { TableName } from './records.js';
+import type { TableName } from '#server/db/records.js';
 type Field = 'text' | 'integer' | 'boolean' | 'json' | 'text?' | 'integer?' | 'json?';
 const common: Record<string, Field> = {
   id: 'text',
@@ -156,6 +156,11 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     enabled: 'boolean',
     verifiedConfigVersion: 'integer?',
     testError: 'text?',
+    contextWindow: 'integer?',
+    maxTokens: 'integer?',
+    reasoning: 'boolean',
+    input: 'json',
+    costPerMillion: 'json?',
   },
   gradingProfiles: {
     providerModelId: 'text',
@@ -222,6 +227,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     status: 'text',
     errorCode: 'text?',
     promptContext: 'text?',
+    providerModelId: 'text?',
   },
   searchProviders: {
     displayName: 'text',
@@ -250,12 +256,6 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     description: 'text',
     content: 'text',
     enabled: 'boolean',
-  },
-  assistantSettings: {
-    defaultProviderModelId: 'text?',
-    maxSearchResults: 'integer',
-    maxConcurrency: 'integer',
-    turnTimeoutMs: 'integer',
   },
 };
 const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
@@ -311,7 +311,6 @@ export class InitialSchema1792195200000 implements MigrationInterface {
           'searchProviders',
           'mcpServers',
           'assistantSkills',
-          'assistantSettings',
         ].includes(name),
     )) {
       const all = { ...common, ...fields };
@@ -361,7 +360,6 @@ export class InitialSchema1792195200000 implements MigrationInterface {
             'searchProviders',
             'mcpServers',
             'assistantSkills',
-            'assistantSettings',
           ].includes(name),
       )
       .reverse())
@@ -488,7 +486,6 @@ const assistantTableNames = [
   'searchProviders',
   'mcpServers',
   'assistantSkills',
-  'assistantSettings',
 ] as const;
 
 /** 内置对话助手、搜索提供方、MCP 与 Skills 配置表；均为新增，无需迁移已有数据。 */
@@ -533,6 +530,41 @@ export class AddAssistantTables1792448000000 implements MigrationInterface {
         await runner.dropIndex(name, 'uq_' + name + '_' + i);
       if ('ownerId' in definitions[name]) await runner.dropIndex(name, 'ix_' + name + '_owner');
       await runner.dropTable(name);
+    }
+  }
+}
+
+/** 助手配置重构：移除全局助手设置表（上限/超时/默认模型），对话改为按轮选择模型；模型支持默认参数与价格。 */
+export class ReworkAssistantConfig1792450000000 implements MigrationInterface {
+  name = 'ReworkAssistantConfig1792450000000';
+  async up(runner: QueryRunner) {
+    if (await runner.hasTable('assistantSettings')) await runner.dropTable('assistantSettings');
+    const modelColumns: TableColumn[] = [
+      new TableColumn({ name: 'contextWindow', type: 'integer', isNullable: true }),
+      new TableColumn({ name: 'maxTokens', type: 'integer', isNullable: true }),
+      new TableColumn({ name: 'reasoning', type: 'boolean', default: false }),
+      new TableColumn({ name: 'input', type: 'text', isNullable: true }),
+      new TableColumn({ name: 'costPerMillion', type: 'text', isNullable: true }),
+    ];
+    for (const column of modelColumns) {
+      const table = await runner.getTable('providerModels');
+      if (table && !table.findColumnByName(column.name))
+        await runner.addColumn('providerModels', column);
+    }
+    const turns = await runner.getTable('assistantTurns');
+    if (turns && !turns.findColumnByName('providerModelId'))
+      await runner.addColumn(
+        'assistantTurns',
+        new TableColumn({ name: 'providerModelId', type: 'text', isNullable: true }),
+      );
+  }
+  async down(runner: QueryRunner) {
+    const turns = await runner.getTable('assistantTurns');
+    if (turns?.findColumnByName('providerModelId'))
+      await runner.dropColumn('assistantTurns', 'providerModelId');
+    for (const name of ['contextWindow', 'maxTokens', 'reasoning', 'input', 'costPerMillion']) {
+      const table = await runner.getTable('providerModels');
+      if (table?.findColumnByName(name)) await runner.dropColumn('providerModels', name);
     }
   }
 }

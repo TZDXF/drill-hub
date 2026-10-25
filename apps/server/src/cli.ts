@@ -1,6 +1,6 @@
-import { Database } from './db/database.js';
-import { loadConfig } from './core/config.js';
-import { createUser } from './modules/auth/index.js';
+import { Database } from '#server/db/database.js';
+import { loadConfig } from '#server/core/config.js';
+import { createUser } from '#server/modules/auth/index.js';
 const config = await loadConfig();
 const username = process.env.ADMIN_USERNAME;
 const password = process.env.ADMIN_PASSWORD;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Attempt, QuestionDefinition } from '@drill-hub/contracts';
-import { baseRecord } from '../src/core/ids.js';
-import { gradeRubric, gradeRule } from '../src/modules/grading/engine.js';
-import { toAttemptReport, toAttemptView } from '../src/modules/learning/projections.js';
+import { baseRecord } from '#server/core/ids.js';
+import { gradeRubric, gradeRule } from '#server/modules/grading/engine.js';
+import { toAttemptReport, toAttemptView } from '#server/modules/learning/projections.js';
 
 const timestamp = '2026-10-18T08:00:00.000Z';
 const definition: QuestionDefinition = {

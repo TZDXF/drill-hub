@@ -12,7 +12,7 @@ import type {
   Topic,
   WrongQuestionListItem,
 } from '@drill-hub/contracts';
-import { login, openQuestionNav } from './helpers';
+import { login, openQuestionNav } from '#e2e/helpers';
 
 async function seed(page: Page, kind: 'practice' | 'exam' = 'practice') {
   await login(page);

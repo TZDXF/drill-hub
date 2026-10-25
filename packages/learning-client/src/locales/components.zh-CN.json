@@ -296,6 +296,11 @@
         "history": "历史记录",
         "archive": "归档"
       }
-    }
+    },
+    "selectModel": "选择模型",
+    "autoModel": "自动选择",
+    "noModels": "管理员尚未配置可用的助手模型",
+    "modelPrice": "${input} 进 / ${output} 出",
+    "reasoningTag": "推理"
   }
 }

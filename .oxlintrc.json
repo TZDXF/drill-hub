@@ -19,6 +19,17 @@
         "destructuredArrayIgnorePattern": "^_",
         "varsIgnorePattern": "^_"
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "regex": "^\\.{1,2}/",
+            "message": "项目内部引用必须使用 # 别名或 @drill-hub 包名。"
+          }
+        ]
+      }
     ]
   },
   "ignorePatterns": [

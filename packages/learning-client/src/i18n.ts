@@ -1,14 +1,14 @@
 import { watch } from 'vue';
 import { createI18n } from 'vue-i18n';
 import type { ClientLocale, ClientPlatform } from '@drill-hub/contracts';
-import componentsZh from './locales/components.zh-CN.json';
-import componentsEn from './locales/components.en.json';
-import managementZh from './locales/management.zh-CN.json';
-import managementEn from './locales/management.en.json';
-import learningZh from './locales/learning.zh-CN.json';
-import learningEn from './locales/learning.en.json';
-import coreZh from './locales/core.zh-CN.json';
-import coreEn from './locales/core.en.json';
+import componentsZh from '#learning-client/locales/components.zh-CN.json';
+import componentsEn from '#learning-client/locales/components.en.json';
+import managementZh from '#learning-client/locales/management.zh-CN.json';
+import managementEn from '#learning-client/locales/management.en.json';
+import learningZh from '#learning-client/locales/learning.zh-CN.json';
+import learningEn from '#learning-client/locales/learning.en.json';
+import coreZh from '#learning-client/locales/core.zh-CN.json';
+import coreEn from '#learning-client/locales/core.en.json';
 
 export const messages = {
   'zh-CN': {

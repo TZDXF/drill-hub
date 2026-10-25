@@ -4,20 +4,23 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { workspacePath } from '#server/core/paths.js';
 import { API_VERSION, APP_VERSION } from '@drill-hub/contracts';
-import { Database } from './db/database.js';
-import { loadConfig } from './core/config.js';
-import { SecretVault } from './core/security.js';
-import { AppError } from './core/errors.js';
-import { normalizePublicBaseUrl, resolvePublicUrl } from './core/public-url.js';
-import { baseRecord, id, now } from './core/ids.js';
-import type { AppContext, ServerConfig } from './core/context.js';
-import { createAuthFunctions, createUser, registerAuthRoutes } from './modules/auth/index.js';
-import { registerLearningRoutes, expireAttempts } from './modules/learning/index.js';
-import { registerAccessLogging, registerAuditRoutes } from './modules/audit/index.js';
-import { createGradingService, registerGradingRoutes } from './modules/grading/index.js';
-import { createAssistantService, registerAssistantRoutes } from './modules/assistant/index.js';
+import { Database } from '#server/db/database.js';
+import { loadConfig } from '#server/core/config.js';
+import { SecretVault } from '#server/core/security.js';
+import { AppError } from '#server/core/errors.js';
+import { normalizePublicBaseUrl, resolvePublicUrl } from '#server/core/public-url.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
+import type { AppContext, ServerConfig } from '#server/core/context.js';
+import { createAuthFunctions, createUser, registerAuthRoutes } from '#server/modules/auth/index.js';
+import { registerLearningRoutes, expireAttempts } from '#server/modules/learning/index.js';
+import { registerAccessLogging, registerAuditRoutes } from '#server/modules/audit/index.js';
+import { createGradingService, registerGradingRoutes } from '#server/modules/grading/index.js';
+import {
+  createAssistantService,
+  registerAssistantRoutes,
+} from '#server/modules/assistant/index.js';
 declare module 'fastify' {
   interface FastifyInstance {
     ctx: AppContext;
@@ -173,7 +176,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       : undefined);
   if (bootstrap && (await db.list('users')).length === 0)
     await createUser(db, { ...bootstrap, role: 'admin' });
-  const webDist = fileURLToPath(new URL('../../web/dist/', import.meta.url));
+  const webDist = workspacePath('apps', 'web', 'dist');
   const mime: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',

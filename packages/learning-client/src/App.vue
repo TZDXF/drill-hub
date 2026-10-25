@@ -2,9 +2,9 @@
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ToastProvider, TooltipProvider } from 'reka-ui';
-import { useLearning } from './injection';
-import AppIcon from './components/AppIcon.vue';
-import AppMessageHost from './components/AppMessageHost.vue';
+import { useLearning } from '#learning-client/injection';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppMessageHost from '#learning-client/components/AppMessageHost.vue';
 
 const learning = useLearning();
 const router = useRouter();

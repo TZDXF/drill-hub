@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAssistant } from '../../assistant/store';
-import AppIcon from '../AppIcon.vue';
-import AppTooltip from '../AppTooltip.vue';
-import AssistantModelSelect from './AssistantModelSelect.vue';
+import { useAssistant } from '#learning-client/assistant/store';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppTooltip from '#learning-client/components/AppTooltip.vue';
+import AssistantModelSelect from '#learning-client/components/assistant/AssistantModelSelect.vue';
 
 const { t } = useI18n();
 const assistant = useAssistant();

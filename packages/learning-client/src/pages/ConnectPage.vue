@@ -3,12 +3,12 @@ import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import type { ServerConnection, ServerInfo } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { errorMessage } from '../utils';
-import AuthLayout from '../components/AuthLayout.vue';
-import AppIcon from '../components/AppIcon.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppCheckbox from '../components/AppCheckbox.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage } from '#learning-client/utils';
+import AuthLayout from '#learning-client/components/AuthLayout.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

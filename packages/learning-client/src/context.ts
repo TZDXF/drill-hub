@@ -9,8 +9,8 @@ import {
   type StoredMobileSession,
   type UserView,
 } from '@drill-hub/contracts';
-import type { CsrfResult } from './types';
-import { abortError, errorMessage, isApiError, translate } from './utils';
+import type { CsrfResult } from '#learning-client/types';
+import { abortError, errorMessage, isApiError, translate } from '#learning-client/utils';
 
 type Method = 'get' | 'post' | 'patch' | 'put' | 'delete';
 

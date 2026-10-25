@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login, testCredentials } from './helpers';
+import { login, testCredentials } from '#e2e/helpers';
 
 test('退出登录后无法继续访问受保护页面，并可重新登录', async ({ page }, testInfo) => {
   await login(page);

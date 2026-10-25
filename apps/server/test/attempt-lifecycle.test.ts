@@ -16,10 +16,10 @@ import {
   type Scope,
   type WrongQuestion,
 } from '@drill-hub/contracts';
-import { createApp } from '../src/app.js';
-import { baseRecord, id, now } from '../src/core/ids.js';
-import { hashSecret, randomSecret } from '../src/core/security.js';
-import { createUser } from '../src/modules/auth/index.js';
+import { createApp } from '#server/app.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
+import { hashSecret, randomSecret } from '#server/core/security.js';
+import { createUser } from '#server/modules/auth/index.js';
 
 const apps: FastifyInstance[] = [];
 const networkCalls: ReturnType<typeof vi.fn<typeof fetch>>[] = [];

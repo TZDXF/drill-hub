@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StreamEvent } from '@drill-hub/api-client';
 import type { Router } from 'vue-router';
-import type { LearningContext } from '../src/context';
-import { buildHistory } from '../src/assistant/turns';
+import type { LearningContext } from '#learning-client/context';
+import { buildHistory } from '#learning-client/assistant/turns';
 
 async function setup() {
-  const { initAssistantStore, useAssistant } = await import('../src/assistant/store');
+  const { initAssistantStore, useAssistant } = await import('#learning-client/assistant/store');
   const streams: {
     signal: AbortSignal;
     emit: (event: StreamEvent) => void;
@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  const { useAssistant } = await import('../src/assistant/store');
+  const { useAssistant } = await import('#learning-client/assistant/store');
   useAssistant().closePanel();
   vi.useRealTimers();
 });

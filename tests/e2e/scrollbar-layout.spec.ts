@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 // 无头浏览器默认隐藏滚动条；此处启用真实滚动条，避免宽度回归被掩盖。
 test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });

@@ -1,9 +1,9 @@
-import type { Actor, AppContext } from '../../core/context.js';
+import type { Actor, AppContext } from '#server/core/context.js';
 import type { Answer, Assessment, Attempt, AttemptItemSnapshot } from '@drill-hub/contracts';
-import { AppError } from '../../core/errors.js';
-import { baseRecord, id, now } from '../../core/ids.js';
-import type { AnswerLinkRecord } from '../../db/records.js';
-import { validateAnswer } from '../grading/engine.js';
+import { AppError } from '#server/core/errors.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
+import type { AnswerLinkRecord } from '#server/db/records.js';
+import { validateAnswer } from '#server/modules/grading/engine.js';
 import {
   assert,
   checkRevision,
@@ -16,11 +16,16 @@ import {
   rejectClientFacts,
   requiredString,
   type JsonObject,
-} from './common.js';
-import { refreshAttempt, settleAttempt, syncLinkedTask, syncWrongQuestions } from './helpers.js';
-import { attemptPurpose } from './attempt-policy.js';
-import { findTaskLocation } from './plans.js';
-import { validateScoringConfiguration } from './question-utils.js';
+} from '#server/modules/learning/common.js';
+import {
+  refreshAttempt,
+  settleAttempt,
+  syncLinkedTask,
+  syncWrongQuestions,
+} from '#server/modules/learning/helpers.js';
+import { attemptPurpose } from '#server/modules/learning/attempt-policy.js';
+import { findTaskLocation } from '#server/modules/learning/plans.js';
+import { validateScoringConfiguration } from '#server/modules/learning/question-utils.js';
 
 function snapshot(
   questionId: string,

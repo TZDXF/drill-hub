@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import type { ApiResponse, Assessment, AttemptView, Topic } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 async function post<T>(
   request: APIRequestContext,

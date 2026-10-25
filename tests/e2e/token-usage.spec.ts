@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { TokenUsageReport, TokenUsageTotals } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 function fixture(days = 30, empty = false): TokenUsageReport {
   const zero: TokenUsageTotals = {

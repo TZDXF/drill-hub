@@ -2,14 +2,14 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { GradingJob } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { errorMessage, formatDate } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
-import AppSelect from '../components/AppSelect.vue';
-import AppScrollArea from '../components/AppScrollArea.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import AppSelect from '#learning-client/components/AppSelect.vue';
+import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

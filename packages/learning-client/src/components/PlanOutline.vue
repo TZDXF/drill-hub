@@ -2,8 +2,8 @@
 import { useI18n } from 'vue-i18n';
 import { computed } from 'vue';
 import type { LearningPlan, LearningTask } from '@drill-hub/contracts';
-import { planTaskLocation } from '../planNavigation';
-import AppIcon from './AppIcon.vue';
+import { planTaskLocation } from '#learning-client/planNavigation';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t } = useI18n();
 

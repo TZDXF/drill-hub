@@ -22,7 +22,7 @@ import {
   DatePickerRoot,
   DatePickerTrigger,
 } from 'reka-ui';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t, locale } = useI18n();
 

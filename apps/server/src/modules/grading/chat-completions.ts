@@ -2,7 +2,7 @@ import {
   assertProviderHost,
   publicProviderDispatcher,
   ProviderNetworkError,
-} from '../../core/provider-network.js';
+} from '#server/core/provider-network.js';
 import type {
   Answer,
   DiscoveredProviderModel,

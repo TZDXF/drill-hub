@@ -1,4 +1,4 @@
-import { AppError } from '../../core/errors.js';
+import { AppError } from '#server/core/errors.js';
 
 const SCORE_PATTERN = /^(?:0|[1-9]\d{0,6})(?:\.(\d{1,2}))?$/;
 

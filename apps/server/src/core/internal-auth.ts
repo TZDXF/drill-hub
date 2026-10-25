@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Actor } from './context.js';
+import type { Actor } from '#server/core/context.js';
 
 /**
  * 助手内部令牌：仅由服务端在同一进程内签发并用于 app.inject 自调用，

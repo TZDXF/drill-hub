@@ -1,20 +1,21 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
+  AssistantModelOption,
   AssistantRouteName,
   AssistantThread,
   AssistantTurnView,
   McpServerView,
   SearchProviderView,
 } from '@drill-hub/contracts';
-import { baseRecord, now } from '../../core/ids.js';
-import { AppError } from '../../core/errors.js';
-import { assertProviderHost } from '../../core/provider-network.js';
-import type { AppContext } from '../../core/context.js';
+import { baseRecord, now } from '#server/core/ids.js';
+import { AppError } from '#server/core/errors.js';
+import { assertProviderHost } from '#server/core/provider-network.js';
+import type { AppContext } from '#server/core/context.js';
 import type {
   AssistantTurnRecord,
   McpServerRecord,
   SearchProviderRecord,
-} from '../../db/records.js';
+} from '#server/db/records.js';
 import {
   API_PREFIX,
   assert,
@@ -28,14 +29,18 @@ import {
   query,
   requiredString,
   type JsonObject,
-} from '../learning/common.js';
+} from '#server/modules/learning/common.js';
 import {
   createAssistantService,
   createTurn,
   assistantEventViews,
   type AssistantServiceImpl,
-} from './service.js';
-import { runSearch, testSearchProvider, validateSearchProviderInput } from './search.js';
+} from '#server/modules/assistant/service.js';
+import {
+  runSearch,
+  testSearchProvider,
+  validateSearchProviderInput,
+} from '#server/modules/assistant/search.js';
 
 export { createAssistantService };
 export type { AssistantServiceImpl };
@@ -201,10 +206,34 @@ export function registerAssistantRoutes(
       const input = body(request);
       const content = requiredString(input, 'content', 20000);
       const promptContext = pageContextText(input.pageContext);
+      const providerModelId =
+        input.providerModelId === undefined || input.providerModelId === null
+          ? null
+          : requiredString(input, 'providerModelId', 128);
+      if (providerModelId) {
+        // 同步校验，让无效的模型选择立即 422 而不是进入轮次后失败。
+        const model = await ctx.db.get('providerModels', providerModelId);
+        const connection = model
+          ? await ctx.db.get('modelConnections', model.connectionId)
+          : undefined;
+        assert(
+          model && model.enabled && connection?.enabled,
+          'INVALID_MODEL',
+          '模型不存在或未启用，请在对话中重新选择',
+          422,
+        );
+      }
       const active = await findActiveTurn(ctx, thread.id);
       if (active)
         throw new AppError(409, 'ACTIVE_TURN_EXISTS', '当前对话仍在处理上一条消息，请稍候');
-      const handle = await createTurn(ctx, actor.userId, thread.id, content, promptContext);
+      const handle = await createTurn(
+        ctx,
+        actor.userId,
+        thread.id,
+        content,
+        promptContext,
+        providerModelId,
+      );
       const title = thread.title === '新对话' ? content.slice(0, 30) || thread.title : thread.title;
       await ctx.db.update('assistantThreads', thread.id, thread.revision, {
         title,
@@ -260,7 +289,9 @@ export function registerAssistantRoutes(
     });
     raw.setTimeout?.(0);
     let lastSeq = after;
-    const listener = (frame: import('./service.js').AssistantStreamFrame): void => {
+    const listener = (
+      frame: import('#server/modules/assistant/service.js').AssistantStreamFrame,
+    ): void => {
       if (frame.kind === 'event' && frame.event) {
         if (frame.event.seq <= lastSeq) return;
         lastSeq = frame.event.seq;
@@ -293,17 +324,36 @@ export function registerAssistantRoutes(
     return { data: { cancelled: true } };
   });
 
+  app.get(`${API_PREFIX}/me/assistant/models`, async (request) => {
+    await ctx.requireUser(request);
+    const connections = await ctx.db.list('modelConnections', { enabled: true });
+    const byId = new Map(connections.map((connection) => [connection.id, connection]));
+    const models = (await ctx.db.list('providerModels', { enabled: true })).filter((model) =>
+      byId.has(model.connectionId),
+    );
+    const options: AssistantModelOption[] = models.map((model) => {
+      const connection = byId.get(model.connectionId)!;
+      return {
+        id: model.id,
+        connectionId: model.connectionId,
+        connectionName: connection.displayName,
+        modelKey: model.modelKey,
+        displayName: model.displayName,
+        reasoning: model.reasoning,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+        costPerMillion: model.costPerMillion,
+      };
+    });
+    return { data: options };
+  });
+
   app.get(`${API_PREFIX}/me/assistant/status`, async (request) => {
     await ctx.requireUser(request);
-    const settings = await ctx.db.get('assistantSettings', 'global');
-    let modelConfigured = false;
-    if (settings?.defaultProviderModelId) {
-      const model = await ctx.db.get('providerModels', settings.defaultProviderModelId);
-      if (model?.enabled) {
-        const connection = await ctx.db.get('modelConnections', model.connectionId);
-        modelConfigured = Boolean(connection?.enabled);
-      }
-    }
+    const connections = await ctx.db.list('modelConnections', { enabled: true });
+    const enabledConnectionIds = new Set(connections.map((connection) => connection.id));
+    const models = await ctx.db.list('providerModels', { enabled: true });
+    const modelConfigured = models.some((model) => enabledConnectionIds.has(model.connectionId));
     const providers = await ctx.db.list('searchProviders', { enabled: true });
     const mcp = await ctx.db.list('mcpServers', { enabled: true });
     const skills = await ctx.db.list('assistantSkills', { enabled: true });
@@ -706,57 +756,5 @@ export function registerAssistantRoutes(
     });
     reply.code(204);
     return reply.send();
-  });
-
-  // ===== 管理员：助手设置 =====
-  async function ensureAssistantSettings() {
-    let settings = await ctx.db.get('assistantSettings', 'global');
-    if (!settings) {
-      settings = {
-        ...baseRecord(),
-        id: 'global',
-        defaultProviderModelId: null,
-        maxSearchResults: 5,
-        maxConcurrency: 1,
-        turnTimeoutMs: 600000,
-      };
-      await ctx.db.insert('assistantSettings', settings);
-    }
-    return settings;
-  }
-
-  app.get(`${API_PREFIX}/admin/assistant-settings`, async (request) => {
-    await ctx.requireAdmin(request);
-    return { data: await ensureAssistantSettings() };
-  });
-
-  app.patch(`${API_PREFIX}/admin/assistant-settings`, async (request) => {
-    const actor = await ctx.requireAdmin(request);
-    const input = body(request);
-    const revision = expectedRevision(input);
-    const saved = await ensureAssistantSettings();
-    checkRevision(saved, revision);
-    const updates: Partial<typeof saved> = {};
-    if (input.defaultProviderModelId !== undefined) {
-      if (input.defaultProviderModelId === null) {
-        updates.defaultProviderModelId = null;
-      } else {
-        const model = await ctx.db.get('providerModels', String(input.defaultProviderModelId));
-        assert(model && model.enabled, 'INVALID_MODEL', '模型不存在或未启用', 422);
-        const connection = await ctx.db.get('modelConnections', model.connectionId);
-        assert(connection?.enabled, 'INVALID_MODEL', '模型所属连接未启用', 422);
-        updates.defaultProviderModelId = model.id;
-      }
-    }
-    if (input.maxSearchResults !== undefined)
-      updates.maxSearchResults = positiveInteger(input.maxSearchResults, 'maxSearchResults', 10);
-    if (input.maxConcurrency !== undefined)
-      updates.maxConcurrency = positiveInteger(input.maxConcurrency, 'maxConcurrency', 4);
-    if (input.turnTimeoutMs !== undefined)
-      updates.turnTimeoutMs = positiveInteger(input.turnTimeoutMs, 'turnTimeoutMs', 900000);
-    const updated = await ctx.db.update('assistantSettings', saved.id, revision, updates);
-    await ctx.audit(actor, 'assistant-settings.update', 'assistantSettings', 'global', {});
-    assistant.invalidateRuntime();
-    return { data: updated };
   });
 }

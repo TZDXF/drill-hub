@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Attempt, AttemptItemSnapshot, GradeResult } from '@drill-hub/contracts';
-import { Database } from '../src/db/database.js';
-import { baseRecord } from '../src/core/ids.js';
-import { optionalScheduledDate } from '../src/modules/learning/common.js';
+import { Database } from '#server/db/database.js';
+import { baseRecord } from '#server/core/ids.js';
+import { optionalScheduledDate } from '#server/modules/learning/common.js';
 import {
   refreshAttempt,
   syncWrongQuestions,
   updateAttemptStatus,
-} from '../src/modules/learning/helpers.js';
+} from '#server/modules/learning/helpers.js';
 
 const databases: Database[] = [];
 afterEach(async () => {

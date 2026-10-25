@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatDate, formatOptionLabel, optionPrefix } from '../src/utils';
+import { formatDate, formatOptionLabel, optionPrefix } from '#learning-client/utils';
 
 afterEach(() => {
   vi.unstubAllEnvs();

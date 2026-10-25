@@ -1,6 +1,6 @@
 import type { TokenUsageReport, TokenUsageTotals } from '@drill-hub/contracts';
-import type { Database } from '../../db/database.js';
-import { assert } from '../../core/errors.js';
+import type { Database } from '#server/db/database.js';
+import { assert } from '#server/core/errors.js';
 
 export function emptyUsageTotals(): TokenUsageTotals {
   return {

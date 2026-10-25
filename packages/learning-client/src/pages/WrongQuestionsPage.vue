@@ -4,14 +4,18 @@ import { useI18n } from 'vue-i18n';
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { AttemptView, WrongQuestionListItem } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { asAttemptView, wrongPracticeRequest, type WrongQuestionDetailView } from '../types';
-import { errorMessage, formatDate } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
-import AppSelect from '../components/AppSelect.vue';
+import { useLearning } from '#learning-client/injection';
+import {
+  asAttemptView,
+  wrongPracticeRequest,
+  type WrongQuestionDetailView,
+} from '#learning-client/types';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import AppSelect from '#learning-client/components/AppSelect.vue';
 
 const { t } = useI18n();
 

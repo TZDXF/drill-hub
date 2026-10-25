@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { computed, ref } from 'vue';
-import { useLearning } from '../injection';
-import { copyTextToClipboard } from '../utils';
-import AppIcon from './AppIcon.vue';
+import { useLearning } from '#learning-client/injection';
+import { copyTextToClipboard } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t } = useI18n();
 

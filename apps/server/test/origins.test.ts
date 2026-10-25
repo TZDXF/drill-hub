@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../src/app.js';
+import { createApp } from '#server/app.js';
 
 const apps: FastifyInstance[] = [];
 const password = 'Test-only-password-42!';

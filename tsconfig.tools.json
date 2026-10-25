@@ -1,11 +1,18 @@
 {
-  "extends": "./tsconfig.base.json",
+  "extends": "@drill-hub/tsconfig/base.json",
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
     "types": ["node"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "#server/*": ["apps/server/src/*"],
+      "#learning-client/*": ["packages/learning-client/src/*"],
+      "#mobile/*": ["apps/mobile/src/*"],
+      "#api-client/*": ["packages/api-client/src/*"]
+    }
   },
   "include": [
     "vitest.config.ts",

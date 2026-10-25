@@ -6,7 +6,7 @@ import type {
   StoredMobileSession,
   UserView,
 } from '@drill-hub/contracts';
-import { createLearningContext } from '../src/context';
+import { createLearningContext } from '#learning-client/context';
 
 const connection: ServerConnection = {
   baseUrl: 'https://study.example.org',

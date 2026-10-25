@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#web/*.vue": "./src/*.vue",
+    "#web/*.json": "./src/*.json",
+    "#web/*.js": "./src/*.ts",
+    "#web/*": "./src/*.ts"
+  },
   "scripts": {
     "dev": "vite build --watch --mode development",
     "dev:vite": "vite --host 0.0.0.0",
@@ -17,6 +23,7 @@
     "vue": "3.5.44"
   },
   "devDependencies": {
+    "@drill-hub/tsconfig": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@vitejs/plugin-vue": "6.0.10",
     "tailwindcss": "4.3.3",

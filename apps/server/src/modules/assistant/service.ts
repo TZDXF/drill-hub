@@ -1,17 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import type { AssistantEventView, ModelTokenUsage } from '@drill-hub/contracts';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
-import { AppError } from '../../core/errors.js';
-import { baseRecord, id, now } from '../../core/ids.js';
-import { signInternalToken } from '../../core/internal-auth.js';
-import type { Actor, AppContext, AssistantService } from '../../core/context.js';
-import type { AssistantEventRecord, AssistantTurnRecord } from '../../db/records.js';
-import { createAssistantTools } from './tools.js';
-import { PiSessionFactory } from './pi-session.js';
+import { AppError } from '#server/core/errors.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
+import { signInternalToken } from '#server/core/internal-auth.js';
+import type { Actor, AppContext, AssistantService } from '#server/core/context.js';
+import type { AssistantEventRecord, AssistantTurnRecord } from '#server/db/records.js';
+import { createAssistantTools } from '#server/modules/assistant/tools.js';
+import { PiSessionFactory } from '#server/modules/assistant/pi-session.js';
 
 const HISTORY_MESSAGE_LIMIT = 20;
 const TEXT_FLUSH_INTERVAL_MS = 1000;
-const DEFAULT_TURN_TIMEOUT_MS = 600000;
+/** internal token 覆盖整轮执行（不再受单轮超时限制），给足余量即可。 */
+const INTERNAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AssistantStreamFrame {
   kind: 'event' | 'text_delta' | 'heartbeat';
@@ -22,7 +23,7 @@ export interface AssistantStreamFrame {
 export type StreamListener = (frame: AssistantStreamFrame) => void;
 
 export interface AssistantServiceImpl extends AssistantService {
-  /** 将已创建的一轮对话加入执行队列（受 maxConcurrency 并发限制）。 */
+  /** 将已创建的一轮对话加入执行队列（各线程互不阻塞，不限制同时执行的轮数）。 */
   enqueue(turnId: string): void;
   subscribe(threadId: string, listener: StreamListener): () => void;
   /** SSE 订阅时回放断线期间落库的事件，跳过监听器已收到的序号。 */
@@ -43,13 +44,6 @@ export function createAssistantService(
   const seqCounters = new Map<string, number>();
   const listeners = new Map<string, Set<StreamListener>>();
   const active = new Map<string, { abort: AbortController; session: AgentSession | null }>();
-  const pending: string[] = [];
-  let running = 0;
-  let pumping = false;
-
-  async function readSettings() {
-    return ctx.db.get('assistantSettings', 'global');
-  }
 
   async function nextSeq(threadId: string): Promise<number> {
     let last = seqCounters.get(threadId);
@@ -124,34 +118,9 @@ export function createAssistantService(
     }
   }
 
-  function pump(): void {
-    if (pumping) return;
-    pumping = true;
-    void (async () => {
-      try {
-        for (;;) {
-          const settings = await readSettings();
-          const limit = settings?.maxConcurrency ?? 1;
-          if (running >= limit || !pending.length) break;
-          const turnId = pending.shift();
-          if (!turnId) break;
-          running += 1;
-          void runTurnNow(turnId)
-            .catch(() => {})
-            .finally(() => {
-              running -= 1;
-              pump();
-            });
-        }
-      } finally {
-        pumping = false;
-      }
-    })();
-  }
-
   function enqueueTurn(turnId: string): void {
-    pending.push(turnId);
-    pump();
+    // 每轮独立执行：同线程的互斥由 ACTIVE_TURN_EXISTS 保证，跨线程不设并发上限。
+    void runTurnNow(turnId).catch(() => {});
   }
 
   async function finishTurn(
@@ -197,14 +166,13 @@ export function createAssistantService(
     turnId: string,
     succeeded: boolean,
     usage: ModelTokenUsage | null,
+    model: { connectionId: string; modelKey: string },
   ): Promise<void> {
-    const info = factory.runtimeInfo();
-    if (!info) return;
     await ctx.db.insert('modelUsage', {
       ...baseRecord(),
       ownerId,
-      connectionId: info.connectionId,
-      modelKey: info.modelKey,
+      connectionId: model.connectionId,
+      modelKey: model.modelKey,
       purpose: 'assistant',
       jobId: turnId,
       status: succeeded ? 'succeeded' : 'failed',
@@ -229,17 +197,17 @@ export function createAssistantService(
       channel: 'mobile',
       scopes: [],
     };
-    const settings = await readSettings();
-    const turnTimeoutMs = settings?.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     const internalToken = signInternalToken({
       secret: ctx.config.encryptionKey,
       userId: actor.userId,
       turnId,
       role: actor.role,
-      expiresAt: Date.now() + turnTimeoutMs + 600000,
+      expiresAt: Date.now() + INTERNAL_TOKEN_TTL_MS,
     });
 
     let session: AgentSession | null = null;
+    let usedModel: { connectionId: string; modelKey: string; providerModelId: string } | null =
+      null;
     let accumulated = '';
     let usageTotal: ModelTokenUsage | null = null;
     const controller = new AbortController();
@@ -253,7 +221,13 @@ export function createAssistantService(
         internalToken,
         emitEvent: (type, payload) => emit(turn.ownerId, turn.threadId, turnId, type, payload),
       });
-      session = await factory.buildSession({ app, customTools: tools });
+      const built = await factory.buildSession({
+        app,
+        customTools: tools,
+        providerModelId: turn.providerModelId,
+      });
+      session = built.session;
+      usedModel = built.resolved;
       active.get(turnId)!.session = session;
       await emit(turn.ownerId, turn.threadId, turnId, 'status', { phase: 'model_call' });
 
@@ -331,24 +305,13 @@ export function createAssistantService(
       const history = await loadHistory(turn.threadId, turn.userMessageId);
       const currentUser = await ctx.db.get('assistantMessages', turn.userMessageId);
       const contextPrefix = turn.promptContext ? `${turn.promptContext}\n\n` : '';
-      const timeout = setTimeout(() => {
-        controller.abort();
-        try {
-          void session?.abort();
-        } catch {
-          // 中止失败由 prompt 的异常路径兜底。
-        }
-      }, turnTimeoutMs);
-      try {
-        await session.prompt(contextPrefix + formatPrompt(history, currentUser?.content ?? ''));
-      } finally {
-        clearTimeout(timeout);
-      }
+      // 不再设置单轮超时；用户可随时通过 cancelTurn 主动取消。
+      await session.prompt(contextPrefix + formatPrompt(history, currentUser?.content ?? ''));
 
       const finalText = session.getLastAssistantText() ?? accumulated;
       await finishMessage(turn.assistantMessageId, finalText || accumulated, 'complete', null);
       await finishTurn(turnId, 'succeeded', null);
-      await recordUsage(turn.ownerId, turnId, true, usageTotal);
+      await recordUsage(turn.ownerId, turnId, true, usageTotal, usedModel!);
       await emit(turn.ownerId, turn.threadId, turnId, 'status', { phase: 'turn_completed' });
     } catch (error) {
       const cancelled = controller.signal.aborted;
@@ -365,7 +328,7 @@ export function createAssistantService(
         code,
       );
       await finishTurn(turnId, cancelled ? 'cancelled' : 'failed', code);
-      await recordUsage(turn.ownerId, turnId, false, usageTotal);
+      if (usedModel) await recordUsage(turn.ownerId, turnId, false, usageTotal, usedModel);
       await emit(turn.ownerId, turn.threadId, turnId, 'error', { code, message });
     } finally {
       if (flushTimer) clearInterval(flushTimer);
@@ -446,7 +409,6 @@ export function createAssistantService(
         }
       }
       active.clear();
-      pending.length = 0;
     },
     subscribe,
     replay,
@@ -460,6 +422,7 @@ export async function createTurn(
   threadId: string,
   content: string,
   promptContext: string | null = null,
+  providerModelId: string | null = null,
 ): Promise<TurnHandle> {
   const userMessage = {
     ...baseRecord(),
@@ -490,6 +453,7 @@ export async function createTurn(
     status: 'queued' as const,
     errorCode: null,
     promptContext: null,
+    providerModelId,
   };
   await ctx.db.insert('assistantTurns', turn);
   if (promptContext) {

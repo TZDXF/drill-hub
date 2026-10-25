@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Answer, QuestionDefinition } from '@drill-hub/contracts';
-import { AppError } from '../src/core/errors.js';
+import { AppError } from '#server/core/errors.js';
 import {
   gradeBlankRubric,
   gradeRubric,
@@ -9,7 +9,7 @@ import {
   validateAnswer,
   validateQuestion,
   zeroCriterionEvaluations,
-} from '../src/modules/grading/engine.js';
+} from '#server/modules/grading/engine.js';
 
 function rubricCriterion(id: string, weight = 1, slotId?: string) {
   return {

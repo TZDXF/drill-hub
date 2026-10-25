@@ -2,9 +2,9 @@
 import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { LearningPlan } from '@drill-hub/contracts';
-import AppDialog from './AppDialog.vue';
-import AppIcon from './AppIcon.vue';
-import PlanOutline from './PlanOutline.vue';
+import AppDialog from '#learning-client/components/AppDialog.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import PlanOutline from '#learning-client/components/PlanOutline.vue';
 
 const { t } = useI18n();
 

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { LogFilters } from '@drill-hub/contracts';
-import type { Actor, AppContext } from '../../core/context.js';
-import { AppError } from '../../core/errors.js';
-import { baseRecord } from '../../core/ids.js';
+import type { Actor, AppContext } from '#server/core/context.js';
+import { AppError } from '#server/core/errors.js';
+import { baseRecord } from '#server/core/ids.js';
 
 declare module 'fastify' {
   interface FastifyRequest {

@@ -1,5 +1,5 @@
 import { inject, type InjectionKey } from 'vue';
-import type { LearningContext } from './context';
+import type { LearningContext } from '#learning-client/context';
 
 export const learningContextKey: InjectionKey<LearningContext> = Symbol('learning-context');
 

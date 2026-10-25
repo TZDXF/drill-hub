@@ -5,19 +5,24 @@ import type {
   GradingJob,
   GradingProfile,
   ModelConnectionView,
+  ModelCostRates,
   ProviderModel,
 } from '@drill-hub/contracts';
-import type { Actor, AppContext } from '../../core/context.js';
-import { AppError, assert } from '../../core/errors.js';
-import { baseRecord, now } from '../../core/ids.js';
-import type { Database } from '../../db/database.js';
-import type { ModelConnectionRecord } from '../../db/records.js';
-import { refreshAttempt } from '../learning/helpers.js';
-import { normalizeProviderBaseUrl, ProviderError } from './chat-completions.js';
-import { gradeRubric, isBlankAnswer } from './engine.js';
-import { gradingRuntime, isActiveGradingJob } from './service.js';
+import type { Actor, AppContext } from '#server/core/context.js';
+import { AppError, assert } from '#server/core/errors.js';
+import { baseRecord, now } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
+import type { ModelConnectionRecord } from '#server/db/records.js';
+import { refreshAttempt } from '#server/modules/learning/helpers.js';
+import {
+  normalizeProviderBaseUrl,
+  ProviderError,
+} from '#server/modules/grading/chat-completions.js';
+import { gradeRubric, isBlankAnswer } from '#server/modules/grading/engine.js';
+import { fetchModelsCatalog, searchModelsCatalog } from '#server/modules/grading/models-dev.js';
+import { gradingRuntime, isActiveGradingJob } from '#server/modules/grading/service.js';
 
-import { tokenUsageReport } from './token-usage.js';
+import { tokenUsageReport } from '#server/modules/grading/token-usage.js';
 
 const PREFIX = '/api/v1';
 type JsonObject = Record<string, unknown>;
@@ -105,6 +110,72 @@ function modelImportInput(value: unknown): Array<{ modelKey: string; displayName
         : requiredText(entry.displayName, `models[${index}].displayName`, 200);
     return { modelKey, ...(displayName ? { displayName } : {}) };
   });
+}
+
+/** 模型的默认参数（pi-x 风格）：上下文窗口、最大输出、推理能力、输入类型与价格费率。 */
+type ModelConfigPatch = {
+  contextWindow?: number | null;
+  maxTokens?: number | null;
+  reasoning?: boolean;
+  input?: ('text' | 'image')[];
+  costPerMillion?: ModelCostRates | null;
+};
+
+function optionalModelConfig(value: JsonObject): ModelConfigPatch {
+  const config: ModelConfigPatch = {};
+  if (value.contextWindow !== undefined) {
+    assert(
+      value.contextWindow === null ||
+        (Number.isInteger(value.contextWindow) && (value.contextWindow as number) >= 1),
+      'INVALID_FIELD',
+      'contextWindow 必须是正整数或 null',
+    );
+    config.contextWindow = value.contextWindow as number | null;
+  }
+  if (value.maxTokens !== undefined) {
+    assert(
+      value.maxTokens === null ||
+        (Number.isInteger(value.maxTokens) && (value.maxTokens as number) >= 1),
+      'INVALID_FIELD',
+      'maxTokens 必须是正整数或 null',
+    );
+    config.maxTokens = value.maxTokens as number | null;
+  }
+  if (value.reasoning !== undefined) config.reasoning = optionalBoolean(value.reasoning, false);
+  if (value.input !== undefined) {
+    assert(
+      Array.isArray(value.input) &&
+        value.input.length > 0 &&
+        value.input.every((item) => item === 'text' || item === 'image'),
+      'INVALID_FIELD',
+      'input 只允许 "text" / "image"',
+    );
+    config.input = value.input as ('text' | 'image')[];
+  }
+  if (value.costPerMillion !== undefined) {
+    if (value.costPerMillion === null) {
+      config.costPerMillion = null;
+    } else {
+      const cost = value.costPerMillion;
+      assert(
+        cost !== null && typeof cost === 'object' && !Array.isArray(cost),
+        'INVALID_FIELD',
+        'costPerMillion 必须是对象',
+      );
+      const rates: Partial<ModelCostRates> = {};
+      for (const field of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) {
+        const amount = (cost as JsonObject)[field];
+        assert(
+          typeof amount === 'number' && Number.isFinite(amount) && amount >= 0,
+          'INVALID_FIELD',
+          `costPerMillion.${field} 必须是非负数字（美元/百万 tokens）`,
+        );
+        rates[field] = amount;
+      }
+      config.costPerMillion = rates as ModelCostRates;
+    }
+  }
+  return config;
 }
 
 function connectionView(record: ModelConnectionRecord): ModelConnectionView {
@@ -334,6 +405,22 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       ],
     };
   });
+
+  // models.dev 公共目录：按关键词搜索模型的默认参数与价格（美元/百万 tokens）。
+  app.get<{ Querystring: Record<string, unknown> }>(
+    `${PREFIX}/admin/models-catalog`,
+    async (request) => {
+      await ctx.requireAdmin(request);
+      const queryValue = request.query.q;
+      assert(
+        typeof queryValue === 'string' && queryValue.trim().length >= 2 && queryValue.length <= 200,
+        'INVALID_QUERY',
+        'q 必须是 2 至 200 个字符',
+      );
+      const catalog = await fetchModelsCatalog();
+      return { data: searchModelsCatalog(catalog, queryValue) };
+    },
+  );
 
   app.get(`${PREFIX}/admin/model-connections`, async (request) => {
     await ctx.requireAdmin(request);
@@ -579,6 +666,11 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
             enabled: true,
             verifiedConfigVersion: null,
             testError: null,
+            contextWindow: null,
+            maxTokens: null,
+            reasoning: false,
+            input: ['text'],
+            costPerMillion: null,
           });
           created.push(record);
         }
@@ -616,13 +708,23 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
     async (request, reply) => {
       const actor = await ctx.requireAdmin(request);
       const input = body(request);
-      keys(input, ['modelKey', 'displayName', 'enabled']);
+      keys(input, [
+        'modelKey',
+        'displayName',
+        'enabled',
+        'contextWindow',
+        'maxTokens',
+        'reasoning',
+        'input',
+        'costPerMillion',
+      ]);
       const modelKey = requiredText(input.modelKey, 'modelKey', 512);
       const displayName =
         input.displayName === undefined
           ? modelKey
           : requiredText(input.displayName, 'displayName', 200);
       const enabled = optionalBoolean(input.enabled, true);
+      const config = optionalModelConfig(input);
       const model = await ctx.db.transaction(async (tx) => {
         assert(
           await tx.get('modelConnections', request.params.id),
@@ -644,6 +746,11 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
           enabled,
           verifiedConfigVersion: null,
           testError: null,
+          contextWindow: config.contextWindow ?? null,
+          maxTokens: config.maxTokens ?? null,
+          reasoning: config.reasoning ?? false,
+          input: config.input ?? ['text'],
+          costPerMillion: config.costPerMillion ?? null,
         });
         await ctx.audit(
           actor,
@@ -663,8 +770,19 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
   app.patch<{ Params: { id: string } }>(`${PREFIX}/admin/provider-models/:id`, async (request) => {
     const actor = await ctx.requireAdmin(request);
     const input = body(request);
-    keys(input, ['expectedRevision', 'modelKey', 'displayName', 'enabled']);
+    keys(input, [
+      'expectedRevision',
+      'modelKey',
+      'displayName',
+      'enabled',
+      'contextWindow',
+      'maxTokens',
+      'reasoning',
+      'input',
+      'costPerMillion',
+    ]);
     const revision = expectedRevision(input);
+    const config = optionalModelConfig(input);
     const updated = await ctx.db.transaction(async (tx) => {
       const current = await tx.get('providerModels', request.params.id);
       assert(current, 'NOT_FOUND', '模型不存在', 404);
@@ -694,6 +812,11 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         modelKey,
         displayName,
         enabled,
+        ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
+        ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+        ...(config.reasoning !== undefined ? { reasoning: config.reasoning } : {}),
+        ...(config.input !== undefined ? { input: config.input } : {}),
+        ...(config.costPerMillion !== undefined ? { costPerMillion: config.costPerMillion } : {}),
         verifiedConfigVersion: identityChanged ? null : current.verifiedConfigVersion,
         testError: identityChanged ? null : (current.testError ?? null),
       });

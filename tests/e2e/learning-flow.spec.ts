@@ -7,7 +7,7 @@ import type {
   Topic,
   Assessment,
 } from '@drill-hub/contracts';
-import { closeQuestionNav, login, openQuestionNav } from './helpers';
+import { closeQuestionNav, login, openQuestionNav } from '#e2e/helpers';
 
 async function post<T>(
   request: APIRequestContext,

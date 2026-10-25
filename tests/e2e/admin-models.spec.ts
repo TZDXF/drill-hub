@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { GradingProfile, ModelConnectionView, ProviderModel } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('评分配置支持更换模型、并发设置以及列表快速切换', async ({ page }) => {
   await login(page);
@@ -28,6 +28,11 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
     enabled: true,
     verifiedConfigVersion: key === 'unverified' ? null : 1,
     testError: null,
+    contextWindow: 128000,
+    maxTokens: 16384,
+    reasoning: false,
+    input: ['text'],
+    costPerMillion: null,
   }));
   const profiles: GradingProfile[] = [];
   const writes: Record<string, unknown>[] = [];
@@ -92,9 +97,8 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
   const unverified = page
     .locator('.list-card')
     .filter({ has: page.getByRole('heading', { name: 'unverified 模型', exact: true }) });
-  await expect(
-    unverified.getByRole('button', { name: '设为评分模型', exact: true }),
-  ).toBeDisabled();
+  // 模型无需评分测试即可设为评分模型（提交 5d44a6b）。
+  await expect(unverified.getByRole('button', { name: '设为评分模型', exact: true })).toBeEnabled();
   const layout = await alpha.evaluate((card) => ({
     bodyWidth: card.querySelector('.list-card__body')!.getBoundingClientRect().width,
     overflow: document.documentElement.scrollWidth > window.innerWidth,

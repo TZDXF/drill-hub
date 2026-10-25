@@ -1,13 +1,13 @@
 import type { LearningPlan, LearningTask, PlanPhase, TaskKind } from '@drill-hub/contracts';
-import { id } from '../../core/ids.js';
-import type { Database } from '../../db/database.js';
+import { id } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
 import {
   assert,
   isRecord,
   optionalScheduledDate,
   positiveInteger,
   requiredString,
-} from './common.js';
+} from '#server/modules/learning/common.js';
 
 const TASK_KINDS = new Set<TaskKind>(['reading', 'practice', 'exam', 'manual']);
 

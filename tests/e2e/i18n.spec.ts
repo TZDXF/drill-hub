@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('中英切换默认中文，两个入口按视口展示，并持久保存语言选择', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'chromium-mobile';

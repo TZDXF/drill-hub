@@ -1,16 +1,16 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { workspacePath } from '#server/core/paths.js';
 import Fastify from 'fastify';
 import type { Answer, QuestionDefinition } from '@drill-hub/contracts';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { AppContext } from '../src/core/context.js';
-import { AppError } from '../src/core/errors.js';
-import { registerLearningRoutes } from '../src/modules/learning/index.js';
-import { registerGradingRoutes } from '../src/modules/grading/routes.js';
-import { gradeRubric, validateQuestion } from '../src/modules/grading/engine.js';
+import type { AppContext } from '#server/core/context.js';
+import { AppError } from '#server/core/errors.js';
+import { registerLearningRoutes } from '#server/modules/learning/index.js';
+import { registerGradingRoutes } from '#server/modules/grading/routes.js';
+import { gradeRubric, validateQuestion } from '#server/modules/grading/engine.js';
 
-const skillRoot = fileURLToPath(new URL('../../../skills/drill-hub/', import.meta.url));
+const skillRoot = workspacePath('skills', 'drill-hub');
 const resourceRoot = resolve(skillRoot, 'references/resources');
 const app = Fastify();
 const registered = new Set<string>();
@@ -105,7 +105,11 @@ describe('Agent API documentation', () => {
       for (const [, target] of markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
         if (/^[a-z]+:/i.test(target!)) continue;
         const [file, anchor] = target!.split('#');
-        const linked = file ? resolve(dirname(path), file) : path;
+        const linked = file
+          ? file.startsWith('@skill/')
+            ? resolve(skillRoot, file.slice('@skill/'.length))
+            : resolve(dirname(path), file)
+          : path;
         expect((await stat(linked)).isFile()).toBe(true);
         if (anchor) anchorLinks.push({ path: linked, anchor });
         if (expected.includes(linked) && !visited.has(linked)) pending.push(linked);

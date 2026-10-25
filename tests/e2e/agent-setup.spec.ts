@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { Extract } from 'unzip-stream';
 import { expect, test } from '@playwright/test';
 import { AGENT_SCOPES } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 const copiedTextKey = '__drillHubCopiedHelp';
 

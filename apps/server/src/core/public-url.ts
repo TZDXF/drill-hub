@@ -1,5 +1,5 @@
 import type { FastifyRequest } from 'fastify';
-import { AppError } from './errors.js';
+import { AppError } from '#server/core/errors.js';
 
 type PublicUrlRequest = { protocol: string; headers: FastifyRequest['headers'] };
 

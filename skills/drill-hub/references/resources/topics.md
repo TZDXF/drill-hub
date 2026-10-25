@@ -1,6 +1,6 @@
 # 学习主题
 
-[API 索引与通用协议](../api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
+[API 索引与通用协议](@skill/references/api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
 
 | 方法  | 路径                        | scope           | 成功状态 | 说明     |
 | ----- | --------------------------- | --------------- | -------- | -------- |
@@ -12,7 +12,7 @@
 
 列表返回 `Topic[]`；创建、修改返回 `Topic`。
 
-- [通用记录字段](../api.md#通用记录字段)：`id`、`createdAt`、`updatedAt`、`revision`、`ownerId`、`archivedAt`。
+- [通用记录字段](@skill/references/api.md#通用记录字段)：`id`、`createdAt`、`updatedAt`、`revision`、`ownerId`、`archivedAt`。
 - `title`: string — 主题标题。
 - `goalText`: string — 学习目标，省略创建字段时返回空字符串。
 

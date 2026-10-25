@@ -1,8 +1,8 @@
 import type { FastifyRequest } from 'fastify';
 import type { Attempt, BaseRecord } from '@drill-hub/contracts';
-import { AppError } from '../../core/errors.js';
-import type { Database } from '../../db/database.js';
-import type { DatabaseTables } from '../../db/records.js';
+import { AppError } from '#server/core/errors.js';
+import type { Database } from '#server/db/database.js';
+import type { DatabaseTables } from '#server/db/records.js';
 
 export const API_PREFIX = '/api/v1';
 export type JsonObject = Record<string, unknown>;

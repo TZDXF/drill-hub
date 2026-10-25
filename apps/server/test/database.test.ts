@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, rm, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Database } from '../src/db/database.js';
+import { Database } from '#server/db/database.js';
 import { DataSource } from 'typeorm';
-import { InitialSchema1792195200000, AddAnswerLinks1792195200001 } from '../src/db/schema.js';
-import { baseRecord } from '../src/core/ids.js';
+import { InitialSchema1792195200000, AddAnswerLinks1792195200001 } from '#server/db/schema.js';
+import { baseRecord } from '#server/core/ids.js';
 describe('SQLite storage and migrations', () => {
   it('opens via the options form with an explicit sqlite driver', async () => {
     const db = await Database.open({ driver: 'sqlite', database: ':memory:' });

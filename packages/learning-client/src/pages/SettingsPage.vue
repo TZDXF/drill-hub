@@ -3,16 +3,16 @@ import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { UserView } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { useLocale } from '../i18n';
-import { cycleThemePreference, themePreference } from '../theme';
-import type { SessionView } from '../types';
-import { errorMessage, formatDate } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppIcon from '../components/AppIcon.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
-import EmptyState from '../components/EmptyState.vue';
+import { useLearning } from '#learning-client/injection';
+import { useLocale } from '#learning-client/i18n';
+import { cycleThemePreference, themePreference } from '#learning-client/theme';
+import type { SessionView } from '#learning-client/types';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
 
 const { t } = useI18n();
 

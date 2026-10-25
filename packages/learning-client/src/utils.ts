@@ -1,5 +1,5 @@
 import { ApiError } from '@drill-hub/api-client';
-import { appLocale, i18n } from './i18n';
+import { appLocale, i18n } from '#learning-client/i18n';
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
 type TranslateExists = (key: string, locale?: string) => boolean;

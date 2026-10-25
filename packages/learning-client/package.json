@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#learning-client/*.css": "./src/*.css",
+    "#learning-client/*.vue": "./src/*.vue",
+    "#learning-client/*.json": "./src/*.json",
+    "#learning-client/*.js": "./src/*.ts",
+    "#learning-client/*": "./src/*.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./style.css": "./src/style.css"
@@ -31,6 +38,7 @@
     "vue-stream-markdown": "2.1.0"
   },
   "devDependencies": {
+    "@drill-hub/tsconfig": "workspace:*",
     "tailwindcss": "4.3.3",
     "vite": "8.3.4",
     "vue-tsc": "3.3.13"

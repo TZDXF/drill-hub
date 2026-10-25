@@ -7,13 +7,13 @@ import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Content, LearningPlan } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { planNavigationQuery, planReturnLocation } from '../planNavigation';
-import { errorMessage, formatDate } from '../utils';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
-import PlanOutlineNav from '../components/PlanOutlineNav.vue';
-import MessageResponse from '../components/ai-elements/message/MessageResponse.vue';
+import { useLearning } from '#learning-client/injection';
+import { planNavigationQuery, planReturnLocation } from '#learning-client/planNavigation';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import PlanOutlineNav from '#learning-client/components/PlanOutlineNav.vue';
+import MessageResponse from '#learning-client/components/ai-elements/message/MessageResponse.vue';
 
 const { t } = useI18n();
 

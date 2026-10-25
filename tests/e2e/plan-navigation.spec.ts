@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import type { ApiResponse, Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 async function createPlan(page: Page, kind: 'reading' | 'practice' | 'exam') {
   await login(page);

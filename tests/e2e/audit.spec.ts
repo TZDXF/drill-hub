@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { login, testCredentials } from './helpers';
+import { login, testCredentials } from '#e2e/helpers';
 
 test('管理员审计页提供三类日志、筛选、分页和移动布局', async ({ page }, testInfo) => {
   await login(page);

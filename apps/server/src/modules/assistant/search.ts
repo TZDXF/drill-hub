@@ -1,12 +1,12 @@
 import type { SearchProviderKind, SearchResultItem } from '@drill-hub/contracts';
-import { AppError } from '../../core/errors.js';
+import { AppError } from '#server/core/errors.js';
 import {
   ProviderNetworkError,
   assertProviderHost,
   publicProviderDispatcher,
-} from '../../core/provider-network.js';
-import type { SearchProviderRecord } from '../../db/records.js';
-import type { JsonObject } from '../learning/common.js';
+} from '#server/core/provider-network.js';
+import type { SearchProviderRecord } from '#server/db/records.js';
+import type { JsonObject } from '#server/modules/learning/common.js';
 
 const DEFAULT_BASE_URLS: Record<SearchProviderKind, string | null> = {
   tavily: 'https://api.tavily.com',
@@ -208,7 +208,7 @@ export async function runSearch(input: {
   allowPrivate: boolean;
 }): Promise<SearchResultItem[]> {
   const { provider, apiKey, query, maxResults, allowPrivate } = input;
-  const limit = Math.min(Math.max(maxResults, 1), 10);
+  const limit = Math.max(maxResults, 1);
   let parsed: SearchResultItem[];
   if (provider.kind === 'tavily') {
     const url = new URL(`${provider.baseUrl}/search`);

@@ -3,19 +3,19 @@ import { useI18n } from 'vue-i18n';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AttemptItemView, AttemptView } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
+import { useLearning } from '#learning-client/injection';
 import {
   answerText,
   asAttemptView,
   wrongPracticeRequest,
   type WrongQuestionDetailView,
-} from '../types';
-import { errorMessage, formatDate, formatOptionLabel } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppIcon from '../components/AppIcon.vue';
-import GradeFeedback from '../components/GradeFeedback.vue';
-import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
-import EmptyState from '../components/EmptyState.vue';
+} from '#learning-client/types';
+import { errorMessage, formatDate, formatOptionLabel } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import GradeFeedback from '#learning-client/components/GradeFeedback.vue';
+import AttemptChoiceReview from '#learning-client/components/AttemptChoiceReview.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
 
 const { t } = useI18n();
 

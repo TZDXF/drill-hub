@@ -1,17 +1,16 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { workspaceRoot } from '#server/core/paths.js';
 import type { FastifyInstance } from 'fastify';
+import type { ProviderModel } from '@drill-hub/contracts';
 import { ModelRuntime, SessionManager, createAgentSession } from '@earendil-works/pi-coding-agent';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { DefaultResourceLoader } from '@earendil-works/pi-coding-agent';
 import { createMcpExtension } from '@earendil-works/pi-coding-agent';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
-import { AppError } from '../../core/errors.js';
-import type { AppContext } from '../../core/context.js';
-import type { McpServerRecord } from '../../db/records.js';
-
-const workspaceRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+import { AppError } from '#server/core/errors.js';
+import type { AppContext } from '#server/core/context.js';
+import type { McpServerRecord, ModelConnectionRecord } from '#server/db/records.js';
 
 /** 内置助手系统提示词：角色、能力与不可绕过的安全边界。 */
 export const ASSISTANT_SYSTEM_PROMPT = [
@@ -31,10 +30,12 @@ export const ASSISTANT_SYSTEM_PROMPT = [
 interface RuntimeBundle {
   key: string;
   runtime: ModelRuntime;
-  model: Awaited<ReturnType<ModelRuntime['getModel']>>;
+}
+
+export interface ResolvedAssistantModel {
+  providerModelId: string;
   connectionId: string;
   modelKey: string;
-  decryptedApiKey: string | null;
 }
 
 export class PiSessionFactory {
@@ -51,55 +52,76 @@ export class PiSessionFactory {
     await mkdir(join(this.runtimeDir, 'skills'), { recursive: true });
   }
 
-  private async resolveDefaultModel() {
-    const settings = await this.ctx.db.get('assistantSettings', 'global');
-    if (!settings?.defaultProviderModelId)
-      throw new AppError(409, 'ASSISTANT_MODEL_NOT_CONFIGURED', '管理员尚未配置默认助手模型');
-    const model = await this.ctx.db.get('providerModels', settings.defaultProviderModelId);
-    if (!model || !model.enabled)
-      throw new AppError(409, 'ASSISTANT_MODEL_NOT_CONFIGURED', '默认助手模型不可用');
-    const connection = await this.ctx.db.get('modelConnections', model.connectionId);
-    if (!connection || !connection.enabled)
-      throw new AppError(409, 'ASSISTANT_MODEL_NOT_CONFIGURED', '默认助手模型的连接不可用');
+  private async enabledModelsWithConnections() {
+    const connections = await this.ctx.db.list('modelConnections', { enabled: true });
+    const byId = new Map(connections.map((connection) => [connection.id, connection]));
+    const models = (await this.ctx.db.list('providerModels', { enabled: true })).filter((model) =>
+      byId.has(model.connectionId),
+    );
+    // 稳定排序：创建时间正序，保证「自动选择」默认模型可预期。
+    models.sort((left, right) =>
+      left.createdAt === right.createdAt
+        ? left.id.localeCompare(right.id)
+        : left.createdAt.localeCompare(right.createdAt),
+    );
+    return { connections: byId, models };
+  }
+
+  /** 解析本轮使用的模型：显式指定的必须是启用的模型，否则回退到最早的启用模型。 */
+  async resolveModel(
+    providerModelId?: string | null,
+  ): Promise<{ model: ProviderModel; connection: ModelConnectionRecord }> {
+    const { connections, models } = await this.enabledModelsWithConnections();
+    let model: ProviderModel | undefined;
+    if (providerModelId) {
+      model = models.find((entry) => entry.id === providerModelId);
+      if (!model)
+        throw new AppError(422, 'INVALID_MODEL', '模型不存在或未启用，请在对话中重新选择');
+    } else {
+      model = models[0];
+      if (!model)
+        throw new AppError(409, 'ASSISTANT_MODEL_NOT_CONFIGURED', '管理员尚未配置可用的助手模型');
+    }
+    const connection = connections.get(model.connectionId)!;
     return { model, connection };
   }
 
   private async buildRuntimeBundle(): Promise<RuntimeBundle> {
-    const { model, connection } = await this.resolveDefaultModel();
-    const key = [connection.id, connection.configVersion, model.id].join(':');
+    const { connections, models } = await this.enabledModelsWithConnections();
+    const providers: Record<string, unknown> = {};
+    for (const connection of connections.values()) {
+      providers[connection.id] = {
+        baseUrl: connection.baseUrl,
+        api: 'openai-completions',
+        apiKey: 'placeholder',
+        models: models
+          .filter((model) => model.connectionId === connection.id)
+          .map((model) => ({
+            id: model.modelKey,
+            name: model.displayName || model.modelKey,
+            ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+            ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+            ...(model.reasoning ? { reasoning: true } : {}),
+            // 迁移前的旧行 input 为 NULL，按纯文本处理。
+            ...((model.input?.length ?? 0) > 0 ? { input: model.input } : {}),
+            ...(model.costPerMillion ? { cost: model.costPerMillion } : {}),
+          })),
+      };
+    }
+    const key = JSON.stringify(providers);
     if (this.bundle?.key === key) return this.bundle;
     await this.ensureRuntimeDir();
     const modelsPath = join(this.runtimeDir, 'models.json');
-    await writeFile(
-      modelsPath,
-      JSON.stringify({
-        providers: {
-          [connection.id]: {
-            baseUrl: connection.baseUrl,
-            api: 'openai-completions',
-            apiKey: 'placeholder',
-            models: [{ id: model.modelKey, name: model.displayName || model.modelKey }],
-          },
-        },
-      }),
-    );
+    await writeFile(modelsPath, JSON.stringify({ providers }));
     const runtime = await ModelRuntime.create({ modelsPath, refreshOnCreate: false });
-    const decryptedApiKey = connection.encryptedApiKey
-      ? this.ctx.vault.decrypt(connection.encryptedApiKey)
-      : null;
-    // 密钥只在内存中注入 Pi 运行时，不写入任何文件或日志。
-    await runtime.setRuntimeApiKey(connection.id, decryptedApiKey ?? 'placeholder');
-    const resolved = runtime.getModel(connection.id, model.modelKey);
-    if (!resolved)
-      throw new AppError(500, 'ASSISTANT_MODEL_UNAVAILABLE', '助手模型无法在运行时中解析');
-    this.bundle = {
-      key,
-      runtime,
-      model: resolved,
-      connectionId: connection.id,
-      modelKey: model.modelKey,
-      decryptedApiKey,
-    };
+    for (const connection of connections.values()) {
+      const decryptedApiKey = connection.encryptedApiKey
+        ? this.ctx.vault.decrypt(connection.encryptedApiKey)
+        : null;
+      // 密钥只在内存中注入 Pi 运行时，不写入任何文件或日志。
+      await runtime.setRuntimeApiKey(connection.id, decryptedApiKey ?? 'placeholder');
+    }
+    this.bundle = { key, runtime };
     return this.bundle;
   }
 
@@ -148,7 +170,9 @@ export class PiSessionFactory {
   async buildSession(input: {
     app: FastifyInstance;
     customTools: ToolDefinition[];
-  }): Promise<AgentSession> {
+    providerModelId?: string | null;
+  }): Promise<{ session: AgentSession; resolved: ResolvedAssistantModel }> {
+    const { model, connection } = await this.resolveModel(input.providerModelId);
     const bundle = await this.buildRuntimeBundle();
     await this.materializeSkills();
     const mcpServers = await this.ctx.db.list('mcpServers', { enabled: true });
@@ -178,10 +202,13 @@ export class PiSessionFactory {
         : [],
     });
     await loader.reload();
+    const resolvedModel = bundle.runtime.getModel(connection.id, model.modelKey);
+    if (!resolvedModel)
+      throw new AppError(500, 'ASSISTANT_MODEL_UNAVAILABLE', '助手模型无法在运行时中解析');
     const toolNames = input.customTools.map((tool) => tool.name);
     if (mcpServers.length) toolNames.push('mcp__*');
     const { session } = await createAgentSession({
-      model: bundle.model,
+      model: resolvedModel,
       modelRuntime: bundle.runtime,
       tools: toolNames,
       customTools: input.customTools,
@@ -190,17 +217,13 @@ export class PiSessionFactory {
       agentDir: this.runtimeDir,
       resourceLoader: loader,
     });
-    return session;
-  }
-
-  runtimeInfo(): { connectionId: string; modelKey: string } | null {
-    return this.bundle
-      ? { connectionId: this.bundle.connectionId, modelKey: this.bundle.modelKey }
-      : null;
-  }
-
-  async decryptedApiKey(): Promise<string | null> {
-    if (!this.bundle) await this.buildRuntimeBundle();
-    return this.bundle?.decryptedApiKey ?? null;
+    return {
+      session,
+      resolved: {
+        providerModelId: model.id,
+        connectionId: connection.id,
+        modelKey: model.modelKey,
+      },
+    };
   }
 }

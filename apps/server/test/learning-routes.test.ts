@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { AGENT_SCOPES } from '@drill-hub/contracts';
-import { createApp } from '../src/app.js';
-import { createUser } from '../src/modules/auth/index.js';
-import { baseRecord, id } from '../src/core/ids.js';
-import { hashSecret, randomSecret } from '../src/core/security.js';
+import { createApp } from '#server/app.js';
+import { createUser } from '#server/modules/auth/index.js';
+import { baseRecord, id } from '#server/core/ids.js';
+import { hashSecret, randomSecret } from '#server/core/security.js';
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {

@@ -2,11 +2,11 @@ import { createHmac } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AGENT_SCOPES } from '@drill-hub/contracts';
 import type { Role, Scope, UserView } from '@drill-hub/contracts';
-import type { Actor, AppContext, ServerConfig } from '../../core/context.js';
-import type { Database } from '../../db/database.js';
-import type { AgentTokenRecord, UserRecord } from '../../db/records.js';
-import { AppError } from '../../core/errors.js';
-import { baseRecord, id, now } from '../../core/ids.js';
+import type { Actor, AppContext, ServerConfig } from '#server/core/context.js';
+import type { Database } from '#server/db/database.js';
+import type { AgentTokenRecord, UserRecord } from '#server/db/records.js';
+import { AppError } from '#server/core/errors.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
 import {
   hashSecret,
   passwordHash,
@@ -14,9 +14,9 @@ import {
   sameSecret,
   validatePassword,
   verifyPassword,
-} from '../../core/security.js';
-import { object, revision, text } from '../../core/validation.js';
-import { INTERNAL_TOKEN_PREFIX, verifyInternalToken } from '../../core/internal-auth.js';
+} from '#server/core/security.js';
+import { object, revision, text } from '#server/core/validation.js';
+import { INTERNAL_TOKEN_PREFIX, verifyInternalToken } from '#server/core/internal-auth.js';
 const COOKIE = 'dh_session';
 const dummyPassword = passwordHash(randomSecret());
 const csrf = (config: ServerConfig, sessionId: string) =>

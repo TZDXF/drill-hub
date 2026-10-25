@@ -296,6 +296,11 @@
         "history": "Learning history",
         "archive": "Archive"
       }
-    }
+    },
+    "selectModel": "Select model",
+    "autoModel": "Auto",
+    "noModels": "No assistant models configured yet",
+    "modelPrice": "${input} in / ${output} out",
+    "reasoningTag": "Reasoning"
   }
 }

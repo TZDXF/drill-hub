@@ -6,10 +6,10 @@ import type {
 } from '@drill-hub/contracts';
 import { Type } from '@earendil-works/pi-ai';
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import { AppError } from '../../core/errors.js';
-import type { Actor, AppContext } from '../../core/context.js';
-import type { SearchProviderRecord } from '../../db/records.js';
-import { runSearch } from './search.js';
+import { AppError } from '#server/core/errors.js';
+import type { Actor, AppContext } from '#server/core/context.js';
+import type { SearchProviderRecord } from '#server/db/records.js';
+import { runSearch } from '#server/modules/assistant/search.js';
 
 /**
  * 助手可调用的 Drill Hub API 白名单：学习者端点（本人身份，答案按既有释放规则投影）
@@ -174,7 +174,7 @@ export function createAssistantTools(deps: AssistantToolDeps) {
     promptSnippet: '检索互联网信息',
     parameters: Type.Object({
       query: Type.String({ minLength: 1, maxLength: 400 }),
-      maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
+      maxResults: Type.Optional(Type.Integer({ minimum: 1 })),
     }),
     async execute(_toolCallId, params) {
       const providers = await deps.ctx.db.list('searchProviders', { enabled: true });
@@ -183,14 +183,12 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       const apiKey = provider.encryptedApiKey
         ? deps.ctx.vault.decrypt(provider.encryptedApiKey)
         : null;
-      const settings = await deps.ctx.db.get('assistantSettings', 'global');
-      const fallbackMax = settings?.maxSearchResults ?? 5;
       try {
         const results = await runSearch({
           provider,
           apiKey,
           query: params.query,
-          maxResults: params.maxResults ?? fallbackMax,
+          maxResults: params.maxResults ?? 5,
           allowPrivate: deps.ctx.config.allowPrivateSearchUrls,
         });
         return textResult(JSON.stringify({ provider: provider.displayName, results }));

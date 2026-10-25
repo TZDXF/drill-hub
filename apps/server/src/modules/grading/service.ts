@@ -10,23 +10,26 @@ import type {
   QuestionDefinition,
   ModelTokenUsage,
 } from '@drill-hub/contracts';
-import type { AppContext, GradingService } from '../../core/context.js';
-import { AppError } from '../../core/errors.js';
-import { baseRecord, now } from '../../core/ids.js';
-import type { Database } from '../../db/database.js';
+import type { AppContext, GradingService } from '#server/core/context.js';
+import { AppError } from '#server/core/errors.js';
+import { baseRecord, now } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
 import type {
   ModelConnectionRecord,
   ModelConnectionVersionRecord,
   ModelUsageRecord,
-} from '../../db/records.js';
-import type { ChatCompletionInput, ChatCompletionOutput } from './chat-completions.js';
-import { refreshAttempt } from '../learning/helpers.js';
+} from '#server/db/records.js';
+import type {
+  ChatCompletionInput,
+  ChatCompletionOutput,
+} from '#server/modules/grading/chat-completions.js';
+import { refreshAttempt } from '#server/modules/learning/helpers.js';
 import {
   callChatCompletions,
   listChatCompletionsModels,
   ProviderError,
   testChatCompletionsConnection,
-} from './chat-completions.js';
+} from '#server/modules/grading/chat-completions.js';
 import {
   gradeBlankRubric,
   gradeRubric,
@@ -36,7 +39,7 @@ import {
   validateQuestion,
   validateRubricScore,
   zeroCriterionEvaluations,
-} from './engine.js';
+} from '#server/modules/grading/engine.js';
 
 export interface GradingServiceOptions {
   fetchImpl?: typeof fetch;

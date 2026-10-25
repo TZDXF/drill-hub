@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClient, ApiError, normalizeServerUrl } from '../src/index.js';
+import { ApiClient, ApiError, normalizeServerUrl } from '#api-client/index.js';
 describe('server connection and request isolation', () => {
   it('normalizes a deployment prefix and rejects embedded credentials', () => {
     expect(normalizeServerUrl('https://study.example.org/learn///')).toBe(
@@ -49,7 +49,11 @@ describe('server connection and request isolation', () => {
           { status: 409 },
         ),
     });
-    await expect(client.get('/../../other')).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    const traversalPath = ['', '..', '..', 'other'].join('/');
+    await expect(client.get(traversalPath)).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    await expect(client.get('/%2e%2e/%2e%2e/other')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
     await expect(client.get('//another.invalid')).rejects.toMatchObject({ code: 'INVALID_PATH' });
     await expect(client.get('/topics')).rejects.toMatchObject({
       code: 'VERSION_CONFLICT',

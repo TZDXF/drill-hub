@@ -1,8 +1,14 @@
-import type { Actor, AppContext } from '../../core/context.js';
-import { now } from '../../core/ids.js';
-import type { Database } from '../../db/database.js';
-import type { DatabaseTables } from '../../db/records.js';
-import { assert, checkRevision, expectedRevision, owned, type JsonObject } from './common.js';
+import type { Actor, AppContext } from '#server/core/context.js';
+import { now } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
+import type { DatabaseTables } from '#server/db/records.js';
+import {
+  assert,
+  checkRevision,
+  expectedRevision,
+  owned,
+  type JsonObject,
+} from '#server/modules/learning/common.js';
 
 export const archiveTables = {
   topic: 'topics',

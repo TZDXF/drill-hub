@@ -1,6 +1,6 @@
 # 学习摘要、作答与错题
 
-[API 索引与通用协议](../api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
+[API 索引与通用协议](@skill/references/api.md)。以下响应字段均指成功信封中的 `data`；通用鉴权、错误和并发规则见索引。
 
 | 方法  | 路径                                                 | scope           | 成功状态 | 说明                   |
 | ----- | ---------------------------------------------------- | --------------- | -------- | ---------------------- |
@@ -32,11 +32,11 @@
 **AttemptItemSnapshot**
 
 - `id`: string；`questionId`: string；`questionVersion`: integer。
-- `definition`: [QuestionDefinition](questions.md) — 冻结题目，包括答案键和 rubric。
+- `definition`: [QuestionDefinition](@skill/references/resources/questions.md) — 冻结题目，包括答案键和 rubric。
 - `maxScore`: string；`answer`: Answer | null；`answerRevision`: integer。
 - `lockedAt`: string | null；`generation`: integer。
 - `gradingStatus`: `not_started|pending|running|failed|completed` — 尚未开始、等待、运行、失败或完成评分；不再使用 `unanswered` 表示评分状态。
-- `grade`: [GradeResult](grading.md#评分结果) | null；`gradingHistory`: GradeResult[]。
+- `grade`: [GradeResult](@skill/references/resources/grading.md#评分结果) | null；`gradingHistory`: GradeResult[]。
 - `Answer` 按题型为 `{ optionId: string }`、`{ optionIds: string[] }`、`{ value: boolean }`、`{ slots: Record<string, string> }` 或 `{ text: string }`。
 
 **学习端 AttemptItemView**

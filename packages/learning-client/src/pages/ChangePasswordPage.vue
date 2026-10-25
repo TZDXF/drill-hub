@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import { useLearning } from '../injection';
-import { errorMessage } from '../utils';
-import AuthLayout from '../components/AuthLayout.vue';
-import AppIcon from '../components/AppIcon.vue';
-import AppFormField from '../components/AppFormField.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage } from '#learning-client/utils';
+import AuthLayout from '#learning-client/components/AuthLayout.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

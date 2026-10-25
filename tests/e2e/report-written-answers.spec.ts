@@ -7,7 +7,7 @@ import type {
   QuestionDefinition,
   Topic,
 } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('作答报告展示简答原文、按题目顺序排列的填空及未作答占位', async ({ page }) => {
   await login(page);

@@ -9,15 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui';
-import { useAssistant } from '../../assistant/store';
-import { buildHistory } from '../../assistant/turns';
-import { errorMessage } from '../../utils';
-import AppIcon from '../AppIcon.vue';
-import AppTooltip from '../AppTooltip.vue';
-import ConfirmDialog from '../ConfirmDialog.vue';
-import MessageResponse from '../ai-elements/message/MessageResponse.vue';
-import AssistantComposer from './AssistantComposer.vue';
-import AssistantProcessLine from './AssistantProcessLine.vue';
+import { useAssistant } from '#learning-client/assistant/store';
+import { buildHistory } from '#learning-client/assistant/turns';
+import { errorMessage } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppTooltip from '#learning-client/components/AppTooltip.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import MessageResponse from '#learning-client/components/ai-elements/message/MessageResponse.vue';
+import AssistantComposer from '#learning-client/components/assistant/AssistantComposer.vue';
+import AssistantProcessLine from '#learning-client/components/assistant/AssistantProcessLine.vue';
 
 const { t } = useI18n();
 const assistant = useAssistant();

@@ -109,7 +109,7 @@ pnpm exec playwright install chromium
 
 ## 开发约定
 
-- 使用严格 TypeScript 和 ESM。服务端遵循 NodeNext，导入本地模块时保留 `.js` 后缀。
+- 使用严格 TypeScript 和 ESM。项目内部导入和导出统一使用 `#server/`、`#learning-client/`、`#web/`、`#mobile/`、`#api-client/`、`#e2e/`、`#workspace/` 别名或 `@drill-hub/` 包名，禁止相对模块引用。服务端遵循 NodeNext，别名导入保留 `.js` 后缀。文件系统路径从明确的根目录解析为绝对路径，不硬编码机器目录。共享 TypeScript 配置通过 `@drill-hub/tsconfig/base.json` 继承。
 - 保持现有 2 空格、单引号、分号、尾逗号、LF、行宽 100；提交前运行 `pnpm format:check`。
 - 优先复用现有模块、校验函数、错误结构和 UI 组件；不要为单个页面复制服务端规则。
 - 不做与当前需求无关的重构。修改功能时一并补充或更新对应的单元、集成或 E2E 测试。

@@ -3,25 +3,25 @@ import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AttemptReport } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { planReturnLocation } from '../planNavigation';
-import { captureAnswerLinkToken } from '../publicAccess';
-import { questionIndexFromQuery } from '../questionNavigation';
-import { questionTypeLabels } from '../types';
+import { useLearning } from '#learning-client/injection';
+import { planReturnLocation } from '#learning-client/planNavigation';
+import { captureAnswerLinkToken } from '#learning-client/publicAccess';
+import { questionIndexFromQuery } from '#learning-client/questionNavigation';
+import { questionTypeLabels } from '#learning-client/types';
 import {
   answerStatusLabels,
   canContinueAttempt,
   gradingStatusLabels,
-} from '../attemptPresentation';
-import { planNavigationQuery } from '../planNavigation';
-import { errorMessage, formatDate, formatScore } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppIcon from '../components/AppIcon.vue';
-import GradeFeedback from '../components/GradeFeedback.vue';
-import AttemptChoiceReview from '../components/AttemptChoiceReview.vue';
-import AttemptWrittenAnswer from '../components/AttemptWrittenAnswer.vue';
-import EmptyState from '../components/EmptyState.vue';
-import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
+} from '#learning-client/attemptPresentation';
+import { planNavigationQuery } from '#learning-client/planNavigation';
+import { errorMessage, formatDate, formatScore } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import GradeFeedback from '#learning-client/components/GradeFeedback.vue';
+import AttemptChoiceReview from '#learning-client/components/AttemptChoiceReview.vue';
+import AttemptWrittenAnswer from '#learning-client/components/AttemptWrittenAnswer.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import AttemptQuestionNav from '#learning-client/components/AttemptQuestionNav.vue';
 
 const { t } = useI18n();
 

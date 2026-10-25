@@ -5,7 +5,7 @@ import {
   canContinueAttempt,
   draftAnswerStatus,
   gradingStatusLabels,
-} from '../src/attemptPresentation';
+} from '#learning-client/attemptPresentation';
 
 const item: AttemptItemView = {
   id: 'item-1',

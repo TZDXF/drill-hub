@@ -23,7 +23,6 @@ import type {
   AssistantTurnView,
   McpServerView,
   AssistantSkillView,
-  AssistantSettingsView,
 } from '@drill-hub/contracts';
 export interface UserRecord extends UserView {
   passwordHash: string;
@@ -134,6 +133,8 @@ export interface AssistantTurnRecord extends BaseRecord {
   errorCode: string | null;
   /** 本轮发起时的页面上下文描述，仅用于构造模型提示词，不在视图中返回。 */
   promptContext: string | null;
+  /** 本轮请求指定的助手模型；null 表示由服务端自动选择。 */
+  providerModelId: string | null;
 }
 export interface McpServerRecord extends BaseRecord {
   name: string;
@@ -182,6 +183,5 @@ export interface DatabaseTables {
   searchProviders: SearchProviderRecord;
   mcpServers: McpServerRecord;
   assistantSkills: AssistantSkillRecord;
-  assistantSettings: AssistantSettingsView;
 }
 export type TableName = keyof DatabaseTables;

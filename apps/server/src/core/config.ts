@@ -2,9 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { ServerConfig } from './context.js';
-const workspaceRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+import { workspaceRoot } from '#server/core/paths.js';
+import type { ServerConfig } from '#server/core/context.js';
 export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise<ServerConfig> {
   const production = overrides.production ?? process.env.NODE_ENV === 'production';
   const databaseDriver =

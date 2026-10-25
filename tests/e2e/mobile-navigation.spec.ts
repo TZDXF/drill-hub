@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('手机视口可通过底部导航切换页面', async ({ page }, testInfo) => {
   expect(testInfo.project.name).toBe('chromium-mobile');

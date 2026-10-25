@@ -4,8 +4,8 @@ import type {
   AssistantMessageView,
   AssistantTurnView,
 } from '@drill-hub/contracts';
-import { describeToolAction, describeUiAction } from '../src/assistant/actions';
-import { buildHistory } from '../src/assistant/turns';
+import { describeToolAction, describeUiAction } from '#learning-client/assistant/actions';
+import { buildHistory } from '#learning-client/assistant/turns';
 
 function message(
   id: string,
@@ -39,6 +39,7 @@ function turn(
     assistantMessageId,
     status: 'succeeded',
     errorCode: null,
+    providerModelId: null,
     createdAt: '2026-10-25T10:00:00.000Z',
     updatedAt: '2026-10-25T10:00:12.500Z',
     revision: 1,

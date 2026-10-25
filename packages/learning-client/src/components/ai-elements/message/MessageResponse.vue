@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Adapted from AI Elements Vue's MessageResponse (Apache-2.0; see ../LICENSE).
+// Adapted from AI Elements Vue's MessageResponse (Apache-2.0; see #learning-client/components/ai-elements/LICENSE).
 // 仅保留 Markdown 渲染；代码高亮、KaTeX、Mermaid 与信息图扩展全部使用本地依赖，不走 CDN。
 import type { HTMLAttributes } from 'vue';
 import type { PreviewerConfig } from 'vue-stream-markdown';
@@ -11,7 +11,7 @@ import { mermaid } from '@stream-markdown/mermaid';
 import { Markdown } from 'vue-stream-markdown';
 import 'katex/dist/katex.min.css';
 import 'vue-stream-markdown/index.css';
-import InfographicPreview from '../../infographic/InfographicPreview.vue';
+import InfographicPreview from '#learning-client/components/infographic/InfographicPreview.vue';
 
 const props = defineProps<{
   content?: string;

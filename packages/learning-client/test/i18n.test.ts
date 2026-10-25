@@ -1,13 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed } from 'vue';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ClientLocale, ClientPlatform } from '@drill-hub/contracts';
-import { appLocale, i18n, initializeLocale, messages, setLocale, toggleLocale } from '../src/i18n';
-import { errorMessage, formatDate, formatDuration } from '../src/utils';
+import {
+  appLocale,
+  i18n,
+  initializeLocale,
+  messages,
+  setLocale,
+  toggleLocale,
+} from '#learning-client/i18n';
+import { errorMessage, formatDate, formatDuration } from '#learning-client/utils';
 import { ApiError } from '@drill-hub/api-client';
-import { questionTypeLabels } from '../src/types';
+import { questionTypeLabels } from '#learning-client/types';
+
+const workspaceRoot = dirname(
+  dirname(dirname(fileURLToPath(import.meta.resolve('@drill-hub/tsconfig/base.json')))),
+);
 
 function platform(stored: string | null = null): ClientPlatform {
   return {
@@ -127,7 +138,7 @@ describe('translation catalogs', () => {
   });
 
   it('defines every statically referenced translation key', () => {
-    const root = fileURLToPath(new URL('../src', import.meta.url));
+    const root = resolve(workspaceRoot, 'packages/learning-client/src');
     function sources(directory: string): string[] {
       return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
         const path = join(directory, entry.name);
@@ -148,7 +159,7 @@ describe('translation catalogs', () => {
   });
 
   it('maps every server audit action to an existing translation key', () => {
-    const serverRoot = fileURLToPath(new URL('../../../apps/server/src', import.meta.url));
+    const serverRoot = resolve(workspaceRoot, 'apps/server/src');
     function serverSources(directory: string): string[] {
       return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
         const path = join(directory, entry.name);
@@ -167,7 +178,7 @@ describe('translation catalogs', () => {
       }
     }
     const auditPage = readFileSync(
-      fileURLToPath(new URL('../src/pages/AdminAuditPage.vue', import.meta.url)),
+      resolve(workspaceRoot, 'packages/learning-client/src/pages/AdminAuditPage.vue'),
       'utf8',
     );
     const mapped = new Map(

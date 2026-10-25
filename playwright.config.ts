@@ -35,7 +35,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm build && pnpm exec tsx scripts/e2e-server.ts',
+    command: 'pnpm build && pnpm exec tsx --conditions=development scripts/e2e-server.ts',
     url: `${baseURL}/api/v1/health`,
     timeout: 180_000,
     reuseExistingServer: false,

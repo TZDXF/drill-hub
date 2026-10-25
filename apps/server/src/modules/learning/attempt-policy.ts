@@ -1,6 +1,6 @@
 import type { Attempt, AttemptItemView, QuestionDefinition, Answer } from '@drill-hub/contracts';
-import { isBlankAnswer } from '../grading/engine.js';
-import { assert, type JsonObject } from './common.js';
+import { isBlankAnswer } from '#server/modules/grading/engine.js';
+import { assert, type JsonObject } from '#server/modules/learning/common.js';
 
 /** The only eligibility rule for personal learning projections, regardless of entry point. */
 export function isLearningAttempt(attempt: Attempt): boolean {

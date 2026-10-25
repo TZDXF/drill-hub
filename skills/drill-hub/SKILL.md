@@ -19,19 +19,21 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 
 ## 按需读取 API 文档
 
-先按任务选择下面的一页，不必加载全部参考文档。公共鉴权、响应、错误和并发规则见 [API 索引](references/api.md)。
+`@skill/` 表示本 `SKILL.md` 所在目录；所有文档引用均从这个根目录解析，解压或安装到任意位置后保持相同规则。
 
-| 任务                                         | 参考文档                                          |
-| -------------------------------------------- | ------------------------------------------------- |
-| 确认服务能力和当前权限                       | [能力发现](references/resources/capabilities.md)  |
-| 管理主题                                     | [主题](references/resources/topics.md)            |
-| 创建计划、维护阶段、修改或移动任务           | [计划与任务](references/resources/plans.md)       |
-| 创建或修改 Markdown 材料                     | [学习内容](references/resources/contents.md)      |
-| 创建或修改题目、选择评分模式、定义 rubric    | [题目与版本](references/resources/questions.md)   |
-| 组卷、修改练习/考试或生成免登录答题链接      | [练习与考试](references/resources/assessments.md) |
-| 查询学习进度、作答、错题、作废或修改掌握状态 | [学习结果与错题](references/resources/results.md) |
-| 批改外部题、查看评分任务、重试或请求重评     | [评分](references/resources/grading.md)           |
-| 归档或恢复资源                               | [归档](references/resources/archive.md)           |
+先按任务选择下面的一页，不必加载全部参考文档。公共鉴权、响应、错误和并发规则见 [API 索引](@skill/references/api.md)。
+
+| 任务                                         | 参考文档                                                 |
+| -------------------------------------------- | -------------------------------------------------------- |
+| 确认服务能力和当前权限                       | [能力发现](@skill/references/resources/capabilities.md)  |
+| 管理主题                                     | [主题](@skill/references/resources/topics.md)            |
+| 创建计划、维护阶段、修改或移动任务           | [计划与任务](@skill/references/resources/plans.md)       |
+| 创建或修改 Markdown 材料                     | [学习内容](@skill/references/resources/contents.md)      |
+| 创建或修改题目、选择评分模式、定义 rubric    | [题目与版本](@skill/references/resources/questions.md)   |
+| 组卷、修改练习/考试或生成免登录答题链接      | [练习与考试](@skill/references/resources/assessments.md) |
+| 查询学习进度、作答、错题、作废或修改掌握状态 | [学习结果与错题](@skill/references/resources/results.md) |
+| 批改外部题、查看评分任务、重试或请求重评     | [评分](@skill/references/resources/grading.md)           |
+| 归档或恢复资源                               | [归档](@skill/references/resources/archive.md)           |
 
 ## 先确认令牌 scope
 
@@ -59,13 +61,13 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 
 ## 必须保持的业务边界
 
-- 主题和题干是纯文本；内容 `bodyText` 是 Markdown，阅读页支持 GFM、代码高亮、KaTeX 公式、`mermaid 图表和 `infographic 信息图（能力边界见[学习内容](references/resources/contents.md#阅读页渲染能力)）。计划引用同主题内容/评估，不可伪造任务完成历史。学习者从计划成功打开阅读内容即自动完成来源阅读任务，普通任务仍需手动标记。
+- 主题和题干是纯文本；内容 `bodyText` 是 Markdown，阅读页支持 GFM、代码高亮、KaTeX 公式、`mermaid 图表和 `infographic 信息图（能力边界见[学习内容](@skill/references/resources/contents.md#阅读页渲染能力)）。计划引用同主题内容/评估，不可伪造任务完成历史。学习者从计划成功打开阅读内容即自动完成来源阅读任务，普通任务仍需手动标记。
 - 修改题目产生新业务版本；已有试卷项和作答使用冻结版本，不自动更新。
 - `rule` 由规则引擎评分，`model_rubric` 由服务端异步模型评分；`grade:write` 只允许批改 `external_rubric`。
 - 分值用最多两位小数的字符串；外部评分只提交等级和证据，不能提交总分。评分、重评和修正都保留历史。
 - 免登录链接只免除登录；作答已有所属用户 `ownerId`。正式有效作答（`purpose: "learning"` 且未作废）计入该用户学习统计和错题；`source: personal|answer_link` 仅供追溯，不决定统计资格。测试和作废作答不计学习统计、错题或任务完成。
 - 只有作答已关联的单一 `taskId`（显式指定或唯一匹配）可受影响：练习全空交卷不完成任务；考试交卷或超时可完成任务。不得按同一评估批量完成其他任务，测试作答即使有关联也不影响任务。
-- 测试用途必须在创建时选择，不可将既有学习作答改为 `test`；误交卷等情况使用 `attempt:write` 作废，保留答案、评分历史与审计，不得删除。关联的未结束评分任务标为 `cancelled`，`lastErrorCode: "ATTEMPT_VOIDED"`，不能按失败任务重试。详见[副作用表与作废请求](references/resources/results.md#副作用表)。
+- 测试用途必须在创建时选择，不可将既有学习作答改为 `test`；误交卷等情况使用 `attempt:write` 作废，保留答案、评分历史与审计，不得删除。关联的未结束评分任务标为 `cancelled`，`lastErrorCode: "ATTEMPT_VOIDED"`，不能按失败任务重试。详见[副作用表与作废请求](@skill/references/resources/results.md#副作用表)。
 - 答案状态 `answerStatus` 与评分状态 `gradingStatus` 分开。完全未答项交卷后由系统记零分（`source: "system"`），不冒充模型/Agent 评分，也不计错题；部分作答答错仍可计错题，报告通过 `unansweredCount` 单列未答数。
 - 临时答题链接中的 URL 片段就是敏感访问凭证；持有人作答会影响所属用户的正式学习数据。按一人一条链接交付，不要发到公开群组，也不要记录或改写该片段。公开答题地址统一使用服务端已有的 `PUBLIC_URL` 配置，不另设地址配置或自行改写返回地址。
 - 资源只能归档/恢复；归档不级联，不开放学习资源永久删除。
@@ -93,6 +95,6 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 - 局域网、公网或反向代理部署必须配置 `PUBLIC_URL`。未配置时仅回环 Host 可用；其他地址返回 `503 PUBLIC_URL_UNAVAILABLE`，不要自行用请求 Host 改写答题链接。
 - 浏览器跨域允许所有来源并支持携带凭据，不按 Origin/Referer 拦截；Web 写操作仍需 CSRF，Agent 继续使用 Bearer 令牌。此开放策略保留跨源会话访问风险。
 - 批量题目及嵌套选项/rubric、试卷项使用字段白名单。试卷项允许 `questionId`、`questionVersion`、`maxScore`（组卷配置），其他事实字段返回 422；不代表学习者能设置满分。
-- 创建/修改题目的请求外层与题目定义顶层均禁止客户端事实字段，返回 `422 CLIENT_FACT_FORBIDDEN`，不会静默剥离；完整禁止清单见[题目与版本](references/resources/questions.md)。失败批次不保留任何题目或题目版本。
+- 创建/修改题目的请求外层与题目定义顶层均禁止客户端事实字段，返回 `422 CLIENT_FACT_FORBIDDEN`，不会静默剥离；完整禁止清单见[题目与版本](@skill/references/resources/questions.md)。失败批次不保留任何题目或题目版本。
 - 学习者错题重练的 `items[]` 只接受 `questionId`，`maxScore` 由历史冻结快照决定，客户端传入会返回 `422 CLIENT_FACT_FORBIDDEN`。不引入手工改分或删除历史能力。
 - 模型请求默认阻止非公网地址并禁止重定向，策略拒绝的错误码为 `PROVIDER_ADDRESS_FORBIDDEN`；只有部署者可通过 `ALLOW_PRIVATE_MODEL_URLS=true` 显式放行自建内网模型。

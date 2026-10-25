@@ -7,7 +7,7 @@ import type {
   LearningPlan,
   Topic,
 } from '@drill-hub/contracts';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 async function post<T>(
   request: APIRequestContext,

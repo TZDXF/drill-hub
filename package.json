@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#workspace/*": "./*",
+    "#server/*": "./apps/server/src/*",
+    "#e2e/*": "./tests/e2e/*.ts"
+  },
   "scripts": {
     "dev": "pnpm build:shared && pnpm --filter @drill-hub/web build:dev && pnpm --parallel --filter @drill-hub/server --filter @drill-hub/web dev",
     "build": "pnpm -r build",
@@ -25,6 +30,7 @@
   },
   "devDependencies": {
     "@drill-hub/contracts": "workspace:*",
+    "@drill-hub/tsconfig": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "24.10.1",
     "@types/unzip-stream": "0.3.4",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LocationQuery } from 'vue-router';
-import { planNavigationQuery, planReturnLocation } from '../src/planNavigation';
+import { planNavigationQuery, planReturnLocation } from '#learning-client/planNavigation';
 
 describe('plan navigation', () => {
   it('builds a named return route using the resource topic and source plan', () => {

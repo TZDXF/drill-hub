@@ -8,14 +8,14 @@ import type {
   SearchProviderKind,
   SearchProviderView,
 } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { errorMessage } from '../utils';
-import AppCheckbox from '../components/AppCheckbox.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppSelect from '../components/AppSelect.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
-import EmptyState from '../components/EmptyState.vue';
-import PageHeader from '../components/PageHeader.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage } from '#learning-client/utils';
+import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppSelect from '#learning-client/components/AppSelect.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import PageHeader from '#learning-client/components/PageHeader.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

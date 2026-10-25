@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { Attempt, Dashboard, WrongQuestionListItem } from '@drill-hub/contracts';
-import type { AppContext } from '../../core/context.js';
-import { now } from '../../core/ids.js';
-import { changeArchiveState, listArchive } from './archive.js';
+import type { AppContext } from '#server/core/context.js';
+import { now } from '#server/core/ids.js';
+import { changeArchiveState, listArchive } from '#server/modules/learning/archive.js';
 import {
   API_PREFIX,
   archiveState,
@@ -16,7 +16,7 @@ import {
   ownedTopic,
   params,
   query,
-} from './common.js';
+} from '#server/modules/learning/common.js';
 import {
   saveAnswer,
   startAssessment,
@@ -24,11 +24,15 @@ import {
   submitAttempt,
   submitPracticeItem,
   voidAttempt,
-} from './attempts.js';
-import { isLearningAttempt } from './attempt-policy.js';
-import { settleAttempt } from './helpers.js';
-import { findTaskLocation, replaceTask } from './plans.js';
-import { toAttemptItemView, toAttemptReport, toAttemptView } from './projections.js';
+} from '#server/modules/learning/attempts.js';
+import { isLearningAttempt } from '#server/modules/learning/attempt-policy.js';
+import { settleAttempt } from '#server/modules/learning/helpers.js';
+import { findTaskLocation, replaceTask } from '#server/modules/learning/plans.js';
+import {
+  toAttemptItemView,
+  toAttemptReport,
+  toAttemptView,
+} from '#server/modules/learning/projections.js';
 
 async function readAttempt(ctx: AppContext, ownerId: string, attemptId: string): Promise<Attempt> {
   const current = await owned(ctx.db, 'attempts', attemptId, ownerId);

@@ -11,7 +11,7 @@ import type {
   UserView,
   WrongQuestionPracticeInput,
 } from '@drill-hub/contracts';
-import { localizedRecord, translate } from './utils';
+import { localizedRecord, translate } from '#learning-client/utils';
 
 export interface CsrfResult {
   csrfToken: string;

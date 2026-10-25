@@ -9,8 +9,8 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui';
-import AppIcon from './AppIcon.vue';
-import AppScrollArea from './AppScrollArea.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
 
 const { t } = useI18n();
 

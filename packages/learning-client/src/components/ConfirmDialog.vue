@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { DialogClose } from 'reka-ui';
-import AppDialog from './AppDialog.vue';
+import AppDialog from '#learning-client/components/AppDialog.vue';
 
 const { t } = useI18n();
 

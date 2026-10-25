@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { Scope, Role, Attempt, AttemptItemSnapshot } from '@drill-hub/contracts';
-import type { Database } from '../db/database.js';
-import type { SecretVault } from './security.js';
+import type { Database } from '#server/db/database.js';
+import type { SecretVault } from '#server/core/security.js';
 export interface Actor {
   id: string;
   userId: string;

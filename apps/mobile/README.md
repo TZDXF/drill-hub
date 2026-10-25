@@ -41,7 +41,7 @@ pnpm --filter @drill-hub/mobile tauri android dev --host <开发机局域网地�
 pnpm --filter @drill-hub/mobile build
 ```
 
-Tauri 配置中的 `frontendDist` 为 `../dist`，正式包只嵌入本地前端资源，不加载任意远程网页。
+Tauri 配置中的 `frontendDist` 为 `dist`（对应 `apps/mobile/src-tauri/dist`），正式包只嵌入本地前端资源，不加载任意远程网页。
 
 ## 平台与凭据边界
 

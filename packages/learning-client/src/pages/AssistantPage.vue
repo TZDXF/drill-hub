@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAssistant } from '../assistant/store';
-import EmptyState from '../components/EmptyState.vue';
+import { useAssistant } from '#learning-client/assistant/store';
+import EmptyState from '#learning-client/components/EmptyState.vue';
 
 const { t } = useI18n();
 const assistant = useAssistant();

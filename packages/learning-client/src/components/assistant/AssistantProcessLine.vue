@@ -2,8 +2,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
-import type { AssistantActionItem } from '../../assistant/turns';
-import AppIcon from '../AppIcon.vue';
+import type { AssistantActionItem } from '#learning-client/assistant/turns';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 /**
  * 一轮对话的过程展示：活动轮只显示一行最新状态，完成后折叠为

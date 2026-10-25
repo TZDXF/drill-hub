@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('Reka 下拉、滚动区域与通知组件协同工作', async ({ page }, testInfo) => {
   await login(page);

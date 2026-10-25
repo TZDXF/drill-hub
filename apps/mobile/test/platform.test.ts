@@ -63,7 +63,7 @@ function makeSession(id: string, username: string, refreshToken: string): Stored
 }
 
 async function loadPlatform(): Promise<ClientPlatform> {
-  const module = await import('../src/platform.js');
+  const module = await import('#mobile/platform.js');
   return module.androidPlatform;
 }
 

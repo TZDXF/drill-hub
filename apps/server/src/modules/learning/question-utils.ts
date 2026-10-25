@@ -1,7 +1,7 @@
 import type { QuestionDefinition } from '@drill-hub/contracts';
-import { gradeBlankRubric, gradeRule, validateQuestion } from '../grading/engine.js';
-import { assert, clone, isRecord, rejectClientFacts } from './common.js';
-import { scoreToMinor } from './scores.js';
+import { gradeBlankRubric, gradeRule, validateQuestion } from '#server/modules/grading/engine.js';
+import { assert, clone, isRecord, rejectClientFacts } from '#server/modules/learning/common.js';
+import { scoreToMinor } from '#server/modules/learning/scores.js';
 
 export function questionDefinition(value: unknown): QuestionDefinition {
   assert(isRecord(value), 'INVALID_QUESTION', '题目定义必须是对象');

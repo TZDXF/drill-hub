@@ -9,8 +9,8 @@ import {
   ToastViewport,
   useToastManager,
 } from 'reka-ui';
-import { useLearning } from '../injection';
-import AppIcon from './AppIcon.vue';
+import { useLearning } from '#learning-client/injection';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t } = useI18n();
 

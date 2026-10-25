@@ -4,8 +4,8 @@ import {
   assertProviderHost,
   isPublicProviderAddress,
   publicProviderLookup,
-} from '../src/core/provider-network.js';
-import { testChatCompletionsConnection } from '../src/modules/grading/chat-completions.js';
+} from '#server/core/provider-network.js';
+import { testChatCompletionsConnection } from '#server/modules/grading/chat-completions.js';
 const dns = vi.hoisted(() => ({
   addresses: [{ address: '8.8.8.8', family: 4 }],
   error: null as Error | null,

@@ -6,7 +6,7 @@ import {
   createCipheriv,
   createDecipheriv,
 } from 'node:crypto';
-import { AppError } from './errors.js';
+import { AppError } from '#server/core/errors.js';
 export const randomSecret = () => randomBytes(32).toString('base64url');
 export const hashSecret = (value: string) => createHash('sha256').update(value).digest('hex');
 export function sameSecret(value: string, expectedHash: string) {

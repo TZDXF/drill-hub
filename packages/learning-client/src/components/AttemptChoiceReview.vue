@@ -3,8 +3,8 @@ import { useI18n } from 'vue-i18n';
 import { computed } from 'vue';
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui';
 import type { AttemptItemView } from '@drill-hub/contracts';
-import { formatOptionLabel } from '../utils';
-import AppCheckbox from './AppCheckbox.vue';
+import { formatOptionLabel } from '#learning-client/utils';
+import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
 
 const { t } = useI18n();
 

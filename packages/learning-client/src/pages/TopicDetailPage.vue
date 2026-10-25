@@ -4,11 +4,11 @@ import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type { Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { errorMessage, formatDate, formatDuration, formatScore } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage, formatDate, formatDuration, formatScore } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();

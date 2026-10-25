@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { Answer, Attempt, QuestionDefinition } from '@drill-hub/contracts';
-import { createApp } from '../src/app.js';
-import { baseRecord, id, now } from '../src/core/ids.js';
-import type { Database } from '../src/db/database.js';
-import { refreshAttempt } from '../src/modules/learning/helpers.js';
-import { gradeRubric, zeroCriterionEvaluations } from '../src/modules/grading/engine.js';
+import { createApp } from '#server/app.js';
+import { baseRecord, id, now } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
+import { refreshAttempt } from '#server/modules/learning/helpers.js';
+import { gradeRubric, zeroCriterionEvaluations } from '#server/modules/grading/engine.js';
 
 const PASSWORD = 'Test-only-password-42!';
 const apps: FastifyInstance[] = [];
@@ -164,6 +164,37 @@ async function configureModel(
   });
   expect(modelResponse.statusCode).toBe(201);
   const model = modelResponse.json().data;
+  const configured = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/admin/provider-models/${model.id}`,
+    headers: admin,
+    payload: {
+      expectedRevision: model.revision,
+      contextWindow: 262144,
+      maxTokens: 32768,
+      reasoning: true,
+      input: ['text', 'image'],
+      costPerMillion: { input: 1.5, output: 6, cacheRead: 0.15, cacheWrite: 0 },
+    },
+  });
+  expect(configured.statusCode).toBe(200);
+  expect(configured.json().data).toMatchObject({
+    contextWindow: 262144,
+    maxTokens: 32768,
+    reasoning: true,
+    input: ['text', 'image'],
+    costPerMillion: { input: 1.5, output: 6, cacheRead: 0.15, cacheWrite: 0 },
+  });
+  const invalidCost = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/admin/provider-models/${model.id}`,
+    headers: admin,
+    payload: {
+      expectedRevision: configured.json().data.revision,
+      costPerMillion: { input: -1, output: 6, cacheRead: 0, cacheWrite: 0 },
+    },
+  });
+  expect(invalidCost.statusCode).toBe(422);
   const tested = await app.inject({
     method: 'POST',
     url: `/api/v1/admin/provider-models/${model.id}/test`,

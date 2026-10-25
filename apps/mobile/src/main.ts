@@ -1,7 +1,7 @@
 import { createLearningApp } from '@drill-hub/learning-client';
 import '@drill-hub/learning-client/style.css';
 
-import { androidPlatform } from './platform';
+import { androidPlatform } from '#mobile/platform';
 
 const app = createLearningApp({ platform: androidPlatform });
 

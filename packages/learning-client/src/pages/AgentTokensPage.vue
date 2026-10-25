@@ -9,18 +9,18 @@ import {
   type AgentTokenView,
   type Scope,
 } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import type { AgentTokenCreated } from '../types';
-import { copyTextToClipboard, errorMessage, formatDate, isApiError } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
-import AgentSetupHelp from '../components/AgentSetupHelp.vue';
-import AppCheckbox from '../components/AppCheckbox.vue';
-import AppDateTimePicker from '../components/AppDateTimePicker.vue';
-import AppScrollArea from '../components/AppScrollArea.vue';
+import { useLearning } from '#learning-client/injection';
+import type { AgentTokenCreated } from '#learning-client/types';
+import { copyTextToClipboard, errorMessage, formatDate, isApiError } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import AgentSetupHelp from '#learning-client/components/AgentSetupHelp.vue';
+import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
+import AppDateTimePicker from '#learning-client/components/AppDateTimePicker.vue';
+import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

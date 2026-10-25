@@ -1,22 +1,22 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Actor, AppContext } from '../src/core/context.js';
+import type { Actor, AppContext } from '#server/core/context.js';
 import type {
   Assessment,
   Attempt,
   AttemptItemSnapshot,
   QuestionDefinition,
 } from '@drill-hub/contracts';
-import { Database } from '../src/db/database.js';
-import { baseRecord, id } from '../src/core/ids.js';
-import { gradeRule } from '../src/modules/grading/engine.js';
+import { Database } from '#server/db/database.js';
+import { baseRecord, id } from '#server/core/ids.js';
+import { gradeRule } from '#server/modules/grading/engine.js';
 import {
   saveAnswer,
   startAssessment,
   submitAttempt,
   submitPracticeItem,
-} from '../src/modules/learning/attempts.js';
-import { expireAttempts } from '../src/modules/learning/helpers.js';
-import { toAttemptView } from '../src/modules/learning/projections.js';
+} from '#server/modules/learning/attempts.js';
+import { expireAttempts } from '#server/modules/learning/helpers.js';
+import { toAttemptView } from '#server/modules/learning/projections.js';
 
 const databases: Database[] = [];
 afterEach(async () => {

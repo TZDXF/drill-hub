@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../src/app.js';
-import { createUser } from '../src/modules/auth/index.js';
-import { SecretVault } from '../src/core/security.js';
+import { createApp } from '#server/app.js';
+import { createUser } from '#server/modules/auth/index.js';
+import { SecretVault } from '#server/core/security.js';
 const ADMIN = 'test_admin';
 const PASSWORD = 'Test-only-password-42!';
 let app: FastifyInstance;

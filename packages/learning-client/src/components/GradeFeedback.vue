@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { AttemptItemView } from '@drill-hub/contracts';
-import { formatScore } from '../utils';
-import AppIcon from './AppIcon.vue';
+import { formatScore } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t } = useI18n();
 

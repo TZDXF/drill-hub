@@ -1,4 +1,4 @@
-import { createApp } from '../apps/server/src/app.js';
+import { createApp } from '#server/app.js';
 
 const host = '127.0.0.1';
 const port = 4179;

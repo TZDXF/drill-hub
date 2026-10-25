@@ -10,20 +10,20 @@ import type {
   LearningPlan,
   PublicAnswerContext,
 } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { draftAnswerStatus } from '../attemptPresentation';
-import { planNavigationQuery, planReturnLocation } from '../planNavigation';
-import { captureAnswerLinkToken } from '../publicAccess';
-import { questionIndexFromQuery } from '../questionNavigation';
-import { asAttemptView, emptyAnswer, questionTypeLabels } from '../types';
-import { clone, errorMessage, isApiError, formatOptionLabel } from '../utils';
-import AppIcon from '../components/AppIcon.vue';
-import AppFormField from '../components/AppFormField.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
-import AttemptQuestionNav from '../components/AttemptQuestionNav.vue';
-import PlanOutlineNav from '../components/PlanOutlineNav.vue';
-import GradeFeedback from '../components/GradeFeedback.vue';
-import AppCheckbox from '../components/AppCheckbox.vue';
+import { useLearning } from '#learning-client/injection';
+import { draftAnswerStatus } from '#learning-client/attemptPresentation';
+import { planNavigationQuery, planReturnLocation } from '#learning-client/planNavigation';
+import { captureAnswerLinkToken } from '#learning-client/publicAccess';
+import { questionIndexFromQuery } from '#learning-client/questionNavigation';
+import { asAttemptView, emptyAnswer, questionTypeLabels } from '#learning-client/types';
+import { clone, errorMessage, isApiError, formatOptionLabel } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import AttemptQuestionNav from '#learning-client/components/AttemptQuestionNav.vue';
+import PlanOutlineNav from '#learning-client/components/PlanOutlineNav.vue';
+import GradeFeedback from '#learning-client/components/GradeFeedback.vue';
+import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
 
 const { t } = useI18n();
 

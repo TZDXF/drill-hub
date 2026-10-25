@@ -4,7 +4,11 @@ import type {
   AssistantTurnView,
   AssistantUiAction,
 } from '@drill-hub/contracts';
-import { describeToolAction, describeUiAction, type AssistantActionDescriptor } from './actions';
+import {
+  describeToolAction,
+  describeUiAction,
+  type AssistantActionDescriptor,
+} from '#learning-client/assistant/actions';
 
 /**
  * 把线程的 messages / turns / events 组装成按轮组织的渲染模型：

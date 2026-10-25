@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../src/app.js';
-import { Database } from '../src/db/database.js';
-import type { ModelUsageRecord } from '../src/db/records.js';
-import { baseRecord } from '../src/core/ids.js';
-import { tokenUsageReport } from '../src/modules/grading/token-usage.js';
+import { createApp } from '#server/app.js';
+import { Database } from '#server/db/database.js';
+import type { ModelUsageRecord } from '#server/db/records.js';
+import { baseRecord } from '#server/core/ids.js';
+import { tokenUsageReport } from '#server/modules/grading/token-usage.js';
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {

@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { DataSource } from 'typeorm';
 import type { EntityManager, FindOptionsWhere } from 'typeorm';
-import type { DatabaseTables, TableName } from './records.js';
+import type { DatabaseTables, TableName } from '#server/db/records.js';
 import {
   schemas,
   definitions,
@@ -12,7 +12,8 @@ import {
   AddModelUsage1792368000000,
   AddAccessLogs1792368000001,
   AddAssistantTables1792448000000,
-} from './schema.js';
+  ReworkAssistantConfig1792450000000,
+} from '#server/db/schema.js';
 import type {
   AuditLogView,
   ApiLogView,
@@ -22,7 +23,7 @@ import type {
   TokenUsageTotals,
   TokenUsageReport,
 } from '@drill-hub/contracts';
-import { AppError } from '../core/errors.js';
+import { AppError } from '#server/core/errors.js';
 interface Queue {
   tail: Promise<void>;
 }
@@ -69,6 +70,7 @@ export class Database {
         AddModelUsage1792368000000,
         AddAccessLogs1792368000001,
         AddAssistantTables1792448000000,
+        ReworkAssistantConfig1792450000000,
       ],
       synchronize: false,
       logging: false,

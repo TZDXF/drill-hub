@@ -1,6 +1,6 @@
 import type { Answer, AttemptItemView, AttemptView } from '@drill-hub/contracts';
-import { isAnswerEmpty } from './types';
-import { localizedRecord, translate } from './utils';
+import { isAnswerEmpty } from '#learning-client/types';
+import { localizedRecord, translate } from '#learning-client/utils';
 
 export interface AttemptPurposeOption {
   value: AttemptView['purpose'];

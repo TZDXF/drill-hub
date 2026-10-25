@@ -2,15 +2,15 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import type { ArchiveEntry, ArchiveResourceType } from '../types';
-import { errorMessage, formatDate } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppFormField from '../components/AppFormField.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
-import AppSelect from '../components/AppSelect.vue';
+import { useLearning } from '#learning-client/injection';
+import type { ArchiveEntry, ArchiveResourceType } from '#learning-client/types';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
+import AppSelect from '#learning-client/components/AppSelect.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

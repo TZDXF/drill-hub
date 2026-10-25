@@ -16,6 +16,7 @@ COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/learning-client/package.json packages/learning-client/package.json
+COPY packages/tsconfig/package.json packages/tsconfig/package.json
 
 RUN pnpm install --frozen-lockfile
 

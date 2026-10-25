@@ -5,9 +5,9 @@ import type {
   AttemptReport,
   AttemptView,
 } from '@drill-hub/contracts';
-import { answerStatus } from './attempt-policy.js';
-import { assert } from '../../core/errors.js';
-import { scoreToMinor, minorToScore } from './scores.js';
+import { answerStatus } from '#server/modules/learning/attempt-policy.js';
+import { assert } from '#server/core/errors.js';
+import { scoreToMinor, minorToScore } from '#server/modules/learning/scores.js';
 
 function itemIsReleased(attempt: Attempt, item: AttemptItemSnapshot): boolean {
   return attempt.kind === 'exam' ? attempt.submittedAt !== null : item.lockedAt !== null;

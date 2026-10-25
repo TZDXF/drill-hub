@@ -7,8 +7,8 @@ import type {
   Rubric,
   RubricCriterion,
 } from '@drill-hub/contracts';
-import { assert } from '../../core/errors.js';
-import { now } from '../../core/ids.js';
+import { assert } from '#server/core/errors.js';
+import { now } from '#server/core/ids.js';
 
 const QUESTION_TYPES = new Set([
   'single_choice',

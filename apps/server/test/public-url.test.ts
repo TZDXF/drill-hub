@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../src/app.js';
-import { AppError } from '../src/core/errors.js';
-import { normalizePublicBaseUrl, resolvePublicUrl } from '../src/core/public-url.js';
+import { createApp } from '#server/app.js';
+import { AppError } from '#server/core/errors.js';
+import { normalizePublicBaseUrl, resolvePublicUrl } from '#server/core/public-url.js';
 
 const apps: FastifyInstance[] = [];
 

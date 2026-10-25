@@ -16,7 +16,7 @@ import {
   SelectValue,
   SelectViewport,
 } from 'reka-ui';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const { t } = useI18n();
 

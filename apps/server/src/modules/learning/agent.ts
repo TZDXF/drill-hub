@@ -1,12 +1,12 @@
-import { voidAttempt } from './attempts.js';
-import { isLearningAttempt } from './attempt-policy.js';
+import { voidAttempt } from '#server/modules/learning/attempts.js';
+import { isLearningAttempt } from '#server/modules/learning/attempt-policy.js';
 import type { FastifyInstance } from 'fastify';
 import type { AssessmentItem, LearningTask, PlanPhase } from '@drill-hub/contracts';
 import { API_VERSION } from '@drill-hub/contracts';
-import type { AppContext } from '../../core/context.js';
-import { baseRecord, now } from '../../core/ids.js';
-import type { Database } from '../../db/database.js';
-import { changeArchiveState, listArchive } from './archive.js';
+import type { AppContext } from '#server/core/context.js';
+import { baseRecord, now } from '#server/core/ids.js';
+import type { Database } from '#server/db/database.js';
+import { changeArchiveState, listArchive } from '#server/modules/learning/archive.js';
 import {
   API_PREFIX,
   archiveState,
@@ -26,9 +26,12 @@ import {
   rejectClientFacts,
   requiredString,
   type JsonObject,
-} from './common.js';
-import { findTaskLocation, normalizePhases, replaceTask } from './plans.js';
-import { questionDefinition, validateScoringConfiguration } from './question-utils.js';
+} from '#server/modules/learning/common.js';
+import { findTaskLocation, normalizePhases, replaceTask } from '#server/modules/learning/plans.js';
+import {
+  questionDefinition,
+  validateScoringConfiguration,
+} from '#server/modules/learning/question-utils.js';
 
 function kind(value: unknown): 'practice' | 'exam' {
   assert(

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/core/config.js';
+import { loadConfig } from '#server/core/config.js';
 
 const originalHost = process.env.HOST;
 const originalDriver = process.env.DATABASE_DRIVER;

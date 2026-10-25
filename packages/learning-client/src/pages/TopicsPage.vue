@@ -2,11 +2,11 @@
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Topic } from '@drill-hub/contracts';
-import { useLearning } from '../injection';
-import { errorMessage, formatDate } from '../utils';
-import PageHeader from '../components/PageHeader.vue';
-import AppIcon from '../components/AppIcon.vue';
-import EmptyState from '../components/EmptyState.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage, formatDate } from '#learning-client/utils';
+import PageHeader from '#learning-client/components/PageHeader.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import EmptyState from '#learning-client/components/EmptyState.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();

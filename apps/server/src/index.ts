@@ -1,4 +1,4 @@
-import { createApp } from './app.js';
+import { createApp } from '#server/app.js';
 const app = await createApp({ logger: true });
 try {
   await app.listen({ host: app.ctx.config.host, port: app.ctx.config.port });

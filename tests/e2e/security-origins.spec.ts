@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { login } from '#e2e/helpers';
 
 test('任意来源可跨域读取会话并写入，但仍要求登录和 CSRF', async ({ page, context }) => {
   await login(page);

@@ -334,6 +334,13 @@ export interface ModelConnectionView extends BaseRecord {
   apiKeyConfigured: boolean;
   configVersion: number;
 }
+/** 模型价格费率，单位为美元 / 百万 tokens（与 models.dev 的 cost 一致）。 */
+export interface ModelCostRates {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
 export interface ProviderModel extends BaseRecord {
   connectionId: string;
   modelKey: string;
@@ -341,6 +348,11 @@ export interface ProviderModel extends BaseRecord {
   enabled: boolean;
   verifiedConfigVersion: number | null;
   testError?: string | null;
+  contextWindow: number | null;
+  maxTokens: number | null;
+  reasoning: boolean;
+  input: ('text' | 'image')[];
+  costPerMillion: ModelCostRates | null;
 }
 export interface DiscoveredProviderModel {
   modelKey: string;
@@ -547,6 +559,8 @@ export interface AssistantTurnView extends BaseRecord {
   assistantMessageId: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   errorCode: string | null;
+  /** 本轮使用的助手模型；null 表示由服务端自动选择。 */
+  providerModelId: string | null;
 }
 export interface AssistantThreadDetail {
   thread: AssistantThread;
@@ -560,6 +574,30 @@ export interface AssistantStatus {
   searchEnabled: boolean;
   mcpEnabled: boolean;
   customSkills: number;
+}
+/** 对话中可选的助手模型（仅启用的模型及其连接）。 */
+export interface AssistantModelOption {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  modelKey: string;
+  displayName: string;
+  reasoning: boolean;
+  contextWindow: number | null;
+  maxTokens: number | null;
+  costPerMillion: ModelCostRates | null;
+}
+/** models.dev 目录中匹配到的模型默认参数与价格。 */
+export interface ModelCatalogMatch {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  name: string | null;
+  reasoning: boolean;
+  input: ('text' | 'image')[];
+  contextWindow: number | null;
+  maxTokens: number | null;
+  costPerMillion: ModelCostRates | null;
 }
 export type McpTransport = 'stdio' | 'http';
 export interface McpServerView extends BaseRecord {
@@ -579,10 +617,4 @@ export interface AssistantSkillView extends BaseRecord {
   name: string;
   description: string;
   enabled: boolean;
-}
-export interface AssistantSettingsView extends BaseRecord {
-  defaultProviderModelId: string | null;
-  maxSearchResults: number;
-  maxConcurrency: number;
-  turnTimeoutMs: number;
 }

@@ -11,15 +11,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui';
-import { useLearning } from '../injection';
-import { useAssistant } from '../assistant/store';
-import { useLocale } from '../i18n';
-import { cycleThemePreference, themePreference } from '../theme';
-import { errorMessage } from '../utils';
-import AppIcon from './AppIcon.vue';
-import AppScrollArea from './AppScrollArea.vue';
-import AppTooltip from './AppTooltip.vue';
-import AssistantPanel from './assistant/AssistantPanel.vue';
+import { useLearning } from '#learning-client/injection';
+import { useAssistant } from '#learning-client/assistant/store';
+import { useLocale } from '#learning-client/i18n';
+import { cycleThemePreference, themePreference } from '#learning-client/theme';
+import { errorMessage } from '#learning-client/utils';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
+import AppTooltip from '#learning-client/components/AppTooltip.vue';
+import AssistantPanel from '#learning-client/components/assistant/AssistantPanel.vue';
 
 const { t } = useI18n();
 

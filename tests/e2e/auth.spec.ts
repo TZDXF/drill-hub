@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { testCredentials } from './helpers';
+import { testCredentials } from '#e2e/helpers';
 
 test('错误凭据显示提示，正确凭据可进入真实首页', async ({ page }) => {
   const credentials = testCredentials();

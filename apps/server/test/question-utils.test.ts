@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { questionDefinition } from '../src/modules/learning/question-utils.js';
+import { questionDefinition } from '#server/modules/learning/question-utils.js';
 
 const definition = {
   type: 'true_false',

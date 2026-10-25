@@ -1,4 +1,4 @@
-import { AppError } from './errors.js';
+import { AppError } from '#server/core/errors.js';
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new AppError(422, 'INVALID_BODY', '请求内容必须是对象');

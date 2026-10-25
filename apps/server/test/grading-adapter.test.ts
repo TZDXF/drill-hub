@@ -7,7 +7,7 @@ import {
   listChatCompletionsModels,
   normalizeProviderBaseUrl,
   testChatCompletionsConnection,
-} from '../src/modules/grading/chat-completions.js';
+} from '#server/modules/grading/chat-completions.js';
 
 const definition: QuestionDefinition = {
   type: 'short_answer',

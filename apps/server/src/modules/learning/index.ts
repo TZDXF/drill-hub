@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import type { AppContext } from '../../core/context.js';
-import { registerAgentRoutes } from './agent.js';
-import { registerAnswerLinkRoutes } from './answer-links.js';
-import { registerLearnerRoutes } from './learner.js';
+import type { AppContext } from '#server/core/context.js';
+import { registerAgentRoutes } from '#server/modules/learning/agent.js';
+import { registerAnswerLinkRoutes } from '#server/modules/learning/answer-links.js';
+import { registerLearnerRoutes } from '#server/modules/learning/learner.js';
 
 export function registerLearningRoutes(app: FastifyInstance, ctx: AppContext): void {
   registerLearnerRoutes(app, ctx);
@@ -16,5 +16,9 @@ export {
   settleAttempt,
   syncWrongQuestions,
   updateAttemptStatus,
-} from './helpers.js';
-export { toAttemptItemView, toAttemptReport, toAttemptView } from './projections.js';
+} from '#server/modules/learning/helpers.js';
+export {
+  toAttemptItemView,
+  toAttemptReport,
+  toAttemptView,
+} from '#server/modules/learning/projections.js';

@@ -11,10 +11,11 @@
 ## 2. 架构与一轮对话的生命周期
 
 ```text
-POST /me/assistant/threads/:id/messages → 202（创建 turn，进程内并发槽执行）
+POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerModelId 按轮选择模型）
   → Pi 会话工厂：
-     · pi-ai Model<'openai-completions'>（来自 assistantSettings.defaultProviderModelId，
-       baseUrl/密钥从 modelConnections 解密后内存注入 setRuntimeApiKey，不落盘）
+     · pi-ai Model<'openai-completions'>（按轮 providerModelId 选择；缺省回退到最早的启用模型，
+       baseUrl/密钥从 modelConnections 解密后内存注入 setRuntimeApiKey，不落盘；
+       模型默认参数 contextWindow/maxTokens/reasoning/input/cost 一并写入 models.json）
      · tools 白名单：仅 4 个自定义工具（drill_hub_api/web_search/navigate/set_layout），
        Pi 内置 read/bash/edit/write 等文件工具全部不注册
      · MCP 扩展 + 管理员配置的启用服务器；Skills 目录物化（DB → SKILL.md）
@@ -22,10 +23,12 @@ POST /me/assistant/threads/:id/messages → 202（创建 turn，进程内并发�
   → 事件与消息持久化 + 进程内 SSE hub 广播
 GET /me/assistant/threads/:id/stream?after=<seq>（SSE；断线游标补齐）
 GET /me/assistant/threads/:id/events?after=<seq>（按游标读取持久化事件，客户端不用于轮询）
+GET /me/assistant/models（对话可选模型：仅返回启用模型及其启用连接，含价格与默认参数）
 ```
 
 - turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn（409 `ACTIVE_TURN_EXISTS`）。
-- 全局并发由 `assistantSettings.maxConcurrency`（默认 1，上限 4）控制；单轮超时 `turnTimeoutMs`（默认 10 分钟）。
+- 不再限制同时执行的对话轮数、单轮超时与搜索结果上限；用户可随时取消（`POST /me/assistant/turns/:id/cancel`）。
+- 模型选择在对话中完成：输入框上方按供应商分组选择（或"自动选择"），选择随该轮请求发送；无效/停用的模型在提交时立即 422 `INVALID_MODEL`。
 - 进程重启不恢复模型中间态：重启时未完成 turn 标记为失败（`ASSISTANT_RESTARTED`）并广播错误事件。
 - 文本增量每秒 flush 到 `assistantMessages.content`；流式中断时保留已生成部分。
 

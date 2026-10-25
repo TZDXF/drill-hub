@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#api-client/*.vue": "./src/*.vue",
+    "#api-client/*.json": "./src/*.json",
+    "#api-client/*.js": "./src/*.ts",
+    "#api-client/*": "./src/*.ts"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -15,5 +21,8 @@
   },
   "dependencies": {
     "@drill-hub/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@drill-hub/tsconfig": "workspace:*"
   }
 }

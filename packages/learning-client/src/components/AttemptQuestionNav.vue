@@ -2,9 +2,9 @@
 import { useI18n } from 'vue-i18n';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Answer, AttemptItemView } from '@drill-hub/contracts';
-import AppDialog from './AppDialog.vue';
-import AppIcon from './AppIcon.vue';
-import QuestionNav from './QuestionNav.vue';
+import AppDialog from '#learning-client/components/AppDialog.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import QuestionNav from '#learning-client/components/QuestionNav.vue';
 
 const { t } = useI18n();
 

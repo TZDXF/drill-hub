@@ -6,6 +6,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  build: { outDir: 'src-tauri/dist' },
   clearScreen: false,
   server: {
     port: 1420,

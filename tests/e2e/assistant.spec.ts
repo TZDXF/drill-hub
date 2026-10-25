@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { testCredentials } from './helpers';
+import { testCredentials } from '#e2e/helpers';
 
 async function login(page: Page) {
   const credentials = testCredentials();

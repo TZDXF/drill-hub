@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { AttemptView } from '@drill-hub/contracts';
-import { attemptPurposeOptions } from '../attemptPresentation';
-import AppSelect from './AppSelect.vue';
-import AppFormField from './AppFormField.vue';
+import { attemptPurposeOptions } from '#learning-client/attemptPresentation';
+import AppSelect from '#learning-client/components/AppSelect.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
 
 const { t } = useI18n();
 

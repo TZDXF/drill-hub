@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../src/app.js';
-import { signInternalToken } from '../src/core/internal-auth.js';
-import { runSearch } from '../src/modules/assistant/search.js';
-import type { SearchProviderRecord } from '../src/db/records.js';
+import { createApp } from '#server/app.js';
+import { signInternalToken } from '#server/core/internal-auth.js';
+import { runSearch } from '#server/modules/assistant/search.js';
+import type { SearchProviderRecord } from '#server/db/records.js';
 
 const PASSWORD = 'Test-only-password-42!';
 const apps: FastifyInstance[] = [];
@@ -170,10 +170,20 @@ async function configureAssistantModel(app: FastifyInstance, admin: Record<strin
     method: 'POST',
     url: `/api/v1/admin/model-connections/${connection.id}/models`,
     headers: admin,
-    payload: { modelKey: 'assistant-model', displayName: '助手测试模型' },
+    payload: {
+      modelKey: 'assistant-model',
+      displayName: '助手测试模型',
+      contextWindow: 128000,
+      maxTokens: 16384,
+      reasoning: true,
+      input: ['text', 'image'],
+      costPerMillion: { input: 0.5, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+    },
   });
   expect(modelResponse.statusCode).toBe(201);
   const model = modelResponse.json().data;
+  expect(model.contextWindow).toBe(128000);
+  expect(model.costPerMillion).toEqual({ input: 0.5, output: 2, cacheRead: 0.1, cacheWrite: 0.2 });
   const tested = await app.inject({
     method: 'POST',
     url: `/api/v1/admin/provider-models/${model.id}/test`,
@@ -181,16 +191,6 @@ async function configureAssistantModel(app: FastifyInstance, admin: Record<strin
     payload: {},
   });
   expect(tested.statusCode).toBe(200);
-  const settingsResponse = await app.inject({
-    method: 'PATCH',
-    url: '/api/v1/admin/assistant-settings',
-    headers: admin,
-    payload: {
-      expectedRevision: 1,
-      defaultProviderModelId: model.id,
-    },
-  });
-  expect(settingsResponse.statusCode).toBe(200);
   return { connection, model };
 }
 
@@ -437,6 +437,62 @@ describe('built-in assistant', () => {
     );
     const error = final.events.find((event) => event.type === 'error');
     expect(error?.payload.code).toBe('ASSISTANT_MODEL_NOT_CONFIGURED');
+  });
+
+  it('exposes selectable models and records the per-turn model choice', async () => {
+    const { app, admin } = await setupApp();
+    const seenModels: string[] = [];
+    installProvider({
+      assistant: () => {
+        seenModels.push('call');
+        return sseResponse(assistantTextRound('收到'));
+      },
+    });
+    const { model } = await configureAssistantModel(app, admin);
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/assistant/models',
+      headers: { cookie: admin.cookie },
+    });
+    expect(list.statusCode).toBe(200);
+    const options = list.json().data;
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({
+      id: model.id,
+      modelKey: 'assistant-model',
+      displayName: '助手测试模型',
+      reasoning: true,
+      contextWindow: 128000,
+      maxTokens: 16384,
+      costPerMillion: { input: 0.5, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+    });
+
+    const thread = await createThread(app, admin);
+    const rejected = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '你好', providerModelId: 'missing-model' },
+    });
+    expect(rejected.statusCode).toBe(422);
+    expect(rejected.json().error.code).toBe('INVALID_MODEL');
+
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '你好', providerModelId: model.id },
+    });
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json().data.turn.providerModelId).toBe(model.id);
+    await pollUntil(app, admin, thread.id, (data) =>
+      data.events.some(
+        (event) => event.type === 'status' && event.payload.phase === 'turn_completed',
+      ),
+    );
+    const usage = await app.ctx.db.list('modelUsage', { purpose: 'assistant' });
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({ modelKey: 'assistant-model', status: 'succeeded' });
   });
 
   it('rejects concurrent turns on one thread and isolates threads per owner', async () => {
@@ -801,22 +857,13 @@ describe('assistant admin routes', () => {
     expect(stdioMcp.statusCode).toBe(201);
     expect(stdioMcp.json().data.enabled).toBe(false);
 
-    const settings = await app.inject({
+    // 全局助手设置已移除：默认模型与上限/超时不再可配置，端点应返回 404。
+    const removedSettings = await app.inject({
       method: 'GET',
       url: '/api/v1/admin/assistant-settings',
       headers: { cookie: admin.cookie },
     });
-    expect(settings.statusCode).toBe(200);
-    const badModel = await app.inject({
-      method: 'PATCH',
-      url: '/api/v1/admin/assistant-settings',
-      headers: admin,
-      payload: {
-        expectedRevision: settings.json().data.revision,
-        defaultProviderModelId: 'missing',
-      },
-    });
-    expect(badModel.statusCode).toBe(422);
+    expect(removedSettings.statusCode).toBe(404);
   });
 
   it('exposes assistant status for entry availability', async () => {

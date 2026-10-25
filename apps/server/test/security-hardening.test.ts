@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createApp, type CreateAppOptions } from '../src/app.js';
-import { createUser } from '../src/modules/auth/index.js';
-import { baseRecord } from '../src/core/ids.js';
+import { createApp, type CreateAppOptions } from '#server/app.js';
+import { createUser } from '#server/modules/auth/index.js';
+import { baseRecord } from '#server/core/ids.js';
 const apps: FastifyInstance[] = [];
 const password = 'Test-only-password-42!';
 afterEach(async () => {

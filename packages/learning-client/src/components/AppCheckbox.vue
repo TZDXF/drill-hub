@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue';
 import { CheckboxIndicator, CheckboxRoot, Label } from 'reka-ui';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
 
 const props = withDefaults(
   defineProps<{

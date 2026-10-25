@@ -2,12 +2,12 @@
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
-import { useLearning } from '../injection';
-import { errorMessage } from '../utils';
-import AuthLayout from '../components/AuthLayout.vue';
-import AppIcon from '../components/AppIcon.vue';
-import AppFormField from '../components/AppFormField.vue';
-import ConfirmDialog from '../components/ConfirmDialog.vue';
+import { useLearning } from '#learning-client/injection';
+import { errorMessage } from '#learning-client/utils';
+import AuthLayout from '#learning-client/components/AuthLayout.vue';
+import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppFormField from '#learning-client/components/AppFormField.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 
 const { t } = useI18n();
 const learning = useLearning();

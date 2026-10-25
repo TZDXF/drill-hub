@@ -1,13 +1,13 @@
 import { createApp, watch, type App as VueApp } from 'vue';
-import App from './App.vue';
-import { createLearningContext } from './context';
-import { learningContextKey } from './injection';
-import { createLearningRouter } from './router';
-import { initAssistantStore } from './assistant/store';
+import App from '#learning-client/App.vue';
+import { createLearningContext } from '#learning-client/context';
+import { learningContextKey } from '#learning-client/injection';
+import { createLearningRouter } from '#learning-client/router';
+import { initAssistantStore } from '#learning-client/assistant/store';
 import type { ClientPlatform } from '@drill-hub/contracts';
-import { i18n, initializeLocale } from './i18n';
-import './theme';
-import './style.css';
+import { i18n, initializeLocale } from '#learning-client/i18n';
+import '#learning-client/theme';
+import '#learning-client/style.css';
 
 export interface CreateLearningAppOptions {
   platform: ClientPlatform;

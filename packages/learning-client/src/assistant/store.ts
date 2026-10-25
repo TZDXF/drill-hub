@@ -4,14 +4,15 @@ import type {
   AssistantEventView,
   AssistantLayoutMode,
   AssistantMessageView,
+  AssistantModelOption,
   AssistantRouteName,
   AssistantStatus,
   AssistantThread,
   AssistantTurnView,
   AssistantUiAction,
 } from '@drill-hub/contracts';
-import type { LearningContext } from '../context';
-import { errorMessage } from '../utils';
+import type { LearningContext } from '#learning-client/context';
+import { errorMessage } from '#learning-client/utils';
 
 /** 路由名与助手 navigate 工具白名单的映射（服务端以白名单名下发）。 */
 const ROUTE_TO_ASSISTANT: Record<string, { route: AssistantRouteName; params: string[] }> = {
@@ -58,6 +59,9 @@ export interface AssistantState {
   streamingText: string;
   connection: 'idle' | 'connecting' | 'streaming';
   error: string;
+  models: AssistantModelOption[];
+  /** 空字符串表示「自动」（由服务端回退到可用模型）。 */
+  selectedModelId: string;
 }
 
 type StreamHandle = { abort: AbortController };
@@ -82,6 +86,8 @@ const state = reactive<AssistantState>({
   streamingText: '',
   connection: 'idle',
   error: '',
+  models: [],
+  selectedModelId: '',
 });
 
 function learning(): LearningContext {
@@ -111,6 +117,21 @@ async function refreshStatus(): Promise<void> {
   } catch {
     state.status = null;
   }
+  await loadModels();
+}
+
+async function loadModels(): Promise<void> {
+  try {
+    state.models = await learning().get<AssistantModelOption[]>('/me/assistant/models');
+  } catch {
+    state.models = [];
+  }
+  if (state.selectedModelId && !state.models.some((model) => model.id === state.selectedModelId))
+    state.selectedModelId = '';
+}
+
+function selectModel(modelId: string): void {
+  state.selectedModelId = modelId;
 }
 
 async function loadThreads(): Promise<void> {
@@ -200,6 +221,7 @@ async function send(content: string): Promise<void> {
     }>(`/me/assistant/threads/${threadId}/messages`, {
       content: text,
       pageContext: currentPageContext(),
+      ...(state.selectedModelId ? { providerModelId: state.selectedModelId } : {}),
     });
     state.activeTurnId = result.turn?.id ?? null;
     state.streamingText = '';
@@ -395,6 +417,8 @@ function setChatWidth(width: number): void {
 export interface AssistantStore {
   state: AssistantState;
   refreshStatus(): Promise<void>;
+  loadModels(): Promise<void>;
+  selectModel(modelId: string): void;
   loadThreads(): Promise<void>;
   selectThread(threadId: string): Promise<void>;
   newThread(): Promise<AssistantThread>;
@@ -416,6 +440,8 @@ export function useAssistant(): AssistantStore {
   return {
     state,
     refreshStatus,
+    loadModels,
+    selectModel,
     loadThreads,
     selectThread,
     newThread,

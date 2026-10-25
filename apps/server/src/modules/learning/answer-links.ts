@@ -1,16 +1,16 @@
-import { resolvePublicUrl } from '../../core/public-url.js';
-import { attemptPurpose } from './attempt-policy.js';
+import { resolvePublicUrl } from '#server/core/public-url.js';
+import { attemptPurpose } from '#server/modules/learning/attempt-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {
   AnswerLinkCreated,
   PublicAnswerContext,
   PublicAssessmentSummary,
 } from '@drill-hub/contracts';
-import type { Actor, AppContext } from '../../core/context.js';
-import { baseRecord } from '../../core/ids.js';
-import { hashSecret, randomSecret } from '../../core/security.js';
-import type { Database } from '../../db/database.js';
-import type { AnswerLinkRecord } from '../../db/records.js';
+import type { Actor, AppContext } from '#server/core/context.js';
+import { baseRecord } from '#server/core/ids.js';
+import { hashSecret, randomSecret } from '#server/core/security.js';
+import type { Database } from '#server/db/database.js';
+import type { AnswerLinkRecord } from '#server/db/records.js';
 import {
   API_PREFIX,
   assert,
@@ -21,7 +21,7 @@ import {
   positiveInteger,
   rejectClientFacts,
   type JsonObject,
-} from './common.js';
+} from '#server/modules/learning/common.js';
 import {
   readAnswerLinkAttempt,
   saveAnswer,
@@ -29,8 +29,12 @@ import {
   submitAttempt,
   submitPracticeItem,
   resolveAssessmentTaskId,
-} from './attempts.js';
-import { toAttemptItemView, toAttemptReport, toAttemptView } from './projections.js';
+} from '#server/modules/learning/attempts.js';
+import {
+  toAttemptItemView,
+  toAttemptReport,
+  toAttemptView,
+} from '#server/modules/learning/projections.js';
 
 const ANSWER_LINK_TOKEN_HEADER = 'x-answer-link-token';
 const DEFAULT_LINK_SECONDS = 86_400;

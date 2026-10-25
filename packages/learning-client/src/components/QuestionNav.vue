@@ -2,7 +2,11 @@
 import { useI18n } from 'vue-i18n';
 import { useId } from 'vue';
 import type { Answer, AttemptItemView } from '@drill-hub/contracts';
-import { answerStatusLabels, draftAnswerStatus, gradingStatusLabels } from '../attemptPresentation';
+import {
+  answerStatusLabels,
+  draftAnswerStatus,
+  gradingStatusLabels,
+} from '#learning-client/attemptPresentation';
 
 const { t } = useI18n();
 
