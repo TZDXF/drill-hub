@@ -54,7 +54,7 @@ export function createAuthFunctions(
 ): Pick<AppContext, 'requireUser' | 'requireAdmin' | 'requireAgent'> {
   /**
    * 助手内部令牌（dhi. 前缀）：服务端在同进程内为 drill_hub_api 工具签发，
-   * 以发起用户身份执行端点。HMAC 签名无法伪造，短 TTL 且绑定单一 turn。
+   * 以发起用户身份执行端点。校验 HMAC 签名与有效期，并绑定单一 turn。
    */
   function internalActor(request: FastifyRequest): { actor: Actor } | null {
     const header = request.headers.authorization;

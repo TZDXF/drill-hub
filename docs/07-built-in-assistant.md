@@ -50,7 +50,7 @@ GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式
 
 `drill_hub_api` 的 `app.inject()` 自调用使用 `dhi.` 前缀的无状态 HMAC 内部令牌（密钥为主加密密钥）：
 
-- 绑定单一 turn 与用户，短 TTL；不落库、不写日志、外部不可伪造；
+- 绑定单一 turn 与用户，有效期为签发起 24 小时（`INTERNAL_TOKEN_TTL_MS`）；不落库、不写日志、外部不可伪造；
 - 以发起用户身份通过 `requireUser`；`requireAdmin` 对内部令牌无条件拒绝（管理员用户发起的助手会话同样无管理权限）；
 - 内部令牌请求不写 API 访问日志（防止单轮对话放大日志量），业务写操作仍由各端点审计覆盖。
 
@@ -69,7 +69,7 @@ GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式
 ## 7. 用量与审计
 
 - 每轮对话按实际 turn 结束写入 `modelUsage`（purpose=`assistant`，含多轮工具调用的累计 usage；失败轮也记录）；Token 用量页展示该用途。
-- 配置变更（搜索服务、MCP、Skills、助手设置）与线程删除写审计日志（action 前缀 `assistant-`/`search-provider-`/`mcp-server-`）。
+- 配置变更（搜索服务、MCP、Skills）与线程删除写审计日志（action 前缀 `search-provider.`/`mcp-server.`/`assistant-skill.`/`assistant.thread.`）。
 - 聊天消息内容不进访问日志或审计摘要。
 
 ## 8. 前端与三端适配
@@ -77,7 +77,7 @@ GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式
 - 桌面（>1100px）：侧栏 + 助手面板（默认 400px，320–560 可调）+ 内容三栏；平板（781–1100px）：面板收窄至 300–340px；手机（≤780px）：全屏覆盖层，`navigate` 动作自动收起，经入口重新打开。
 - 入口：桌面顶栏助手按钮与侧边栏"学习助手"；手机首页快捷链接与 `/assistant` 路由。
 - 流式输出：SSE `text_delta` 逐字渲染（vue-stream-markdown）；连接失败自动降级 2s 轮询；页面隐藏暂停、恢复重连。
-- 管理页：`/admin/settings/assistant`（默认模型/并发/限额/搜索/MCP/Skills）。
+- 管理页：`/admin/settings/assistant`（搜索/MCP/Skills）；供应商与模型在 `/admin/settings/models` 管理，助手使用的模型在对话中按轮选择。每轮 API 调用与写操作限额由服务端固定，不提供管理页配置。
 
 ## 9. 部署注意
 
@@ -90,4 +90,4 @@ GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式
 - 助手写操作没有逐条人工确认；依赖每轮写操作限额与审计追溯。
 - 同一账号多设备同时打开助手时，各自订阅同一事件流，消息以服务端为准（无跨设备推送，重开面板拉取全量）。
 - 会话历史以扁平消息列表注入 prompt（最近 20 条），不做向量检索或自动摘要压缩。
-- 评分适配器与助手模型共用供应商连接，但不共用评分配置；助手模型必须先通过当前连接版本的模型测试。
+- 评分适配器与助手模型共用供应商连接，但不共用评分配置；`GET /me/assistant/models` 仅返回模型与所属连接均已启用的模型，不要求先通过模型测试。
