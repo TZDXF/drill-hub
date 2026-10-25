@@ -67,12 +67,21 @@ const ROUTE_NAMES: AssistantRouteName[] = [
   'archive',
 ];
 
-function threadView(record: AssistantThread): AssistantThread {
-  return record;
+function threadView(
+  record: import('#server/db/records.js').AssistantThreadRecord,
+): AssistantThread {
+  const { durableConversationId: _durableConversationId, ...view } = record;
+  return view;
 }
 
 function turnView(record: AssistantTurnRecord): AssistantTurnView {
-  const { ownerId: _ownerId, promptContext: _promptContext, ...view } = record;
+  const {
+    ownerId: _ownerId,
+    promptContext: _promptContext,
+    apiCalls: _apiCalls,
+    writeCalls: _writeCalls,
+    ...view
+  } = record;
   return view;
 }
 
@@ -181,6 +190,7 @@ export function registerAssistantRoutes(
       ownerId: actor.userId,
       title: optionalString(input, 'title', '新对话', 200),
       lastMessageAt: now(),
+      durableConversationId: null,
     };
     await ctx.db.insert('assistantThreads', thread);
     reply.code(201);
@@ -216,6 +226,7 @@ export function registerAssistantRoutes(
     assert(mode, 'INVALID_FORK_MODE', '分叉位置无效', 422);
     try {
       const thread = await forkAssistantThread(ctx, actor, source, turnId, mode);
+      await assistant.forkThread(source, thread, turnId, mode);
       reply.code(201);
       return { data: thread };
     } catch (error) {
@@ -781,6 +792,7 @@ export function registerAssistantRoutes(
     };
     await ctx.db.transaction(async (tx) => {
       await tx.insert('mcpServers', record);
+      assistant.invalidateRuntime();
       await ctx.audit(
         actor,
         'mcp-server.create',
@@ -822,6 +834,7 @@ export function registerAssistantRoutes(
       updates.encryptedHeaders = ctx.vault.encryptJson(input.headers);
     if (input.headers === null) updates.encryptedHeaders = null;
     const updated = await ctx.db.update('mcpServers', saved.id, revision, updates);
+    assistant.invalidateRuntime();
     await ctx.audit(actor, 'mcp-server.update', 'mcpServer', saved.id, {
       enabled: updated.enabled,
     });
@@ -836,6 +849,7 @@ export function registerAssistantRoutes(
       await tx.delete('mcpServers', saved.id);
       await ctx.audit(actor, 'mcp-server.delete', 'mcpServer', saved.id, {}, tx);
     });
+    assistant.invalidateRuntime();
     reply.code(204);
     return reply.send();
   });

@@ -98,7 +98,7 @@ function assistantTextRound(text: string) {
 
 /** stub 全局 fetch：区分本机直连、/models 与助手对话（流式，带工具声明）。 */
 function installProvider(options: {
-  assistant?: (callIndex: number) => Response | Promise<Response>;
+  assistant?: (callIndex: number, init?: RequestInit) => Response | Promise<Response>;
   models?: unknown[];
 }) {
   const assistantCalls: Record<string, any>[] = [];
@@ -119,7 +119,7 @@ function installProvider(options: {
       assistantCalls.push(body);
       assistantIndex += 1;
       const respond =
-        options.assistant?.(assistantIndex) ?? sseResponse(assistantTextRound('好的。'));
+        options.assistant?.(assistantIndex, init) ?? sseResponse(assistantTextRound('好的。'));
       return respond;
     }
     throw new Error('unexpected provider request');
@@ -225,9 +225,9 @@ describe('built-in assistant', () => {
     const final = await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
     expect(final.events.some((event) => event.type === 'error')).toBe(false);
     expect(final.events.some((event) => event.payload.phase === 'turn_completed')).toBe(true);
-    const models = await readFile(join(dataDir, 'assistant-runtime', 'models.json'), 'utf8');
-    expect(models).toContain('assistant-model');
-    expect(models).not.toContain('test-only-secret');
+    const durableStorage = await readFile(join(dataDir, 'assistant-runtime', 'durable.sqlite'));
+    expect(durableStorage.byteLength).toBeGreaterThan(0);
+    expect(durableStorage.includes(Buffer.from('test-only-secret'))).toBe(false);
   });
 
   it('runs a full turn with a tool call and records usage without admin endpoints', async () => {
@@ -715,7 +715,16 @@ describe('built-in assistant', () => {
     const gate = new Promise<Response>((resolve) => {
       releaseModel = () => resolve(sseResponse(assistantTextRound('慢速回复')));
     });
-    installProvider({ assistant: () => gate });
+    let firstCall = true;
+    installProvider({
+      assistant: () => {
+        if (firstCall) {
+          firstCall = false;
+          return gate;
+        }
+        return sseResponse(assistantTextRound('后续回复'));
+      },
+    });
     await configureAssistantModel(app, admin);
     const thread = await createThread(app, admin);
     const first = await app.inject({
@@ -881,6 +890,8 @@ describe('built-in assistant', () => {
 
   it('paginates history and forks a settled turn without changing the source', async () => {
     const { app, admin, ownerId } = await setupApp();
+    installProvider({});
+    await configureAssistantModel(app, admin);
     const thread = await createThread(app, admin);
     const turnIds: string[] = [];
     for (let index = 0; index < 3; index += 1) {
@@ -921,6 +932,8 @@ describe('built-in assistant', () => {
         errorCode: null,
         promptContext: null,
         providerModelId: null,
+        apiCalls: 0,
+        writeCalls: 0,
         createdAt: stamp,
         updatedAt: stamp,
       };
@@ -943,25 +956,129 @@ describe('built-in assistant', () => {
       headers: { cookie: admin.cookie },
     });
     expect(older.json().data.messages[0].content).toBe('问题 1');
-    const fork = await app.inject({
-      method: 'POST',
-      url: `/api/v1/me/assistant/threads/${thread.id}/fork`,
-      headers: admin,
-      payload: { turnId: turnIds[1], mode: 'through' },
-    });
-    expect(fork.statusCode).toBe(201);
-    const branch = await app.inject({
-      method: 'GET',
-      url: `/api/v1/me/assistant/threads/${fork.json().data.id}`,
-      headers: { cookie: admin.cookie },
-    });
-    expect(branch.json().data.messages).toHaveLength(4);
     const original = await app.inject({
       method: 'GET',
       url: `/api/v1/me/assistant/threads/${thread.id}`,
       headers: { cookie: admin.cookie },
     });
     expect(original.json().data.messages).toHaveLength(6);
+
+    const durableThread = await createThread(app, admin);
+    for (const content of ['第一轮', '第二轮']) {
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/me/assistant/threads/${durableThread.id}/messages`,
+        headers: admin,
+        payload: { content },
+      });
+      await pollUntil(app, admin, durableThread.id, (data) => !data.activeTurn);
+    }
+    const durableTurns = (
+      await app.ctx.db.list('assistantTurns', { threadId: durableThread.id })
+    ).sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const durableThreadRecord = await app.ctx.db.get('assistantThreads', durableThread.id);
+    expect(durableThreadRecord!.durableConversationId).toEqual(expect.any(Number));
+    const durableFork = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${durableThread.id}/fork`,
+      headers: admin,
+      payload: { turnId: durableTurns[1]!.id, mode: 'through' },
+    });
+    expect(durableFork.statusCode).toBe(201);
+    const durableBranch = await app.inject({
+      method: 'GET',
+      url: `/api/v1/me/assistant/threads/${durableFork.json().data.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(durableBranch.json().data.messages).toHaveLength(4);
+    expect(durableBranch.json().data.thread).not.toHaveProperty('durableConversationId');
+    expect(durableBranch.json().data.turns[0]).not.toHaveProperty('apiCalls');
+    const branchRecord = await app.ctx.db.get('assistantThreads', durableFork.json().data.id);
+    const sourceRecord = await app.ctx.db.get('assistantThreads', durableThread.id);
+    expect(branchRecord!.durableConversationId).not.toBe(sourceRecord!.durableConversationId);
+  });
+
+  it('reuses the durable conversation after reopening the application', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'drill-hub-durable-restart-'));
+    dataDirs.push(dataDir);
+    const databasePath = join(dataDir, 'drill-hub.sqlite');
+    const first = await setupApp(databasePath);
+    installProvider({});
+    await configureAssistantModel(first.app, first.admin);
+    const thread = await createThread(first.app, first.admin);
+    await first.app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: first.admin,
+      payload: { content: '需要跨重启保留的上下文' },
+    });
+    await pollUntil(first.app, first.admin, thread.id, (data) => !data.activeTurn);
+    await first.app.close();
+
+    const second = await setupApp(databasePath);
+    const provider = installProvider({});
+    await second.app.ctx.assistant.start();
+    await second.app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: second.admin,
+      payload: { content: '继续上一轮' },
+    });
+    await pollUntil(second.app, second.admin, thread.id, (data) => !data.activeTurn);
+    const source = await second.app.ctx.db.get('assistantThreads', thread.id);
+    const secondTurns = await second.app.ctx.db.list('assistantTurns', { threadId: thread.id });
+    expect(secondTurns).toHaveLength(2);
+    expect(source!.durableConversationId).toEqual(expect.any(Number));
+    expect(JSON.stringify(provider.assistantCalls[0])).toContain('需要跨重启保留的上下文');
+    expect(JSON.stringify(provider.assistantCalls[0])).toContain('好的。');
+  });
+
+  it('resumes an interrupted run without replaying a committed write tool', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'drill-hub-durable-recovery-'));
+    dataDirs.push(dataDir);
+    const databasePath = join(dataDir, 'drill-hub.sqlite');
+    const first = await setupApp(databasePath);
+    installProvider({
+      assistant: (callIndex, init) => {
+        if (callIndex === 1)
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: '/api/v1/agent/topics',
+              body: { title: '恢复测试主题' },
+            }),
+          );
+        if (callIndex === 2)
+          return new Promise<Response>((_resolve, reject) => {
+            const abort = () => reject(new DOMException('aborted', 'AbortError'));
+            if (init?.signal?.aborted) abort();
+            else init?.signal?.addEventListener('abort', abort, { once: true });
+          });
+        return sseResponse(assistantTextRound('不应到达'));
+      },
+    });
+    await configureAssistantModel(first.app, first.admin);
+    const thread = await createThread(first.app, first.admin);
+    await first.app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: first.admin,
+      payload: { content: '创建主题后继续' },
+    });
+    await pollUntil(first.app, first.admin, thread.id, (data) =>
+      data.events.some((event) => event.type === 'tool_result'),
+    );
+    await first.app.close();
+
+    const second = await setupApp(databasePath);
+    installProvider({});
+    await second.app.ctx.assistant.start();
+    await pollUntil(second.app, second.admin, thread.id, (data) => !data.activeTurn);
+    expect(await second.app.ctx.db.list('topics', {})).toHaveLength(1);
+    const turn = (await second.app.ctx.db.list('assistantTurns', { threadId: thread.id }))[0]!;
+    expect(turn.status).toBe('succeeded');
+    const answer = await second.app.ctx.db.get('assistantMessages', turn.assistantMessageId);
+    expect(answer!.content).toBe('好的。');
   });
 
   it('internal tokens authenticate as the invoking user but never as admin', async () => {

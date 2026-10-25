@@ -30,17 +30,17 @@ export interface ServerConfig {
 export interface GradingService {
   gradeLockedItem(db: Database, attempt: Attempt, item: AttemptItemSnapshot): Promise<void>;
   runOnce(): Promise<void>;
-  start(): void;
-  stop(): void;
+  start(): void | Promise<void>;
+  stop(): void | Promise<void>;
 }
 export interface AssistantService {
   /** 立即执行一个已入队的 turn（测试与同步驱动）；生产由内部并发槽调度。 */
   runTurnNow(turnId: string): Promise<void>;
   cancelTurn(ownerId: string, turnId: string): Promise<boolean>;
-  /** 管理员变更模型连接/设置后调用，使缓存的 Pi 运行时失效。 */
+  /** 管理员变更模型连接/设置后调用，使刷新 Pi Durable 运行时配置。 */
   invalidateRuntime(): void;
-  start(): void;
-  stop(): void;
+  start(): void | Promise<void>;
+  stop(): void | Promise<void>;
 }
 export interface AppContext {
   db: Database;

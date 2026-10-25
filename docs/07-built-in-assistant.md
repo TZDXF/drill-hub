@@ -1,6 +1,6 @@
 # 07 · 内置学习助手（Built-in Assistant）
 
-基线：v0.3。内置对话助手已实现（首版），基于 [Pi](https://pi.dev)（`@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai`）作为服务端 Agent 运行时。本文描述当前实际行为与安全边界。
+基线：v0.3。内置对话助手已实现（首版），基于 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)（`@earendil-works/pi-durable` + `@earendil-works/pi-ai`）作为服务端持久 Agent 运行时，MCP 使用独立的 `@earendil-works/pi-mcp` 客户端。本文描述当前实际行为与安全边界。
 
 ## 1. 定位与职责
 
@@ -12,15 +12,16 @@
 
 ```text
 POST /me/assistant/threads/:id/messages → 202（创建 turn，可带 providerModelId、图片与队列模式）
-  → Pi 会话工厂：
+  → DurableAssistantRuntime：
+     · 每个助手线程绑定一个持久 Durable Conversation；turnId 同时作为 submission requestId
      · pi-ai Model<'openai-completions'>（按轮 providerModelId 选择；缺省回退到最早的启用模型，
-       baseUrl/密钥从 modelConnections 解密后内存注入 setRuntimeApiKey，不落盘；
-       模型默认参数 contextWindow/maxTokens/reasoning/input/cost 一并写入 models.json）
+       baseUrl/密钥从 modelConnections 解密后内存注入，不落盘；
+       contextWindow/maxTokens/reasoning/input/cost 直接注册到 Models）
      · tools 白名单：5 个自定义工具（drill_hub_api/drill_hub_api_help/web_search/navigate/set_layout），
-       Pi 内置 read/bash/edit/write 等文件工具全部不注册
-     · MCP 扩展 + 管理员配置的启用服务器；Skills 目录物化（DB → SKILL.md）
-  → session.prompt() → session.subscribe 事件桥接（text_delta / tool_execution_*）
-  → 事件与消息持久化 + 进程内 SSE hub 广播
+       不注册 read/bash/edit/write 等文件工具
+     · 独立 pi-mcp 客户端 + 管理员配置的启用服务器；Skills 从 DB 动态渲染到 prompt section
+  → Conversation.submit() → watchEvents 事件桥接（text_delta / tool_execution_* / submission / run_end）
+  → Durable 检查点 + 应用事件与消息持久化 + 进程内 SSE hub 广播
 GET /me/assistant/threads/:id/stream?after=<seq>（SSE；断线游标补齐）
 GET /me/assistant/threads/:id/events?after=<seq>（按游标读取持久化事件，客户端不用于轮询）
 GET /me/assistant/models（对话可选模型：仅返回启用模型及其启用连接，含价格与默认参数）
@@ -32,10 +33,10 @@ PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息�
 - turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn。活动期间的第二条消息进入服务端持久化队列：`followUp` 等本轮结束后执行，`steer` 取消当前生成并优先执行；队列在重连和服务重启后仍可恢复。
 - 不再限制同时执行的对话轮数、单轮超时与搜索结果上限；用户可随时取消（`POST /me/assistant/turns/:id/cancel`）。
 - 模型选择在对话中完成：输入框上方按供应商分组选择（或"自动选择"），选择随该轮请求发送；无效/停用的模型在提交时立即 422 `INVALID_MODEL`。
-- 进程重启不恢复模型中间态：重启时未完成 turn 标记为失败（`ASSISTANT_RESTARTED`）并广播错误事件。
+- 进程重开时重新打开 `durable.sqlite` 并 `resume()` 未完成任务；watcher 按 `turnId` 对账提交状态，将最终回复、取消或失败投影回应用消息与 SSE。
 - 文本与推理增量每秒 flush 到消息记录；SSE 同时提供增量、活动消息快照和队列快照。流式中断时保留已生成部分，客户端在终稿返回前保持同一棵回复渲染树。
 - 用户消息最多附 4 张 PNG/JPEG/WebP/GIF 图片（单张 5 MB）；图片只在本人消息与当轮模型请求中使用。
-- 对话界面提供历史虚拟化、时间线跳转、滚动跟随解除/恢复、复制、编辑重发、重试、分叉、划词引用与批注。
+- 对话界面提供历史虚拟化、时间线跳转、滚动跟随解除/恢复、复制、编辑重发、重试、分叉、划词引用与批注；Durable fork 与应用消息分叉使用同一轮次边界。
 
 ## 3. 工具集与白名单
 
@@ -71,9 +72,9 @@ PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息�
 
 ## 6. MCP 与 Skills（管理员配置）
 
-- MCP 服务器：stdio（command/args/env）或 http（url/headers，仅 streamable HTTP）；env/headers 加密存储；`exposure` 支持 direct/deferred；**创建后默认停用**，启用需管理员显式操作并审计。stdio 会在服务端 spawn 子进程，管理页有明确提示。http 地址默认拒绝内网。
-- Skills：名称+描述+Markdown 指令存 DB，会话构建时物化为 `SKILL.md` 目录交给 Pi 资源加载器；名称限小写字母/数字/连字符且唯一。
-- SDK 会话不加载 Pi CLI 内置扩展，仅显式挂载 MCP 扩展与上述白名单工具。
+- MCP 服务器：stdio（command/args/env）或 http（url/headers，仅 streamable HTTP）；env/headers 加密存储；`exposure` 支持 direct/deferred，deferred 工具通过 `tool_search` 加载；**创建后默认停用**，启用需管理员显式操作并审计。stdio 会在服务端 spawn 子进程，管理页有明确提示。http 地址默认拒绝内网。
+- Skills：名称+描述+Markdown 指令存 DB，启用项作为 Durable system prompt section 在每次模型请求前渲染；名称限小写字母/数字/连字符且唯一。
+- 不加载 Pi CLI 内置扩展、编码工具或文件系统工具，仅显式挂载学习白名单工具、MCP 工具与工具搜索。
 
 ## 7. 用量与审计
 
@@ -91,12 +92,15 @@ PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息�
 ## 9. 部署注意
 
 - SSE 需要反向代理关闭响应缓冲（nginx：`proxy_buffering off`，或等效配置），并允许长连接。
-- 助手运行文件保存在 `DATABASE_PATH` 所在目录下的 `assistant-runtime/`：默认开发环境为 `.data/assistant-runtime/`，Docker 数据卷中为 `/app/data/assistant-runtime/`（PostgreSQL 部署也以 `DATABASE_PATH` 定位该目录）。该目录保存 Pi 运行时的 models.json（不含密钥）与物化 Skills，需要服务端进程具备写权限，可随数据目录一起备份；密钥始终只存于数据库加密字段。
+- 助手运行文件保存在 `DATABASE_PATH` 所在目录下的 `assistant-runtime/`：默认开发环境为 `.data/assistant-runtime/`，Docker 数据卷中为 `/app/data/assistant-runtime/`（PostgreSQL 部署也以 `DATABASE_PATH` 定位该目录）。该目录保存 `durable.sqlite`（Conversation、模型调用、工具调用与任务检查点），需要服务端进程具备写权限，并必须与业务数据库一起备份和恢复。模型与密钥在每轮从当前配置注入内存，Skills 从数据库动态渲染，不再生成 models.json 或物化 Skills。Durable SQLite 使用 WAL + `synchronous=NORMAL`，可恢复进程崩溃，但主机断电可能丢失最后少量提交；同一存储只允许一个服务端进程持有，PostgreSQL 业务部署也仍需独立备份此文件并遵守单实例限制。
 - 新增环境变量 `ALLOW_PRIVATE_SEARCH_URLS`（默认 `false`），语义同 `ALLOW_PRIVATE_MODEL_URLS`。
 
 ## 10. 当前边界
 
 - 助手写操作没有逐条人工确认；依赖每轮写操作限额与审计追溯。
 - 同一账号多设备同时打开助手时，各自订阅同一事件流，消息以服务端为准；没有额外的离线同步机制，重开面板按分页拉取历史。
-- 会话历史以扁平消息列表注入 prompt（最近 20 条），不做向量检索或自动摘要压缩。
+- 每个线程绑定一个 Durable Conversation，使用持久 transcript 和自动压缩，不再拼接最近 20 条消息；没有历史会话向量检索。
+- 写工具默认 `replay: unsafe`：进程中断后恢复会话和后续工作，但不自动重放可能已产生业务副作用的调用；通用写幂等仍未实现，不能宣称 exactly-once。
+- Durable 使用追加式检查点历史，不提供逐 Conversation 物理擦除。删除线程会删除应用消息、事件与索引，但对应检查点只能随整个 `durable.sqlite` 的生命周期处理。
+- Pi Durable 当前仍标记为 experimental，升级时必须核对 API、扩展与持久化检查点行为。
 - 评分适配器与助手模型共用供应商连接，但不共用评分配置；`GET /me/assistant/models` 仅返回模型与所属连接均已启用的模型。

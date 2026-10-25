@@ -200,6 +200,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     ownerId: 'text',
     title: 'text',
     lastMessageAt: 'text',
+    durableConversationId: 'integer?',
   },
   assistantMessages: {
     ownerId: 'text',
@@ -228,6 +229,8 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     errorCode: 'text?',
     promptContext: 'text?',
     providerModelId: 'text?',
+    apiCalls: 'integer',
+    writeCalls: 'integer',
   },
   assistantQueuedMessages: {
     ownerId: 'text',
@@ -645,5 +648,35 @@ export class OrderAssistantQueue1793000000001 implements MigrationInterface {
     const queue = await runner.getTable('assistantQueuedMessages');
     if (queue?.findColumnByName('position'))
       await runner.dropColumn('assistantQueuedMessages', 'position');
+  }
+}
+
+/** Pi Durable 持久会话绑定与跨重启可追踪的工具调用限额。 */
+export class MigrateAssistantToDurable1793000000002 implements MigrationInterface {
+  name = 'MigrateAssistantToDurable1793000000002';
+  async up(runner: QueryRunner) {
+    const threads = await runner.getTable('assistantThreads');
+    if (threads && !threads.findColumnByName('durableConversationId'))
+      await runner.addColumn(
+        'assistantThreads',
+        new TableColumn({ name: 'durableConversationId', type: 'integer', isNullable: true }),
+      );
+    const turns = await runner.getTable('assistantTurns');
+    for (const name of ['apiCalls', 'writeCalls']) {
+      if (turns && !turns.findColumnByName(name))
+        await runner.addColumn(
+          'assistantTurns',
+          new TableColumn({ name, type: 'integer', isNullable: false, default: 0 }),
+        );
+    }
+  }
+  async down(runner: QueryRunner) {
+    const threads = await runner.getTable('assistantThreads');
+    if (threads?.findColumnByName('durableConversationId'))
+      await runner.dropColumn('assistantThreads', 'durableConversationId');
+    const turns = await runner.getTable('assistantTurns');
+    for (const name of ['apiCalls', 'writeCalls']) {
+      if (turns?.findColumnByName(name)) await runner.dropColumn('assistantTurns', name);
+    }
   }
 }

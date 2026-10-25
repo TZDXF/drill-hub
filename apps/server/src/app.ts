@@ -242,7 +242,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     clearInterval(logRetentionTimer);
     if (expirationTimer) clearInterval(expirationTimer);
     ctx.grading.stop();
-    ctx.assistant.stop();
+    await ctx.assistant.stop();
     await db.close();
   });
   return app;

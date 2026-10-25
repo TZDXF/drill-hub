@@ -5,22 +5,26 @@ import type {
   AssistantQueuedMessage,
   ModelTokenUsage,
 } from '@drill-hub/contracts';
-import type { AgentSession } from '@earendil-works/pi-coding-agent';
+import type {
+  AgentEvent,
+  EntryRecord,
+  SnapshotEvent,
+  SubmissionRecord,
+} from '@earendil-works/pi-durable';
+import type { AssistantMessage, Usage } from '@earendil-works/pi-ai';
 import { AppError } from '#server/core/errors.js';
-import { baseRecord, id, now } from '#server/core/ids.js';
+import { baseRecord } from '#server/core/ids.js';
 import { signInternalToken } from '#server/core/internal-auth.js';
 import type { Actor, AppContext, AssistantService } from '#server/core/context.js';
 import type {
   AssistantEventRecord,
   AssistantQueuedMessageRecord,
+  AssistantThreadRecord,
   AssistantTurnRecord,
 } from '#server/db/records.js';
-import { createAssistantTools } from '#server/modules/assistant/tools.js';
-import { PiSessionFactory } from '#server/modules/assistant/pi-session.js';
+import { DurableAssistantRuntime } from '#server/modules/assistant/durable-runtime.js';
 
-const HISTORY_MESSAGE_LIMIT = 20;
 const TEXT_FLUSH_INTERVAL_MS = 1000;
-/** internal token 覆盖整轮执行（不再受单轮超时限制），给足余量即可。 */
 const INTERNAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AssistantStreamFrame {
@@ -31,20 +35,21 @@ export interface AssistantStreamFrame {
   reasoning?: string;
   queued?: AssistantQueuedMessage[];
 }
-
 export type StreamListener = (frame: AssistantStreamFrame) => void;
-
 export interface AssistantServiceImpl extends AssistantService {
-  /** 将已创建的一轮对话加入执行队列（各线程互不阻塞，不限制同时执行的轮数）。 */
   enqueue(turnId: string): void;
   queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage>;
   sendQueuedMessage(queued: AssistantQueuedMessageRecord): Promise<AssistantQueuedMessage>;
   notifyQueue(threadId: string): Promise<void>;
   subscribe(threadId: string, listener: StreamListener): () => void;
-  /** SSE 订阅时回放断线期间落库的事件，跳过监听器已收到的序号。 */
   replay(threadId: string, afterSeq: number, listener: StreamListener): Promise<void>;
+  forkThread(
+    source: AssistantThreadRecord,
+    branch: AssistantThreadRecord,
+    turnId: string,
+    mode: 'before' | 'through',
+  ): Promise<void>;
 }
-
 export interface QueueMessageInput {
   ownerId: string;
   threadId: string;
@@ -54,21 +59,45 @@ export interface QueueMessageInput {
   providerModelId: string | null;
   images: import('@drill-hub/contracts').AssistantImageAttachment[];
 }
-
 export interface TurnHandle {
   turnId: string;
   userMessageId: string;
   assistantMessageId: string;
 }
 
+function messageText(message: AssistantMessage | undefined): { text: string; reasoning: string } {
+  let text = '';
+  let reasoning = '';
+  for (const block of message?.content ?? []) {
+    if (block.type === 'text') text += block.text;
+    if (block.type === 'thinking') reasoning += block.thinking;
+  }
+  return { text, reasoning };
+}
+function entryMessage(entry: EntryRecord | undefined): AssistantMessage | undefined {
+  const message = entry?.model?.[0];
+  return message?.role === 'assistant' ? message : undefined;
+}
+function addUsage(total: ModelTokenUsage | null, usage: Usage): ModelTokenUsage {
+  return {
+    promptTokens: (total?.promptTokens ?? 0) + usage.input,
+    completionTokens: (total?.completionTokens ?? 0) + usage.output,
+    totalTokens: (total?.totalTokens ?? 0) + usage.totalTokens,
+  };
+}
+
 export function createAssistantService(
   ctx: AppContext,
   app: FastifyInstance,
 ): AssistantServiceImpl {
-  const factory = new PiSessionFactory(ctx);
   const seqCounters = new Map<string, number>();
   const listeners = new Map<string, Set<StreamListener>>();
-  const active = new Map<string, { abort: AbortController; session: AgentSession | null }>();
+  const activeTurns = new Map<string, string>();
+  const cancelled = new Set<string>();
+  const accumulated = new Map<string, { text: string; reasoning: string }>();
+  const turnModels = new Map<string, { connectionId: string; modelKey: string }>();
+  const transcripts = new Map<string, Map<EntryRecord['id'], EntryRecord>>();
+  const flushTimers = new Map<string, ReturnType<typeof setInterval>>();
   const draining = new Set<string>();
 
   async function nextSeq(threadId: string): Promise<number> {
@@ -81,12 +110,10 @@ export function createAssistantService(
     seqCounters.set(threadId, last);
     return last;
   }
-
   function toView(record: AssistantEventRecord): AssistantEventView {
     const { ownerId: _ownerId, ...view } = record;
     return view;
   }
-
   async function emit(
     ownerId: string,
     threadId: string,
@@ -95,10 +122,7 @@ export function createAssistantService(
     payload: Record<string, unknown>,
   ): Promise<void> {
     const record: AssistantEventRecord = {
-      id: id(),
-      createdAt: now(),
-      updatedAt: now(),
-      revision: 1,
+      ...baseRecord(),
       ownerId,
       threadId,
       turnId,
@@ -109,19 +133,15 @@ export function createAssistantService(
     await ctx.db.insert('assistantEvents', record);
     broadcast(threadId, { kind: 'event', event: toView(record) });
   }
-
   function broadcast(threadId: string, frame: AssistantStreamFrame): void {
-    const set = listeners.get(threadId);
-    if (!set) return;
-    for (const listener of set) {
+    for (const listener of listeners.get(threadId) ?? []) {
       try {
         listener(frame);
       } catch {
-        // 单个订阅者异常不影响其他订阅者。
+        // 单个 SSE 订阅者失败不能中断 Durable 事件投影。
       }
     }
   }
-
   function subscribe(threadId: string, listener: StreamListener): () => void {
     let set = listeners.get(threadId);
     if (!set) {
@@ -134,122 +154,54 @@ export function createAssistantService(
       if (!set.size) listeners.delete(threadId);
     };
   }
-
   async function replay(threadId: string, afterSeq: number, listener: StreamListener) {
     const events = await ctx.db.list('assistantEvents', { threadId });
-    for (const record of [...events]
+    for (const record of events
       .sort((left, right) => left.seq - right.seq)
       .filter((event) => event.seq > afterSeq)) {
       listener({ kind: 'event', event: toView(record) });
     }
   }
-
-  function enqueueTurn(turnId: string): void {
-    // 每轮独立执行：同线程由活动 turn 与持久化队列保证顺序，跨线程不设并发上限。
-    void runTurnNow(turnId).catch(() => {});
-  }
-
-  function queuedView(record: AssistantQueuedMessageRecord): AssistantQueuedMessage {
-    const { ownerId: _ownerId, promptContext: _promptContext, ...view } = record;
+  function queuedView(row: AssistantQueuedMessageRecord): AssistantQueuedMessage {
+    const { ownerId: _ownerId, promptContext: _promptContext, ...view } = row;
     return view;
   }
-
-  async function queuedMessages(threadId: string): Promise<AssistantQueuedMessageRecord[]> {
-    const rows = await ctx.db.list('assistantQueuedMessages', { threadId });
-    return rows.sort(
-      (left, right) =>
-        left.position - right.position ||
-        left.createdAt.localeCompare(right.createdAt) ||
-        left.id.localeCompare(right.id),
-    );
-  }
-
   async function notifyQueue(threadId: string): Promise<void> {
     broadcast(threadId, {
       kind: 'queue',
       queued: (await queuedMessages(threadId)).map(queuedView),
     });
   }
-
-  async function queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage> {
-    const pending = await ctx.db.list('assistantQueuedMessages', { threadId: input.threadId });
-    const position = Math.max(0, ...pending.map((item) => item.position)) + 1;
-    const row: AssistantQueuedMessageRecord = { ...baseRecord(), ...input, position };
-    await ctx.db.insert('assistantQueuedMessages', row);
-    await notifyQueue(input.threadId);
-    if (input.mode === 'steer') {
-      const current = (await ctx.db.list('assistantTurns', { threadId: input.threadId })).find(
-        (turn) => turn.status === 'queued' || turn.status === 'running',
-      );
-      const entry = current ? active.get(current.id) : null;
-      if (entry) {
-        entry.abort.abort();
-        try {
-          await entry.session?.abort();
-        } catch {
-          /* cancellation is finalized by runTurnNow */
-        }
-      }
-    }
-    void drainThread(input.threadId).catch(() => {});
-    return queuedView(row);
-  }
-
-  async function sendQueuedMessage(
-    queued: AssistantQueuedMessageRecord,
-  ): Promise<AssistantQueuedMessage> {
-    const pending = await queuedMessages(queued.threadId);
-    const updated = await ctx.db.update('assistantQueuedMessages', queued.id, queued.revision, {
-      mode: 'steer',
-      position: (pending[0]?.position ?? 1) - 1,
-    });
-    await notifyQueue(queued.threadId);
-    const current = (await ctx.db.list('assistantTurns', { threadId: queued.threadId })).find(
-      (turn) => turn.status === 'queued' || turn.status === 'running',
+  async function queuedMessages(threadId: string): Promise<AssistantQueuedMessageRecord[]> {
+    return (await ctx.db.list('assistantQueuedMessages', { threadId })).sort(
+      (left, right) =>
+        left.position - right.position ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id),
     );
-    const entry = current ? active.get(current.id) : null;
-    if (entry) {
-      entry.abort.abort();
-      try {
-        await entry.session?.abort();
-      } catch {
-        /* cancellation is finalized by runTurnNow */
-      }
-    }
-    void drainThread(queued.threadId).catch(() => {});
-    return queuedView(updated);
   }
-
-  async function drainThread(threadId: string): Promise<void> {
-    if (draining.has(threadId)) return;
-    draining.add(threadId);
-    try {
-      const running = (await ctx.db.list('assistantTurns', { threadId })).some(
-        (turn) => turn.status === 'queued' || turn.status === 'running',
-      );
-      if (running) return;
-      while (true) {
-        const next = (await queuedMessages(threadId))[0];
-        if (!next) return;
-        const handle = await createTurn(
-          ctx,
-          next.ownerId,
-          threadId,
-          next.content,
-          next.promptContext,
-          next.providerModelId,
-          next.images,
-        );
-        await ctx.db.delete('assistantQueuedMessages', next.id);
-        await notifyQueue(threadId);
-        await runTurnNow(handle.turnId);
-      }
-    } finally {
-      draining.delete(threadId);
-      await notifyQueue(threadId);
-    }
+  function ensureFlush(turn: AssistantTurnRecord): void {
+    if (flushTimers.has(turn.id)) return;
+    accumulated.set(turn.id, { text: '', reasoning: '' });
+    flushTimers.set(
+      turn.id,
+      setInterval(() => {
+        const value = accumulated.get(turn.id);
+        if (!value) return;
+        void ctx.db
+          .get('assistantMessages', turn.assistantMessageId)
+          .then((message) =>
+            message && message.status === 'streaming'
+              ? ctx.db.update('assistantMessages', message.id, message.revision, {
+                  content: value.text,
+                  reasoning: value.reasoning || null,
+                })
+              : undefined,
+          )
+          .catch(() => {});
+      }, TEXT_FLUSH_INTERVAL_MS),
+    );
   }
-
   async function finishTurn(
     turnId: string,
     status: AssistantTurnRecord['status'],
@@ -259,325 +211,362 @@ export function createAssistantService(
     if (turn)
       await ctx.db.update('assistantTurns', turnId, turn.revision, { status, errorCode: code });
   }
-
+  async function failTurn(turnId: string, code: string, message: string) {
+    const turn = await ctx.db.get('assistantTurns', turnId);
+    if (!turn || !['queued', 'running'].includes(turn.status)) return;
+    const value = accumulated.get(turnId) ?? { text: '', reasoning: '' };
+    await finishMessage(turn.assistantMessageId, value.text, 'failed', code, value.reasoning);
+    await finishTurn(turnId, cancelled.has(turnId) ? 'cancelled' : 'failed', code);
+    await recordUsage(turn, false, null);
+    await emit(turn.ownerId, turn.threadId, turnId, 'error', { code, message });
+    cleanupTurn(turn.threadId, turnId);
+  }
   async function finishMessage(
     messageId: string,
     content: string,
-    status: string,
+    status: 'complete' | 'failed' | 'interrupted',
     code: string | null,
     reasoning: string | null = null,
   ) {
     const message = await ctx.db.get('assistantMessages', messageId);
-    if (!message) return;
-    await ctx.db.update('assistantMessages', messageId, message.revision, {
-      content,
-      status: status as 'complete' | 'failed' | 'interrupted',
-      errorCode: code,
-      reasoning,
-    });
+    if (message)
+      await ctx.db.update('assistantMessages', message.id, message.revision, {
+        content,
+        status,
+        errorCode: code,
+        reasoning,
+      });
   }
-
-  async function failTurn(
-    turnId: string,
-    code: string,
-    assistantMessageId: string,
-    content = '',
-    message = '本轮对话未能完成',
-  ) {
-    await finishTurn(turnId, 'failed', code);
-    await finishMessage(assistantMessageId, content, 'failed', code);
-    const turn = await ctx.db.get('assistantTurns', turnId);
-    if (turn) await emit(turn.ownerId, turn.threadId, turnId, 'error', { code, message });
-  }
-
   async function recordUsage(
-    ownerId: string,
-    turnId: string,
+    turn: AssistantTurnRecord,
     succeeded: boolean,
     usage: ModelTokenUsage | null,
-    model: { connectionId: string; modelKey: string },
-  ): Promise<void> {
+  ) {
+    if ((await ctx.db.list('modelUsage', { jobId: turn.id, purpose: 'assistant' })).length) return;
+    const model = turnModels.get(turn.id);
+    if (!model) return;
     await ctx.db.insert('modelUsage', {
       ...baseRecord(),
-      ownerId,
+      ownerId: turn.ownerId,
       connectionId: model.connectionId,
       modelKey: model.modelKey,
       purpose: 'assistant',
-      jobId: turnId,
+      jobId: turn.id,
       status: succeeded ? 'succeeded' : 'failed',
       usage,
     });
   }
+  function cleanupTurn(threadId: string, turnId: string): void {
+    const timer = flushTimers.get(turnId);
+    if (timer) clearInterval(timer);
+    flushTimers.delete(turnId);
+    accumulated.delete(turnId);
+    turnModels.delete(turnId);
+    cancelled.delete(turnId);
+    if (activeTurns.get(threadId) === turnId) activeTurns.delete(threadId);
+    void drainThread(threadId).catch(() => {});
+  }
+
+  async function onBatch(
+    thread: AssistantThreadRecord,
+    events: readonly AgentEvent[],
+    snapshot: SnapshotEvent,
+    submissions: readonly SubmissionRecord[],
+  ): Promise<void> {
+    const byRequest = new Map(submissions.map((submission) => [submission.id, submission]));
+    let transcript = transcripts.get(thread.id);
+    if (!transcript) {
+      transcript = new Map(snapshot.entries.map((entry) => [entry.id, entry]));
+      transcripts.set(thread.id, transcript);
+    }
+    for (const submission of submissions) {
+      if (!submission.requestId) continue;
+      const turn = await ctx.db.get('assistantTurns', submission.requestId);
+      if (!turn || !['queued', 'running'].includes(turn.status)) continue;
+      if (submission.status === 'placed') {
+        activeTurns.set(thread.id, turn.id);
+        ensureFlush(turn);
+        if (turn.status === 'queued') await finishTurn(turn.id, 'running', null);
+      }
+    }
+    for (const event of events) {
+      if (event.type === 'message_end' || event.type === 'entry_appended')
+        transcript.set(event.entry.id, event.entry);
+      if (event.type === 'run_start') {
+        const submission = byRequest.get(event.inputs[0]);
+        const turnId = submission?.requestId;
+        const turn = turnId ? await ctx.db.get('assistantTurns', turnId) : null;
+        if (turn) {
+          activeTurns.set(thread.id, turn.id);
+          ensureFlush(turn);
+          if (turn.status === 'queued') await finishTurn(turn.id, 'running', null);
+          await emit(turn.ownerId, thread.id, turn.id, 'status', { phase: 'model_call' });
+        }
+        continue;
+      }
+      const turnId = activeTurns.get(thread.id);
+      const turn = turnId ? await ctx.db.get('assistantTurns', turnId) : null;
+      if (!turn) continue;
+      if (event.type === 'message_update') {
+        const value = accumulated.get(turn.id)!;
+        for (const change of event.changes) {
+          if (change.type === 'text_delta') {
+            value.text += change.delta;
+            broadcast(thread.id, { kind: 'text_delta', delta: change.delta });
+          }
+          if (change.type === 'thinking_delta') {
+            value.reasoning += change.delta;
+            broadcast(thread.id, { kind: 'reasoning_delta', delta: change.delta });
+          }
+          if (change.type === 'message') {
+            const current = messageText(change.message);
+            value.text = current.text;
+            value.reasoning = current.reasoning;
+          }
+        }
+      }
+      if (event.type === 'tool_execution_start') {
+        await emit(turn.ownerId, thread.id, turn.id, 'tool_call', {
+          toolCallId: event.toolCallId,
+          name: event.toolName,
+          args: event.args,
+        });
+      }
+      if (event.type === 'tool_execution_end') {
+        const result = event.entry?.model?.[0];
+        const content = result?.role === 'toolResult' ? result.content : [];
+        await emit(turn.ownerId, thread.id, turn.id, 'tool_result', {
+          toolCallId: event.toolCallId,
+          name: event.toolName,
+          isError: result?.role === 'toolResult' ? result.isError : false,
+          summary: content
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n')
+            .slice(0, 500),
+        });
+      }
+    }
+    // 快照用于进程重启后对账；已结算 turn 不会重复写用量或完成事件。
+    const reconcile = events.some((event) => event.type === 'run_end' || event.type === 'snapshot');
+    for (const submission of reconcile ? submissions : []) {
+      if (submission.status === 'done' || submission.status === 'unanswered')
+        await settleSubmission(thread, submission, snapshot.agent.model);
+    }
+  }
+
+  async function settleSubmission(
+    thread: AssistantThreadRecord,
+    submission: SubmissionRecord,
+    agentModel: SnapshotEvent['agent']['model'],
+  ): Promise<void> {
+    if (!submission.requestId) return;
+    const turn = await ctx.db.get('assistantTurns', submission.requestId);
+    if (!turn || !['queued', 'running'].includes(turn.status)) return;
+    const entries = transcripts.get(thread.id) ?? new Map();
+    if (submission.type === 'input' && submission.status === 'done') {
+      const final = messageText(entryMessage(entries.get(submission.answer)));
+      const partial = accumulated.get(turn.id) ?? { text: '', reasoning: '' };
+      let usage: ModelTokenUsage | null = null;
+      let inTurn = false;
+      for (const entry of entries.values()) {
+        if (entry.id === submission.entry) inTurn = true;
+        if (inTurn && entry.kind === 'pi.assistant') {
+          const message = entryMessage(entry);
+          if (message) usage = addUsage(usage, message.usage);
+        }
+        if (entry.id === submission.answer) break;
+      }
+      if (!turnModels.has(turn.id) && agentModel)
+        turnModels.set(turn.id, {
+          connectionId: agentModel.provider,
+          modelKey: agentModel.modelId,
+        });
+      await finishMessage(
+        turn.assistantMessageId,
+        final.text || partial.text,
+        'complete',
+        null,
+        final.reasoning || partial.reasoning || null,
+      );
+      await finishTurn(turn.id, 'succeeded', null);
+      await recordUsage(turn, true, usage);
+      await emit(turn.ownerId, thread.id, turn.id, 'status', { phase: 'turn_completed' });
+      cleanupTurn(thread.id, turn.id);
+    }
+    if (submission.status === 'unanswered') {
+      await failTurn(
+        turn.id,
+        cancelled.has(turn.id) ? 'ASSISTANT_TURN_CANCELLED' : 'ASSISTANT_TURN_FAILED',
+        cancelled.has(turn.id) ? '本轮对话已取消' : '本轮对话未能完成',
+      );
+    }
+  }
+
+  const runtime = new DurableAssistantRuntime(
+    ctx,
+    {
+      onBatch,
+      onModel: (turnId, model) =>
+        turnModels.set(turnId, { connectionId: model.connectionId, modelKey: model.modelKey }),
+      resolveTool: async (api) => {
+        const thread = (await ctx.db.list('assistantThreads', {})).find(
+          (entry) => entry.durableConversationId === api.conversationId,
+        );
+        const turn = thread
+          ? (await ctx.db.list('assistantTurns', { threadId: thread.id })).find((entry) =>
+              ['queued', 'running'].includes(entry.status),
+            )
+          : null;
+        const owner = turn ? await ctx.db.get('users', turn.ownerId) : null;
+        if (!thread || !turn || !owner || owner.status !== 'active')
+          throw new AppError(403, 'ASSISTANT_USER_UNAVAILABLE', '助手用户或会话不可用');
+        const actor: Actor = {
+          id: `assistant:${turn.id}`,
+          userId: turn.ownerId,
+          role: owner.role,
+          channel: 'mobile',
+          scopes: [],
+        };
+        return {
+          actor,
+          turn,
+          internalToken: signInternalToken({
+            secret: ctx.config.encryptionKey,
+            userId: actor.userId,
+            turnId: turn.id,
+            role: actor.role,
+            expiresAt: Date.now() + INTERNAL_TOKEN_TTL_MS,
+          }),
+          emitEvent: (type, payload) => emit(turn.ownerId, thread.id, turn.id, type, payload),
+        };
+      },
+    },
+    app,
+  );
 
   async function runTurnNow(turnId: string): Promise<void> {
     const turn = await ctx.db.get('assistantTurns', turnId);
     if (!turn || turn.status !== 'queued') return;
-    await ctx.db.update('assistantTurns', turnId, turn.revision, { status: 'running' });
     const thread = await ctx.db.get('assistantThreads', turn.threadId);
     const owner = await ctx.db.get('users', turn.ownerId);
-    if (!thread || !owner || owner.status !== 'active') {
-      await failTurn(turnId, 'ASSISTANT_USER_UNAVAILABLE', turn.assistantMessageId);
+    const user = await ctx.db.get('assistantMessages', turn.userMessageId);
+    if (!thread || !owner || owner.status !== 'active' || !user) {
+      await failTurn(turnId, 'ASSISTANT_USER_UNAVAILABLE', '助手用户或会话不可用');
       return;
     }
-    const actor: Actor = {
-      id: `assistant:${turnId}`,
-      userId: turn.ownerId,
-      role: owner.role,
-      channel: 'mobile',
-      scopes: [],
-    };
-    const internalToken = signInternalToken({
-      secret: ctx.config.encryptionKey,
-      userId: actor.userId,
-      turnId,
-      role: actor.role,
-      expiresAt: Date.now() + INTERNAL_TOKEN_TTL_MS,
-    });
-
-    let session: AgentSession | null = null;
-    let usedModel: { connectionId: string; modelKey: string; providerModelId: string } | null =
-      null;
-    let accumulated = '';
-    let accumulatedReasoning = '';
-    let usageTotal: ModelTokenUsage | null = null;
-    const controller = new AbortController();
-    active.set(turnId, { abort: controller, session: null });
-    let flushTimer: ReturnType<typeof setInterval> | undefined;
+    ensureFlush(turn);
     try {
-      const tools = createAssistantTools({
-        app,
-        ctx,
-        actor,
-        internalToken,
-        emitEvent: (type, payload) => emit(turn.ownerId, turn.threadId, turnId, type, payload),
-      });
-      const built = await factory.buildSession({
-        app,
-        customTools: tools,
+      await runtime.submit(thread, {
+        id: turn.id,
+        content: user.content,
+        promptContext: turn.promptContext,
         providerModelId: turn.providerModelId,
+        images: user.images,
       });
-      session = built.session;
-      usedModel = built.resolved;
-      active.get(turnId)!.session = session;
-      await emit(turn.ownerId, turn.threadId, turnId, 'status', { phase: 'model_call' });
-
-      session.subscribe((event: Record<string, unknown>) => {
-        const type = event.type as string;
-        if (type === 'message_update') {
-          const inner = event.assistantMessageEvent as
-            | { type?: string; delta?: string }
-            | undefined;
-          if (inner?.type === 'text_delta' && inner.delta) {
-            accumulated += inner.delta;
-            broadcast(turn.threadId, { kind: 'text_delta', delta: inner.delta });
-          }
-          if (inner?.type === 'thinking_delta' && inner.delta) {
-            accumulatedReasoning += inner.delta;
-            broadcast(turn.threadId, { kind: 'reasoning_delta', delta: inner.delta });
-          }
-          return;
-        }
-        if (type === 'tool_execution_start') {
-          void emit(turn.ownerId, turn.threadId, turnId, 'tool_call', {
-            toolCallId: String(event.toolCallId ?? ''),
-            name: String(event.toolName ?? ''),
-            args: (event.args as Record<string, unknown>) ?? {},
-          });
-          return;
-        }
-        if (type === 'tool_execution_end') {
-          const result = event.result as
-            | { content?: { type?: string; text?: string }[] }
-            | undefined;
-          const summary = Array.isArray(result?.content)
-            ? result.content
-                .filter((block) => block.type === 'text')
-                .map((block) => block.text ?? '')
-                .join('\n')
-                .slice(0, 500)
-            : '';
-          void emit(turn.ownerId, turn.threadId, turnId, 'tool_result', {
-            toolCallId: String(event.toolCallId ?? ''),
-            name: String(event.toolName ?? ''),
-            isError: event.isError === true,
-            summary,
-          });
-          return;
-        }
-        if (type === 'turn_end') {
-          const message = event.message as
-            | { usage?: { input?: number; output?: number } }
-            | undefined;
-          const input = message?.usage?.input;
-          const output = message?.usage?.output;
-          if (typeof input === 'number' && typeof output === 'number') {
-            usageTotal = usageTotal
-              ? {
-                  promptTokens: usageTotal.promptTokens + input,
-                  completionTokens: usageTotal.completionTokens + output,
-                  totalTokens: usageTotal.totalTokens + input + output,
-                }
-              : { promptTokens: input, completionTokens: output, totalTokens: input + output };
-          }
-        }
-      });
-
-      flushTimer = setInterval(() => {
-        if (accumulated)
-          void ctx.db
-            .get('assistantMessages', turn.assistantMessageId)
-            .then((message) =>
-              message && message.status === 'streaming'
-                ? ctx.db.update('assistantMessages', message.id, message.revision, {
-                    content: accumulated,
-                    reasoning: accumulatedReasoning || null,
-                  })
-                : undefined,
-            )
-            .catch(() => {});
-      }, TEXT_FLUSH_INTERVAL_MS);
-
-      const history = await loadHistory(turn.threadId, turn.userMessageId);
-      const currentUser = await ctx.db.get('assistantMessages', turn.userMessageId);
-      const contextPrefix = turn.promptContext ? `${turn.promptContext}\n\n` : '';
-      // 不再设置单轮超时；用户可随时通过 cancelTurn 主动取消。
-      if (controller.signal.aborted)
-        throw new AppError(409, 'ASSISTANT_TURN_CANCELLED', '本轮对话已取消');
-      const images = (currentUser?.images ?? []).map((image) => ({
-        type: 'image' as const,
-        data: image.data,
-        mimeType: image.mimeType,
-      }));
-      await session.prompt(contextPrefix + formatPrompt(history, currentUser?.content ?? ''), {
-        images,
-      });
-
-      const finalText = session.getLastAssistantText() ?? accumulated;
-      await finishMessage(
-        turn.assistantMessageId,
-        finalText || accumulated,
-        'complete',
-        null,
-        accumulatedReasoning || null,
-      );
-      await finishTurn(turnId, 'succeeded', null);
-      await recordUsage(turn.ownerId, turnId, true, usageTotal, usedModel!);
-      await emit(turn.ownerId, turn.threadId, turnId, 'status', { phase: 'turn_completed' });
     } catch (error) {
-      const cancelled = controller.signal.aborted;
       const code = error instanceof AppError ? error.code : 'ASSISTANT_TURN_FAILED';
-      const message = cancelled
-        ? '本轮对话已取消'
-        : error instanceof AppError
-          ? error.message
-          : '本轮对话未能完成';
-      await finishMessage(
-        turn.assistantMessageId,
-        accumulated,
-        cancelled ? 'interrupted' : 'failed',
-        code,
-        accumulatedReasoning || null,
-      );
-      await finishTurn(turnId, cancelled ? 'cancelled' : 'failed', code);
-      if (usedModel) await recordUsage(turn.ownerId, turnId, false, usageTotal, usedModel);
-      await emit(turn.ownerId, turn.threadId, turnId, 'error', { code, message });
-    } finally {
-      if (flushTimer) clearInterval(flushTimer);
-      active.delete(turnId);
-      try {
-        session?.dispose();
-      } catch {
-        // 会话清理失败不影响结果落库。
-      }
-      const threadRecord = await ctx.db.get('assistantThreads', turn.threadId);
-      if (threadRecord)
-        await ctx.db.update('assistantThreads', threadRecord.id, threadRecord.revision, {
-          lastMessageAt: now(),
-        });
-      void drainThread(turn.threadId).catch(() => {});
+      const message = error instanceof AppError ? error.message : '本轮对话未能完成';
+      await failTurn(turnId, code, message);
     }
   }
-
-  async function loadHistory(threadId: string, beforeMessageId: string) {
-    const messages = await ctx.db.list('assistantMessages', { threadId });
-    const ordered = [...messages].sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.role === right.role
-          ? left.id.localeCompare(right.id)
-          : left.role === 'user'
-            ? -1
-            : 1
-        : left.createdAt.localeCompare(right.createdAt),
-    );
-    const cutoff = ordered.findIndex((message) => message.id === beforeMessageId);
-    const history = cutoff >= 0 ? ordered.slice(0, cutoff) : ordered;
-    return history.filter((message) => message.status === 'complete').slice(-HISTORY_MESSAGE_LIMIT);
+  function enqueueTurn(turnId: string): void {
+    void runTurnNow(turnId).catch(() => {});
   }
-
-  function formatPrompt(history: { role: string; content: string }[], current: string): string {
-    const transcript = history.length
-      ? '以下是此前对话记录（供上下文参考）：\n' +
-        history
-          .map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.content}`)
-          .join('\n') +
-        '\n\n'
-      : '';
-    return `${transcript}用户：${current}`;
+  async function drainThread(threadId: string): Promise<void> {
+    if (draining.has(threadId)) return;
+    draining.add(threadId);
+    try {
+      const running = (await ctx.db.list('assistantTurns', { threadId })).some((turn) =>
+        ['queued', 'running'].includes(turn.status),
+      );
+      if (running) return;
+      const next = (await queuedMessages(threadId))[0];
+      if (!next) return;
+      const handle = await createTurn(
+        ctx,
+        next.ownerId,
+        threadId,
+        next.content,
+        next.promptContext,
+        next.providerModelId,
+        next.images,
+      );
+      await ctx.db.delete('assistantQueuedMessages', next.id);
+      await notifyQueue(threadId);
+      enqueueTurn(handle.turnId);
+    } finally {
+      draining.delete(threadId);
+      await notifyQueue(threadId);
+    }
   }
 
   return {
     enqueue: enqueueTurn,
-    queueMessage,
-    sendQueuedMessage,
-    notifyQueue,
-    async runTurnNow(turnId) {
-      await runTurnNow(turnId);
-    },
-    async cancelTurn(ownerId, turnId) {
-      const turn = await ctx.db.get('assistantTurns', turnId);
-      if (!turn || turn.ownerId !== ownerId) return false;
-      const entry = active.get(turnId);
-      if (!entry) return false;
-      entry.abort.abort();
-      try {
-        await entry.session?.abort();
-      } catch {
-        // 会话中止失败时以 AbortController 为准。
-      }
-      return true;
-    },
-    invalidateRuntime() {
-      factory.invalidateRuntime();
-    },
-    async start() {
-      // 进程重启后未完成的一轮对话不恢复模型中间态，直接标记失败并通知前端。
-      const turns = await ctx.db.list('assistantTurns', {});
-      for (const turn of turns.filter(
-        (entry) => entry.status === 'queued' || entry.status === 'running',
-      )) {
-        await failTurn(turn.id, 'ASSISTANT_RESTARTED', turn.assistantMessageId);
-      }
-      const queued = await ctx.db.list('assistantQueuedMessages', {});
-      for (const threadId of new Set(queued.map((entry) => entry.threadId)))
-        void drainThread(threadId).catch(() => {});
-    },
-    stop() {
-      for (const [, entry] of active) {
-        try {
-          entry.abort.abort();
-          void entry.session?.abort();
-        } catch {
-          // 忽略停止时的会话错误。
+    queueMessage: async (input) => {
+      const pending = await queuedMessages(input.threadId);
+      const row: AssistantQueuedMessageRecord = {
+        ...baseRecord(),
+        ...input,
+        position: Math.max(0, ...pending.map((item) => item.position)) + 1,
+      };
+      await ctx.db.insert('assistantQueuedMessages', row);
+      await notifyQueue(input.threadId);
+      if (input.mode === 'steer') {
+        const current = (await ctx.db.list('assistantTurns', { threadId: input.threadId })).find(
+          (turn) => ['queued', 'running'].includes(turn.status),
+        );
+        if (current) {
+          cancelled.add(current.id);
+          const thread = await ctx.db.get('assistantThreads', input.threadId);
+          if (thread) await runtime.cancel(thread);
         }
       }
-      active.clear();
+      void drainThread(input.threadId).catch(() => {});
+      return queuedView(row);
     },
+    sendQueuedMessage: async (queued) => {
+      const pending = await queuedMessages(queued.threadId);
+      const updated = await ctx.db.update('assistantQueuedMessages', queued.id, queued.revision, {
+        mode: 'steer',
+        position: (pending[0]?.position ?? 1) - 1,
+      });
+      await notifyQueue(queued.threadId);
+      const current = (await ctx.db.list('assistantTurns', { threadId: queued.threadId })).find(
+        (turn) => ['queued', 'running'].includes(turn.status),
+      );
+      if (current) {
+        cancelled.add(current.id);
+        const thread = await ctx.db.get('assistantThreads', queued.threadId);
+        if (thread) await runtime.cancel(thread);
+      }
+      void drainThread(queued.threadId).catch(() => {});
+      return queuedView(updated);
+    },
+    notifyQueue,
+    runTurnNow,
+    cancelTurn: async (ownerId, turnId) => {
+      const turn = await ctx.db.get('assistantTurns', turnId);
+      if (!turn || turn.ownerId !== ownerId || !['queued', 'running'].includes(turn.status))
+        return false;
+      cancelled.add(turn.id);
+      const thread = await ctx.db.get('assistantThreads', turn.threadId);
+      return thread ? runtime.cancel(thread) : false;
+    },
+    invalidateRuntime: () => runtime.invalidate(),
+    start: async () => {
+      const threads = await ctx.db.list('assistantThreads', {});
+      await runtime.start(threads, await ctx.db.list('assistantTurns', {}));
+      for (const queued of await ctx.db.list('assistantQueuedMessages', {}))
+        void drainThread(queued.threadId).catch(() => {});
+    },
+    stop: () => runtime.close(),
     subscribe,
     replay,
+    forkThread: (source, branch, turnId, mode) => runtime.fork(source, branch, turnId, mode),
   };
 }
 
-/** 创建一轮对话的持久化记录；返回句柄后由调用方入队执行。 */
 export async function createTurn(
   ctx: AppContext,
   ownerId: string,
@@ -619,13 +608,12 @@ export async function createTurn(
     assistantMessageId: assistantMessage.id,
     status: 'queued' as const,
     errorCode: null,
-    promptContext: null,
+    promptContext,
     providerModelId,
+    apiCalls: 0,
+    writeCalls: 0,
   };
   await ctx.db.insert('assistantTurns', turn);
-  if (promptContext) {
-    await ctx.db.update('assistantTurns', turn.id, turn.revision, { promptContext });
-  }
   return {
     turnId: turn.id,
     userMessageId: userMessage.id,

@@ -40,7 +40,7 @@ docs                     设计文档；其中可能包含尚未实现的后续�
 ## 技术栈
 
 - Node.js 24、pnpm 12.4.1、TypeScript 5.9。
-- 服务端：Fastify 5、better-sqlite3（默认）与 pg（可选 PostgreSQL）、TypeORM 0.3；内置助手基于 Pi（`@earendil-works/pi-coding-agent`、`@earendil-works/pi-ai`，仅服务端依赖）。
+- 服务端：Fastify 5、better-sqlite3（默认）与 pg（可选 PostgreSQL）、TypeORM 0.3；内置助手基于 Pi Durable（`@earendil-works/pi-durable`、`@earendil-works/pi-ai`、`@earendil-works/pi-mcp`，仅服务端依赖）。
 - 前端：Vue 3、Vite 8、Reka UI、Vue Router、离线 Iconify Lucide 图标。
 - Android：Tauri 2，Rust 工程位于 `apps/mobile/src-tauri`。
 - 测试：Vitest 5、Playwright 1.64。

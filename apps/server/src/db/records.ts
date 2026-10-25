@@ -127,6 +127,9 @@ export interface AssistantEventRecord extends BaseRecord {
   type: AssistantEventView['type'];
   payload: Record<string, unknown>;
 }
+export interface AssistantThreadRecord extends AssistantThread {
+  durableConversationId: number | null;
+}
 export interface AssistantQueuedMessageRecord extends BaseRecord {
   ownerId: string;
   threadId: string;
@@ -148,6 +151,8 @@ export interface AssistantTurnRecord extends BaseRecord {
   promptContext: string | null;
   /** 本轮请求指定的助手模型；null 表示由服务端自动选择。 */
   providerModelId: string | null;
+  apiCalls: number;
+  writeCalls: number;
 }
 export interface McpServerRecord extends BaseRecord {
   name: string;
@@ -189,7 +194,7 @@ export interface DatabaseTables {
   gradingJobs: GradingJob;
   auditLogs: AuditRecord;
   idempotency: IdempotencyRecord;
-  assistantThreads: AssistantThread;
+  assistantThreads: AssistantThreadRecord;
   assistantMessages: AssistantMessageRecord;
   assistantEvents: AssistantEventRecord;
   assistantTurns: AssistantTurnRecord;

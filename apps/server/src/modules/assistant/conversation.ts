@@ -12,6 +12,7 @@ import type {
   AssistantMessageRecord,
   AssistantQueuedMessageRecord,
   AssistantTurnRecord,
+  AssistantThreadRecord,
 } from '#server/db/records.js';
 import { assistantEventViews } from '#server/modules/assistant/service.js';
 
@@ -28,7 +29,13 @@ export function assistantQueuedMessageView(
 }
 
 export function assistantTurnView(record: AssistantTurnRecord): AssistantTurnView {
-  const { ownerId: _ownerId, promptContext: _promptContext, ...view } = record;
+  const {
+    ownerId: _ownerId,
+    promptContext: _promptContext,
+    apiCalls: _apiCalls,
+    writeCalls: _writeCalls,
+    ...view
+  } = record;
   return view;
 }
 
@@ -50,7 +57,7 @@ function byDate<T extends { createdAt: string; id: string }>(left: T, right: T):
 
 export async function readAssistantThread(
   ctx: AppContext,
-  thread: AssistantThread,
+  thread: AssistantThreadRecord,
   before?: string,
   limit = 40,
 ): Promise<AssistantThreadDetail> {
@@ -77,8 +84,9 @@ export async function readAssistantThread(
   );
   const turnIds = new Set(turns.map((turn) => turn.id));
   const messageById = new Map(allMessages.map((message) => [message.id, message]));
+  const { durableConversationId: _durableConversationId, ...threadView } = thread;
   return {
-    thread,
+    thread: threadView,
     messages: messages.map(assistantMessageView),
     turns: turns.map(assistantTurnView),
     events: assistantEventViews(
@@ -105,7 +113,7 @@ export async function forkAssistantThread(
   source: AssistantThread,
   turnId: string,
   mode: 'before' | 'through',
-): Promise<AssistantThread> {
+): Promise<import('#server/db/records.js').AssistantThreadRecord> {
   const [messages, turns, events] = await Promise.all([
     ctx.db.list('assistantMessages', { threadId: source.id }),
     ctx.db.list('assistantTurns', { threadId: source.id }),
@@ -126,6 +134,7 @@ export async function forkAssistantThread(
     ownerId: actor.userId,
     title: `${source.title.slice(0, 180)} · 分支`,
     lastMessageAt: keptTurns.at(-1)?.updatedAt ?? source.createdAt,
+    durableConversationId: null,
   };
   await ctx.db.transaction(async (tx) => {
     await tx.insert('assistantThreads', branch);
