@@ -170,7 +170,7 @@ function integerInRange(
   return value as number;
 }
 
-async function assertCurrentModelVerified(
+async function resolveCurrentModel(
   db: Database,
   providerModelId: string,
 ): Promise<{
@@ -189,21 +189,15 @@ async function assertCurrentModelVerified(
     configVersion: connection.configVersion,
   });
   assert(version, 'CONNECTION_VERSION_NOT_FOUND', '模型连接版本不存在', 422);
-  assert(
-    model.verifiedConfigVersion === version.configVersion,
-    'STALE_MODEL_VERIFICATION',
-    '模型尚未通过当前连接版本的评分能力测试',
-    409,
-  );
   return { model, connection, connectionVersionId: version.id };
 }
 
 async function assertProfileUsable(db: Database, profile: GradingProfile): Promise<void> {
-  const current = await assertCurrentModelVerified(db, profile.providerModelId);
+  const current = await resolveCurrentModel(db, profile.providerModelId);
   assert(
     current.connectionVersionId === profile.connectionVersionId,
-    'STALE_MODEL_VERIFICATION',
-    '评分配置不是当前已验证连接版本',
+    'STALE_CONNECTION_VERSION',
+    '评分配置绑定的连接版本已不是当前版本，请重新保存评分配置',
     409,
   );
 }
@@ -753,12 +747,12 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
     const maxRetries = integerInRange(input.maxRetries, 'maxRetries', 0, 5, 2);
     const isDefault = optionalBoolean(input.isDefault, false);
     const profile = await ctx.db.transaction(async (tx) => {
-      const verified = await assertCurrentModelVerified(tx, providerModelId);
+      const resolved = await resolveCurrentModel(tx, providerModelId);
       let record = await tx.insert('gradingProfiles', {
         ...baseRecord(),
         providerModelId,
-        connectionVersionId: verified.connectionVersionId,
-        modelIdSnapshot: verified.model.modelKey,
+        connectionVersionId: resolved.connectionVersionId,
+        modelIdSnapshot: resolved.model.modelKey,
         concurrency,
         timeoutMs,
         maxRetries,
@@ -803,7 +797,7 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         input.providerModelId === undefined
           ? current.providerModelId
           : requiredText(input.providerModelId, 'providerModelId', 128);
-      const verified = await assertCurrentModelVerified(tx, providerModelId);
+      const resolved = await resolveCurrentModel(tx, providerModelId);
       const concurrency = integerInRange(
         input.concurrency,
         'concurrency',
@@ -831,8 +825,8 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       let record = await tx.insert('gradingProfiles', {
         ...baseRecord(),
         providerModelId,
-        connectionVersionId: verified.connectionVersionId,
-        modelIdSnapshot: verified.model.modelKey,
+        connectionVersionId: resolved.connectionVersionId,
+        modelIdSnapshot: resolved.model.modelKey,
         concurrency,
         timeoutMs,
         maxRetries,

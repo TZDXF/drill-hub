@@ -61,14 +61,8 @@ const isDefault = ref(true);
 const selected = computed(
   () => connections.value.find((item) => item.id === selectedId.value) ?? null,
 );
-const verifiedModels = computed(() =>
-  models.value.filter(
-    (item) =>
-      selected.value?.enabled &&
-      item.enabled &&
-      item.verifiedConfigVersion !== null &&
-      item.verifiedConfigVersion === selected.value?.configVersion,
-  ),
+const usableModels = computed(() =>
+  models.value.filter((item) => selected.value?.enabled && item.enabled),
 );
 const existingModelKeys = computed(() => new Set(models.value.map((item) => item.modelKey)));
 const protocolOptions = computed(() =>
@@ -408,15 +402,12 @@ async function openProfile(profile: GradingProfile | null = null) {
           const items = await learning.get<ProviderModel[]>(
             `/admin/model-connections/${connection.id}/models`,
           );
-          return items.filter(
-            (model) => model.enabled && model.verifiedConfigVersion === connection.configVersion,
-          );
+          return items.filter((model) => model.enabled);
         }),
     );
     profileModels.value = available.flat();
     editingProfile.value = profile;
-    providerModelId.value =
-      profile?.providerModelId ?? verifiedModels.value[0]?.id ?? profileModels.value[0]?.id ?? '';
+    providerModelId.value = profile?.providerModelId ?? profileModels.value[0]?.id ?? '';
     concurrency.value = profile?.concurrency ?? 2;
     timeoutMs.value = profile?.timeoutMs ?? 60000;
     maxRetries.value = profile?.maxRetries ?? 2;
@@ -707,10 +698,10 @@ onMounted(() => void load(true));
                       }}</span
                       ><span>{{
                         model.verifiedConfigVersion !== null
-                          ? t('management.models.verifiedVersion', {
+                          ? t('management.models.testPassedVersion', {
                               version: model.verifiedConfigVersion,
                             })
-                          : t('management.models.notVerified')
+                          : t('management.models.notTested')
                       }}</span
                       ><span v-if="model.testError" class="badge badge--red">{{
                         t('management.models.gradingTestFailed')
@@ -721,11 +712,7 @@ onMounted(() => void load(true));
                     <button
                       class="button button--small"
                       type="button"
-                      :disabled="
-                        busy ||
-                        testing !== '' ||
-                        !verifiedModels.some((item) => item.id === model.id)
-                      "
+                      :disabled="busy || testing !== ''"
                       @click="useGradingModel(model)"
                     >
                       {{ t('management.models.useAsGrading') }}
@@ -773,7 +760,7 @@ onMounted(() => void load(true));
           <button
             class="button button--primary"
             type="button"
-            :disabled="busy || !verifiedModels.length"
+            :disabled="busy || !usableModels.length"
             @click="openProfile()"
           >
             <AppIcon name="plus" :size="16" />{{ t('management.models.newProfile') }}
@@ -849,8 +836,8 @@ onMounted(() => void load(true));
           :title="t('management.models.noProfiles')"
           :description="t('management.models.noProfilesDesc')"
         />
-        <div v-if="!verifiedModels.length" class="notice notice--pending" style="margin-top: 14px">
-          <AppIcon name="alert" />{{ t('management.models.noVerifiedModels') }}
+        <div v-if="!usableModels.length" class="notice notice--pending" style="margin-top: 14px">
+          <AppIcon name="alert" />{{ t('management.models.noUsableModels') }}
         </div>
       </TabsContent>
     </TabsRoot>

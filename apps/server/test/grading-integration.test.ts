@@ -260,7 +260,7 @@ async function currentAttempt(app: FastifyInstance, attemptId: string): Promise<
 }
 
 describe('grading administration and persistent model workflow', () => {
-  it('edits the grading model as a new profile while retaining bound jobs and rejecting stale edits', async () => {
+  it('edits the grading model as a new profile while retaining bound jobs', async () => {
     const { app, admin, ownerId } = await setupApp();
     const calls: string[] = [];
     installProvider((request) => {
@@ -280,20 +280,6 @@ describe('grading administration and persistent model workflow', () => {
       payload: { modelKey: 'replacement-model', displayName: '替换模型' },
     });
     const model = added.json().data;
-    const unverified = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
-      headers: admin,
-      payload: { expectedRevision: configured.profile.revision, providerModelId: model.id },
-    });
-    expect(unverified.statusCode).toBe(409);
-    expect(unverified.json().error.code).toBe('STALE_MODEL_VERIFICATION');
-    await app.inject({
-      method: 'POST',
-      url: `/api/v1/admin/provider-models/${model.id}/test`,
-      headers: admin,
-      payload: {},
-    });
     const change = {
       expectedRevision: configured.profile.revision,
       providerModelId: model.id,
@@ -612,7 +598,7 @@ describe('grading administration and persistent model workflow', () => {
     ).toEqual(['existing-model', 'model-a', 'model-b']);
   });
 
-  it('manages dynamic providers/models without echoing vault secrets and requires reverification after rotation', async () => {
+  it('manages dynamic providers/models without echoing vault secrets and rebinds profiles after rotation', async () => {
     const { app, admin } = await setupApp();
     installProvider(() => {
       throw new Error('unexpected grading call');
@@ -637,31 +623,17 @@ describe('grading administration and persistent model workflow', () => {
     expect(rotated.statusCode).toBe(200);
     expect(rotated.json().data.configVersion).toBe(2);
     expect(rotated.body).not.toContain(rotatedSecret);
-    const stale = await app.inject({
+    const rebind = await app.inject({
       method: 'POST',
       url: '/api/v1/admin/grading-profiles',
       headers: admin,
       payload: { providerModelId: configured.model.id, isDefault: true },
     });
-    expect(stale.statusCode).toBe(409);
-    expect(stale.json().error.code).toBe('STALE_MODEL_VERIFICATION');
-    const retest = await app.inject({
-      method: 'POST',
-      url: `/api/v1/admin/provider-models/${configured.model.id}/test`,
-      headers: admin,
-      payload: {},
-    });
-    expect(retest.statusCode).toBe(200);
-    const replacement = await app.inject({
-      method: 'POST',
-      url: '/api/v1/admin/grading-profiles',
-      headers: admin,
-      payload: { providerModelId: configured.model.id, isDefault: true },
-    });
-    expect(replacement.statusCode).toBe(201);
+    expect(rebind.statusCode).toBe(201);
+    expect(rebind.json().data.connectionVersionId).not.toBe(configured.profile.connectionVersionId);
     expect((await app.ctx.db.get('gradingProfiles', configured.profile.id))?.isDefault).toBe(false);
     expect((await app.ctx.db.get('settings', 'global'))?.defaultGradingProfileId).toBe(
-      replacement.json().data.id,
+      rebind.json().data.id,
     );
   });
 
