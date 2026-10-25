@@ -85,7 +85,8 @@ export const ASSISTANT_API_OPERATIONS: ApiOperation[] = [
     resource: 'plans',
     method: 'POST',
     path: '/agent/topics/{id}/plans',
-    description: '创建计划。body: {title: string, phases?: [{title: string, tasks?: Task[]}]}',
+    description:
+      '创建计划。body: {title: string, phases: [{title: string, tasks: Task[]}]}；每个阶段至少一项任务',
   },
   {
     resource: 'plans',
@@ -299,8 +300,10 @@ export const ASSISTANT_API_OPERATIONS: ApiOperation[] = [
 ];
 
 const RESOURCE_NOTES: Partial<Record<Resource, string>> = {
-  plans:
-    'Task: {title, kind: reading|practice|exam|manual, targetId?: 同主题内容或评估ID, scheduledDate?: YYYY-MM-DD|null, estimatedMinutes?: 正整数|null}。manual 无 targetId。先创建内容/试卷，再创建引用它们的计划。',
+  plans: [
+    'Task: {title, kind: reading|practice|exam|manual, targetId?: 同主题内容或评估ID, scheduledDate?: YYYY-MM-DD|null, estimatedMinutes?: 正整数|null}。manual 无 targetId，其他类型必须提供 targetId。',
+    '先创建内容/试卷，再创建引用它们的计划。阶段只是任务分组，不是可打开的内容；每个阶段至少一项任务，不要只创建阶段标题。创建后读取计划核对任务与目标。',
+  ].join('\n'),
   questions: [
     'QuestionDefinition: {type, stem, gradingMode, options?, slots?, gradingKey?, referenceAnswer?, rubric?, explanation?, tags?}。',
     '单选 single_choice、多选 multiple_choice、判断 true_false 使用 rule；填空 fill_blank 可用 rule/model_rubric/external_rubric；简答 short_answer 使用 model_rubric/external_rubric。',

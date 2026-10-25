@@ -404,6 +404,51 @@ describe('built-in assistant', () => {
     const firstCall = JSON.stringify(assistantCalls[0]);
     expect(firstCall).toContain('drill_hub_api_help');
     expect(firstCall).toContain('POST /api/v1/agent/topics');
+    expect(firstCall).toContain('每个阶段至少要有一项可执行的学习任务');
+    expect(firstCall).toContain('确认没有空阶段');
+  });
+
+  it('rejects empty assistant plan phases instead of reporting an unusable plan', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    installProvider({
+      assistant: async (index) => {
+        if (index === 1)
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: '/api/v1/agent/topics',
+              body: { title: '空阶段测试' },
+            }),
+          );
+        if (index === 2) {
+          const [topic] = await app.ctx.db.list('topics', { ownerId });
+          return sseResponse(
+            assistantToolCallRound('drill_hub_api', {
+              method: 'POST',
+              path: `/api/v1/agent/topics/${topic!.id}/plans`,
+              body: { title: '只有标题的计划', phases: [{ title: '第一阶段' }] },
+            }),
+          );
+        }
+        return sseResponse(assistantTextRound('需要补充学习任务'));
+      },
+    });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '创建一个学习阶段' },
+    });
+    const final = await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+    expect(await app.ctx.db.list('plans', { ownerId })).toHaveLength(0);
+    const results = final.events.filter((event) => event.type === 'tool_result');
+    const planResult = results.find((event) =>
+      String(event.payload.summary).includes('计划未创建'),
+    );
+    expect(planResult?.payload.isError).toBe(true);
+    expect(String(planResult?.payload.summary)).toContain('targetId');
   });
 
   it('does not leak frozen answers for in-progress attempts', async () => {

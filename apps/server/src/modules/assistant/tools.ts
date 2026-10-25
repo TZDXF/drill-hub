@@ -75,6 +75,24 @@ function simpleStringMap(value: unknown, maxKeys: number): Record<string, string
   return result;
 }
 
+function hasEmptyPlanPhase(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return false;
+  const phases = (body as { phases?: unknown }).phases;
+  if (phases === undefined) return true;
+  if (!Array.isArray(phases)) return false;
+  return (
+    phases.length === 0 ||
+    phases.some(
+      (phase) =>
+        typeof phase === 'object' &&
+        phase !== null &&
+        !Array.isArray(phase) &&
+        (!Array.isArray((phase as { tasks?: unknown }).tasks) ||
+          (phase as { tasks: unknown[] }).tasks.length === 0),
+    )
+  );
+}
+
 export function createAssistantTools(deps: AssistantToolDeps) {
   let apiCalls = 0;
   let writeCalls = 0;
@@ -131,6 +149,15 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       const rawPath: string = params.path;
       if (!rawPath.startsWith('/api/v1/') || rawPath.includes('..') || rawPath.includes('\0'))
         return textResult('path 必须以 /api/v1/ 开头且不包含非法字符', true);
+      if (
+        method === 'POST' &&
+        /^\/api\/v1\/agent\/topics\/[\w-]+\/plans$/.test(rawPath) &&
+        hasEmptyPlanPhase(params.body)
+      )
+        return textResult(
+          '计划未创建：每个阶段必须至少有一项任务。请先创建学习内容或练习/考试，再用任务的 targetId 关联真实资源，然后重新提交完整计划。',
+          true,
+        );
       const [pathname, search = '', extra] = rawPath.split('?');
       if (extra !== undefined) return textResult('path 查询串格式无效', true);
       if (!isAssistantApiAllowed(method, pathname ?? ''))
