@@ -19,7 +19,9 @@
       "content": "Read content",
       "attempt": "Answer questions",
       "report": "Learning report",
-      "archive": "Archive"
+      "archive": "Archive",
+      "assistant": "Assistant",
+      "adminAssistant": "Assistant Settings"
     },
     "nav": {
       "topics": "Learning topics",
@@ -240,5 +242,26 @@
     "invalidSyntax": "The infographic is incomplete or its syntax could not be parsed",
     "failed": "Could not render the infographic: {error}",
     "loading": "Rendering infographic…"
+  },
+  "assistant": {
+    "title": "Learning Assistant",
+    "open": "Learning assistant",
+    "threads": "Conversations",
+    "newThread": "New conversation",
+    "deleteThread": "Delete conversation",
+    "close": "Close",
+    "send": "Send",
+    "stop": "Stop generating",
+    "placeholder": "Ask something, e.g. \"Help me review my recent wrong questions\"…",
+    "welcome": "Hi! I am your learning assistant. I can check your progress, organize wrong questions, create exercises, and open any page for you. How can I help?",
+    "thinking": "Thinking…",
+    "layoutSplit": "Side-by-side layout",
+    "events": {
+      "toolCall": "Calling {name}…",
+      "toolDone": "{name} finished",
+      "toolFailed": "{name} failed",
+      "navigated": "Opened page: {route}",
+      "layoutChanged": "Layout adjusted"
+    }
   }
 }

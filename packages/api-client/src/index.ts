@@ -42,6 +42,15 @@ export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
 }
+export interface StreamEvent {
+  event: string;
+  data: string;
+  id?: string;
+}
+export interface StreamOptions {
+  signal?: AbortSignal;
+  onEvent(event: StreamEvent): void;
+}
 export class ApiClient {
   readonly baseUrl: string;
   private csrfToken: string | null = null;
@@ -131,5 +140,80 @@ export class ApiClient {
   }
   put<T>(path: string, body?: unknown, options: Omit<RequestOptions, 'method' | 'body'> = {}) {
     return this.request<T>(path, { ...options, method: 'PUT', body });
+  }
+  /**
+   * 订阅服务端 SSE 流（如内置助手事件流）。长连接不设默认超时；
+   * 返回的 Promise 在流正常结束或被取消时 resolve，异常时 reject ApiError。
+   */
+  async streamRequest(path: string, options: StreamOptions): Promise<void> {
+    if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\'))
+      throw new ApiError('INVALID_PATH', '无效的 API 路径');
+    const apiRoot = this.baseUrl + '/api/v1';
+    const target = new URL(apiRoot + path);
+    if (
+      target.origin !== new URL(this.baseUrl).origin ||
+      !target.pathname.startsWith(new URL(apiRoot + '/').pathname)
+    )
+      throw new ApiError('INVALID_PATH', 'API 路径不能离开当前服务器');
+    const access = this.options.getAccessToken?.();
+    const headers: Record<string, string> = { Accept: 'text/event-stream' };
+    if (access) headers.Authorization = 'Bearer ' + access;
+    const signals = [this.controller.signal, ...(options.signal ? [options.signal] : [])];
+    try {
+      const response = await (this.options.fetch ?? fetch)(target, {
+        method: 'GET',
+        headers,
+        credentials: this.options.credentials ?? 'same-origin',
+        redirect: 'error',
+        signal: AbortSignal.any(signals),
+      });
+      if (!response.ok || !response.body) {
+        let code = 'STREAM_FAILED';
+        let message = '无法建立事件流连接';
+        try {
+          const failure = (await response.json()) as ApiFailure;
+          if (failure && 'error' in failure) {
+            code = failure.error.code;
+            message = failure.error.message;
+          }
+        } catch {
+          /* 非 JSON 错误响应使用默认文案。 */
+        }
+        throw new ApiError(code, message, response.status);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const frame = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          this.emitStreamFrame(frame, options.onEvent);
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (this.controller.signal.aborted || options.signal?.aborted)
+        throw new ApiError('REQUEST_CANCELLED', '事件流已取消');
+      throw new ApiError('NETWORK_ERROR', '事件流连接中断');
+    }
+  }
+  private emitStreamFrame(frame: string, onEvent: (event: StreamEvent) => void): void {
+    let event = 'message';
+    let data = '';
+    let id: string | undefined;
+    for (const line of frame.split('\n')) {
+      if (line.startsWith(':')) continue;
+      if (line.startsWith('event: ')) event = line.slice(7).trim();
+      else if (line.startsWith('data: ')) data += (data ? '\n' : '') + line.slice(6);
+      else if (line.startsWith('id: ')) id = line.slice(4).trim();
+    }
+    if (!data) return;
+    onEvent({ event, data, id });
   }
 }

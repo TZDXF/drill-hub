@@ -14,6 +14,21 @@ test('手机视口可通过底部导航切换页面', async ({ page }, testInfo)
   await expect(page.getByRole('heading', { name: '学习主题' })).toBeVisible();
 });
 
+test('手机视口助手面板全屏覆盖并可关闭', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: '学习助手' }).click();
+  await expect(page).toHaveURL(/\/assistant$/);
+  const panel = page.getByTestId('assistant-panel');
+  await expect(panel).toBeVisible();
+  // 手机上助手面板为全屏覆盖，铺满视口。
+  const box = await panel.boundingBox();
+  expect(box).not.toBeNull();
+  expect(Math.round(box!.width)).toBeGreaterThanOrEqual(350);
+
+  await page.getByTestId('assistant-close').click();
+  await expect(page.getByTestId('assistant-panel')).toBeHidden();
+});
+
 test('手机端我的页面展示可编辑的个人信息，并提供清晰的密码设置', async ({ page }) => {
   await login(page);
   await page.goto('/settings');

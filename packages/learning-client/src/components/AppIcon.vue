@@ -36,6 +36,12 @@ import triangleAlert from '@iconify-icons/lucide/triangle-alert';
 import user from '@iconify-icons/lucide/user';
 import users from '@iconify-icons/lucide/users';
 import x from '@iconify-icons/lucide/x';
+import sparkles from '@iconify-icons/lucide/sparkles';
+import send from '@iconify-icons/lucide/send';
+import panelLeft from '@iconify-icons/lucide/panel-left';
+import square from '@iconify-icons/lucide/square';
+import trash from '@iconify-icons/lucide/trash-2';
+import messageSquare from '@iconify-icons/lucide/message-square';
 
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 });
 
@@ -76,6 +82,12 @@ const icons: Record<string, IconifyIcon> = {
   sun,
   moon,
   system: monitor,
+  assistant: sparkles,
+  send,
+  panel: panelLeft,
+  square,
+  trash,
+  message: messageSquare,
 };
 
 const icon = computed(() => icons[props.name] ?? icons.book);

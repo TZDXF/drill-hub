@@ -28,7 +28,9 @@
       "adminUsers": "账号管理",
       "adminModels": "供应商与模型",
       "adminGrading": "评分运维",
-      "adminAudit": "审计日志"
+      "adminAudit": "审计日志",
+      "assistant": "学习助手",
+      "adminAssistant": "助手设置"
     },
     "nav": {
       "home": "今日学习",
@@ -240,5 +242,26 @@
     "invalidSyntax": "信息图内容不完整或语法无法解析",
     "failed": "信息图渲染失败：{error}",
     "loading": "信息图渲染中…"
+  },
+  "assistant": {
+    "title": "学习助手",
+    "open": "学习助手",
+    "threads": "对话列表",
+    "newThread": "新对话",
+    "deleteThread": "删除对话",
+    "close": "关闭",
+    "send": "发送",
+    "stop": "停止生成",
+    "placeholder": "输入问题，例如“帮我复习最近的错题”…",
+    "welcome": "你好！我是学习助手，可以帮你查询学习进度、整理错题、创建练习或打开任意学习页面。请问需要什么帮助？",
+    "thinking": "正在思考…",
+    "layoutSplit": "并排布局",
+    "events": {
+      "toolCall": "正在调用 {name}…",
+      "toolDone": "{name} 完成",
+      "toolFailed": "{name} 失败",
+      "navigated": "已打开页面：{route}",
+      "layoutChanged": "已调整布局"
+    }
   }
 }

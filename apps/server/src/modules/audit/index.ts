@@ -45,6 +45,9 @@ export function registerAccessLogging(app: FastifyInstance, ctx: AppContext): vo
       ? request.routeOptions.url
       : '/api/[unmatched]';
     const actor = request.auditActor;
+    // 内置助手的 app.inject 自调用不写访问日志，避免一轮对话放大日志量；
+    // 其业务写操作仍由各端点的审计记录覆盖。
+    if (actor?.assistantTurnId) return;
     // Anonymous scans and rejected floods must not amplify persistent writes.
     if (
       !actor &&

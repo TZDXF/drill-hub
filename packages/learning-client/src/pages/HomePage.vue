@@ -155,6 +155,10 @@ onMounted(load);
             >
           </div>
           <div class="quick-links">
+            <RouterLink class="quick-link" :to="{ name: 'assistant' }"
+              ><AppIcon name="assistant" :size="17" />{{ t('learning.home.openAssistant')
+              }}<AppIcon name="arrow" :size="15"
+            /></RouterLink>
             <RouterLink class="quick-link" :to="{ name: 'topics' }"
               ><AppIcon name="topics" :size="17" />{{ t('learning.home.browseTopics')
               }}<AppIcon name="arrow" :size="15"

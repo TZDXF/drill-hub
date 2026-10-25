@@ -40,7 +40,8 @@
     "manageAgentTokens": "Manage Agent authorization",
     "browseTopics": "Browse topics",
     "reviewWrongQuestions": "Review wrong questions",
-    "restoreArchive": "Restore archived items"
+    "restoreArchive": "Restore archived items",
+    "openAssistant": "Learning assistant"
   },
   "topics": {
     "title": "Learning topics",
@@ -333,5 +334,10 @@
       "voidValid": "Not voided",
       "voidVoided": "Voided"
     }
+  },
+  "assistant": {
+    "pageTitle": "Chat with the learning assistant",
+    "pageHint": "Use the assistant panel on the side. It can read your learning data, create content, and open pages for you.",
+    "modelMissing": "The administrator has not configured a default assistant model yet."
   }
 }

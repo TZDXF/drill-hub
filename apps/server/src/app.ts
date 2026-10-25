@@ -17,6 +17,7 @@ import { createAuthFunctions, createUser, registerAuthRoutes } from './modules/a
 import { registerLearningRoutes, expireAttempts } from './modules/learning/index.js';
 import { registerAccessLogging, registerAuditRoutes } from './modules/audit/index.js';
 import { createGradingService, registerGradingRoutes } from './modules/grading/index.js';
+import { createAssistantService, registerAssistantRoutes } from './modules/assistant/index.js';
 declare module 'fastify' {
   interface FastifyInstance {
     ctx: AppContext;
@@ -58,13 +59,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       displayName: 'Drill Hub 学习工作台',
       defaultGradingProfileId: null,
     });
-  const auth = createAuthFunctions(db);
+  const auth = createAuthFunctions(db, config);
   const ctx: AppContext = {
     db,
     config,
     vault: new SecretVault(config.encryptionKey),
     ...auth,
     grading: undefined as unknown as AppContext['grading'],
+    assistant: undefined as unknown as AppContext['assistant'],
     async audit(actor, action, resourceType, resourceId, summary = {}, database = db) {
       await database.insert('auditLogs', {
         ...baseRecord(),
@@ -78,6 +80,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   };
   ctx.grading = createGradingService(ctx);
+  const assistant = createAssistantService(ctx, app);
+  ctx.assistant = assistant;
   app.decorate('ctx', ctx);
   registerAccessLogging(app, ctx);
   app.setErrorHandler((error, request, reply) => {
@@ -148,6 +152,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           'android_login',
           'external_rubric',
           'temporary_answer_links',
+          'built_in_assistant',
         ],
       },
     };
@@ -156,6 +161,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   await registerAuthRoutes(app, ctx);
   await registerLearningRoutes(app, ctx);
   await registerGradingRoutes(app, ctx);
+  registerAssistantRoutes(app, ctx, assistant);
   const bootstrap =
     options.bootstrapAdmin ??
     (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD
@@ -218,6 +224,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let expirationTimer: ReturnType<typeof setInterval> | undefined;
   if (options.startWorkers !== false) {
     ctx.grading.start();
+    await ctx.assistant.start();
     expirationTimer = setInterval(() => {
       void expireAttempts(ctx).catch(() => app.log.error('考试到期结算失败'));
     }, 5000);
@@ -228,6 +235,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     clearInterval(logRetentionTimer);
     if (expirationTimer) clearInterval(expirationTimer);
     ctx.grading.stop();
+    ctx.assistant.stop();
     await db.close();
   });
   return app;

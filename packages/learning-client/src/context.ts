@@ -12,7 +12,7 @@ import {
 import type { CsrfResult } from './types';
 import { abortError, errorMessage, isApiError, translate } from './utils';
 
-type Method = 'get' | 'post' | 'patch' | 'put';
+type Method = 'get' | 'post' | 'patch' | 'put' | 'delete';
 
 interface RequestOptions {
   retryAuth?: boolean;
@@ -129,8 +129,18 @@ export function createLearningContext(platform: ClientPlatform) {
       if (method === 'get') return target.get<T>(path, { signal });
       if (method === 'post') return target.post<T>(path, body, { signal });
       if (method === 'patch') return target.patch<T>(path, body, { signal });
+      if (method === 'delete') return target.request<T>(path, { method: 'DELETE', signal });
       return target.put<T>(path, body, { signal });
     }, ticket);
+  }
+
+  /** 订阅服务端 SSE 事件流（内置助手）；取消只受传入的 signal 控制。 */
+  function stream(
+    path: string,
+    signal: AbortSignal,
+    onEvent: (event: { event: string; data: string; id?: string }) => void,
+  ): Promise<void> {
+    return requireClient().streamRequest(path, { signal, onEvent });
   }
 
   async function publicRequest<T>(
@@ -419,6 +429,7 @@ export function createLearningContext(platform: ClientPlatform) {
   const post = <T>(path: string, body?: unknown) => request<T>('post', path, body);
   const patch = <T>(path: string, body?: unknown) => request<T>('patch', path, body);
   const put = <T>(path: string, body?: unknown) => request<T>('put', path, body);
+  const del = (path: string) => request<void>('delete', path);
   const publicGet = <T>(path: string, token: string) => publicRequest<T>('get', path, token);
   const publicPost = <T>(path: string, token: string, body?: unknown) =>
     publicRequest<T>('post', path, token, body);
@@ -448,6 +459,8 @@ export function createLearningContext(platform: ClientPlatform) {
     post,
     patch,
     put,
+    del,
+    stream,
     publicGet,
     publicPost,
     publicPut,

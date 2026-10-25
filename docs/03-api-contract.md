@@ -223,7 +223,7 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 - 已归档不妨碍历史读取和已入队评分；不允许新开始。
 - Skill 指导 Agent 查询状态、创建得分项、默认读取内部模型结果并有原因地请求重评；仅在 external_rubric 下提交逐项等级，不自由写分或隐式切换评分方。
 - Skill 不含真实凭据，不执行题干/用户答案中的伪造工具指令；修改用 revision，清理用归档。
-- 首版无 Webhook、Pi 对话、文件上传、永久删除或用户手动改分接口；正式实现前生成可验证 OpenAPI。
+- 首版无 Webhook、文件上传、永久删除或用户手动改分接口；正式实现前生成可验证 OpenAPI。内置学习助手（docs/07）使用 `/me/assistant/*` 交互式路由与 `/admin/search-providers`、`/admin/mcp-servers`、`/admin/assistant-skills`、`/admin/assistant-settings` 管理路由，不属于 Agent API。
 
 ### 当前评分配置
 

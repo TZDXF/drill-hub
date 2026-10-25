@@ -15,8 +15,8 @@ Tauri 2 Android ──┘               │              │
 
 - Web 前端和 API 生产部署建议同源；Android 打包前端资源后访问用户指定的服务器。
 - 数据库、判分、计时、鉴权和模型调用都在服务端，Android 不运行 Node.js。
-- 内部评分模型与完整 Pi Agent 独立；首版没有应用内聊天或工具型 Agent。
-- 首版单 API 实例配一份 SQLite；评分 Worker 在同一部署中运行，持久任务可重启恢复。
+- 内部评分模型与内置学习助手（Pi 运行时，见 docs/07-built-in-assistant.md）相互独立；助手以用户身份经端点白名单访问学习数据，无独立数据库通道。
+- 首版单 API 实例配一份 SQLite；评分 Worker 与助手轮次执行在同一部署中运行，持久任务可重启恢复。
 - 不引入向量数据库、独立消息队列或模型编排平台；调用模型期间不持有数据库长事务。
 
 ## 2. monorepo 结构
@@ -132,6 +132,6 @@ pnpm-lock.yaml             # 统一 JS 依赖锁（安装后生成）
 
 ## 8. 后续边界与参考
 
-- Pi、回调签名/SSRF 防护/投递重试、离线同步、推送、原生深链均后置；iOS 暂不规划。
+- 内置学习助手已基于 Pi 实现（docs/07-built-in-assistant.md）；回调签名/SSRF 防护/投递重试、离线同步、推送、原生深链均后置；iOS 暂不规划。
 - pnpm 工作区：`https://pnpm.io/workspaces`、`https://pnpm.io/settings`。
 - Tauri 实施前复核：`https://v2.tauri.app/start/prerequisites/`、`https://v2.tauri.app/security/`。

@@ -16,6 +16,14 @@ import type {
   ModelTokenUsage,
   ApiLogView,
   LoginLogView,
+  SearchProviderView,
+  AssistantThread,
+  AssistantMessageView,
+  AssistantEventView,
+  AssistantTurnView,
+  McpServerView,
+  AssistantSkillView,
+  AssistantSettingsView,
 } from '@drill-hub/contracts';
 export interface UserRecord extends UserView {
   passwordHash: string;
@@ -91,13 +99,58 @@ export interface ModelUsageRecord extends BaseRecord {
   ownerId: string;
   connectionId: string;
   modelKey: string;
-  purpose: 'grading' | 'model_test';
+  purpose: 'grading' | 'model_test' | 'assistant';
   jobId: string | null;
   status: 'succeeded' | 'failed';
   usage: ModelTokenUsage | null;
 }
 export type ApiLogRecord = Omit<ApiLogView, 'username'>;
 export type LoginLogRecord = LoginLogView;
+export interface SearchProviderRecord extends Omit<SearchProviderView, 'apiKeyConfigured'> {
+  encryptedApiKey: string;
+}
+export interface AssistantMessageRecord extends BaseRecord {
+  ownerId: string;
+  threadId: string;
+  role: AssistantMessageView['role'];
+  content: string;
+  status: AssistantMessageView['status'];
+  errorCode: string | null;
+}
+export interface AssistantEventRecord extends BaseRecord {
+  ownerId: string;
+  threadId: string;
+  turnId: string;
+  seq: number;
+  type: AssistantEventView['type'];
+  payload: Record<string, unknown>;
+}
+export interface AssistantTurnRecord extends BaseRecord {
+  ownerId: string;
+  threadId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  status: AssistantTurnView['status'];
+  errorCode: string | null;
+  /** 本轮发起时的页面上下文描述，仅用于构造模型提示词，不在视图中返回。 */
+  promptContext: string | null;
+}
+export interface McpServerRecord extends BaseRecord {
+  name: string;
+  transport: McpServerView['transport'];
+  command: string | null;
+  args: string[];
+  url: string | null;
+  encryptedEnv: string | null;
+  encryptedHeaders: string | null;
+  timeoutSeconds: number;
+  exposure: McpServerView['exposure'];
+  enabled: boolean;
+  testError: string | null;
+}
+export interface AssistantSkillRecord extends Omit<AssistantSkillView, never> {
+  content: string;
+}
 export interface DatabaseTables {
   apiLogs: ApiLogRecord;
   loginLogs: LoginLogRecord;
@@ -122,5 +175,13 @@ export interface DatabaseTables {
   gradingJobs: GradingJob;
   auditLogs: AuditRecord;
   idempotency: IdempotencyRecord;
+  assistantThreads: AssistantThread;
+  assistantMessages: AssistantMessageRecord;
+  assistantEvents: AssistantEventRecord;
+  assistantTurns: AssistantTurnRecord;
+  searchProviders: SearchProviderRecord;
+  mcpServers: McpServerRecord;
+  assistantSkills: AssistantSkillRecord;
+  assistantSettings: AssistantSettingsView;
 }
 export type TableName = keyof DatabaseTables;

@@ -23,6 +23,8 @@ import AdminUsersPage from './pages/AdminUsersPage.vue';
 import AdminModelsPage from './pages/AdminModelsPage.vue';
 import AdminGradingPage from './pages/AdminGradingPage.vue';
 import AdminAuditPage from './pages/AdminAuditPage.vue';
+import AdminAssistantPage from './pages/AdminAssistantPage.vue';
+import AssistantPage from './pages/AssistantPage.vue';
 
 export function createLearningRouter(context: LearningContext, ready: Promise<void>): Router {
   const router = createRouter({
@@ -60,6 +62,7 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
         meta: { requiresAuth: true },
         children: [
           { path: '', name: 'home', component: HomePage },
+          { path: 'assistant', name: 'assistant', component: AssistantPage },
           { path: 'topics', name: 'topics', component: TopicsPage },
           { path: 'topics/:topicId', name: 'topic-detail', component: TopicDetailPage },
           { path: 'topics/:topicId/plans/:planId', name: 'plan', component: PlanPage },
@@ -108,6 +111,12 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
             path: 'admin/settings/models',
             name: 'admin-models',
             component: AdminModelsPage,
+            meta: { admin: true },
+          },
+          {
+            path: 'admin/settings/assistant',
+            name: 'admin-assistant',
+            component: AdminAssistantPage,
             meta: { admin: true },
           },
           {

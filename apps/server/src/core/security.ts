@@ -78,4 +78,10 @@ export class SecretVault {
       throw new AppError(503, 'SECRET_UNAVAILABLE', '无法解密服务端凭据，请联系管理员检查主密钥');
     }
   }
+  encryptJson(value: unknown) {
+    return this.encrypt(JSON.stringify(value));
+  }
+  decryptJson(envelope: string): unknown {
+    return JSON.parse(this.decrypt(envelope)) as unknown;
+  }
 }

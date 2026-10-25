@@ -193,6 +193,70 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     result: 'json',
     expiresAt: 'text',
   },
+  assistantThreads: {
+    ownerId: 'text',
+    title: 'text',
+    lastMessageAt: 'text',
+  },
+  assistantMessages: {
+    ownerId: 'text',
+    threadId: 'text',
+    role: 'text',
+    content: 'text',
+    status: 'text',
+    errorCode: 'text?',
+  },
+  assistantEvents: {
+    ownerId: 'text',
+    threadId: 'text',
+    turnId: 'text',
+    seq: 'integer',
+    type: 'text',
+    payload: 'json',
+  },
+  assistantTurns: {
+    ownerId: 'text',
+    threadId: 'text',
+    userMessageId: 'text',
+    assistantMessageId: 'text',
+    status: 'text',
+    errorCode: 'text?',
+    promptContext: 'text?',
+  },
+  searchProviders: {
+    displayName: 'text',
+    kind: 'text',
+    baseUrl: 'text?',
+    modelKey: 'text?',
+    enabled: 'boolean',
+    encryptedApiKey: 'text',
+    testError: 'text?',
+  },
+  mcpServers: {
+    name: 'text',
+    transport: 'text',
+    command: 'text?',
+    args: 'json',
+    url: 'text?',
+    encryptedEnv: 'text?',
+    encryptedHeaders: 'text?',
+    timeoutSeconds: 'integer',
+    exposure: 'text',
+    enabled: 'boolean',
+    testError: 'text?',
+  },
+  assistantSkills: {
+    name: 'text',
+    description: 'text',
+    content: 'text',
+    enabled: 'boolean',
+  },
+  assistantSettings: {
+    defaultProviderModelId: 'text?',
+    maxSearchResults: 'integer',
+    maxConcurrency: 'integer',
+    turnTimeoutMs: 'integer',
+  },
 };
 const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
   users: [['username']],
@@ -204,6 +268,9 @@ const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
   gradingJobs: [['attemptId', 'itemId', 'generation']],
   wrongQuestions: [['ownerId', 'questionId']],
   idempotency: [['ownerId', 'key']],
+  assistantEvents: [['threadId', 'seq']],
+  mcpServers: [['name']],
+  assistantSkills: [['name']],
 };
 export const schemas = Object.entries(definitions).map(
   ([name, fields]) =>
@@ -232,7 +299,20 @@ export class InitialSchema1792195200000 implements MigrationInterface {
   name = 'InitialSchema1792195200000';
   async up(runner: QueryRunner) {
     for (const [name, fields] of Object.entries(definitions).filter(
-      ([name]) => !['modelUsage', 'apiLogs', 'loginLogs'].includes(name),
+      ([name]) =>
+        ![
+          'modelUsage',
+          'apiLogs',
+          'loginLogs',
+          'assistantThreads',
+          'assistantMessages',
+          'assistantEvents',
+          'assistantTurns',
+          'searchProviders',
+          'mcpServers',
+          'assistantSkills',
+          'assistantSettings',
+        ].includes(name),
     )) {
       const all = { ...common, ...fields };
       await runner.createTable(
@@ -268,7 +348,22 @@ export class InitialSchema1792195200000 implements MigrationInterface {
   }
   async down(runner: QueryRunner) {
     for (const name of Object.keys(definitions)
-      .filter((name) => !['modelUsage', 'apiLogs', 'loginLogs'].includes(name))
+      .filter(
+        (name) =>
+          ![
+            'modelUsage',
+            'apiLogs',
+            'loginLogs',
+            'assistantThreads',
+            'assistantMessages',
+            'assistantEvents',
+            'assistantTurns',
+            'searchProviders',
+            'mcpServers',
+            'assistantSkills',
+            'assistantSettings',
+          ].includes(name),
+      )
       .reverse())
       await runner.dropTable(name);
   }
@@ -382,5 +477,62 @@ export class AddAccessLogs1792368000001 implements MigrationInterface {
     await runner.dropIndex('auditLogs', 'ix_auditLogs_date_id');
     await runner.dropTable('loginLogs');
     await runner.dropTable('apiLogs');
+  }
+}
+
+const assistantTableNames = [
+  'assistantThreads',
+  'assistantMessages',
+  'assistantEvents',
+  'assistantTurns',
+  'searchProviders',
+  'mcpServers',
+  'assistantSkills',
+  'assistantSettings',
+] as const;
+
+/** 内置对话助手、搜索提供方、MCP 与 Skills 配置表；均为新增，无需迁移已有数据。 */
+export class AddAssistantTables1792448000000 implements MigrationInterface {
+  name = 'AddAssistantTables1792448000000';
+  async up(runner: QueryRunner) {
+    for (const name of assistantTableNames) {
+      await runner.createTable(
+        new Table({
+          name,
+          columns: Object.entries({ ...common, ...definitions[name] }).map(([key, field]) => ({
+            name: key,
+            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
+            isPrimary: key === 'id',
+            isNullable: field.endsWith('?'),
+          })),
+        }),
+      );
+      for (const [i, columns] of (uniqueIndexes[name] ?? []).entries())
+        await runner.createIndex(
+          name,
+          new TableIndex({ name: 'uq_' + name + '_' + i, columnNames: columns, isUnique: true }),
+        );
+      if ('ownerId' in definitions[name])
+        await runner.createIndex(
+          name,
+          new TableIndex({ name: 'ix_' + name + '_owner', columnNames: ['ownerId'] }),
+        );
+    }
+    await runner.createIndex(
+      'assistantTurns',
+      new TableIndex({
+        name: 'ix_assistantTurns_thread_status',
+        columnNames: ['threadId', 'status'],
+      }),
+    );
+  }
+  async down(runner: QueryRunner) {
+    await runner.dropIndex('assistantTurns', 'ix_assistantTurns_thread_status');
+    for (const name of [...assistantTableNames].reverse()) {
+      for (const [i, _columns] of (uniqueIndexes[name] ?? []).entries())
+        await runner.dropIndex(name, 'uq_' + name + '_' + i);
+      if ('ownerId' in definitions[name]) await runner.dropIndex(name, 'ix_' + name + '_owner');
+      await runner.dropTable(name);
+    }
   }
 }

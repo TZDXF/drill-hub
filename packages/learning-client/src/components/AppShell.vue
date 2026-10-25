@@ -12,11 +12,13 @@ import {
   DropdownMenuTrigger,
 } from 'reka-ui';
 import { useLearning } from '../injection';
+import { useAssistant } from '../assistant/store';
 import { useLocale } from '../i18n';
 import { cycleThemePreference, themePreference } from '../theme';
 import { errorMessage } from '../utils';
 import AppIcon from './AppIcon.vue';
 import AppScrollArea from './AppScrollArea.vue';
+import AssistantPanel from './assistant/AssistantPanel.vue';
 
 const { t } = useI18n();
 
@@ -25,13 +27,22 @@ const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
 const themeIcon = computed(() => themeIcons[themePreference.value]);
 const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
 const learning = useLearning();
+const assistant = useAssistant();
 const route = useRoute();
 const router = useRouter();
 const immersive = computed(() => Boolean(route.meta.immersive));
 const focused = computed(() => Boolean(route.meta.focus));
+const assistantActive = computed(
+  () =>
+    assistant.state.open &&
+    !immersive.value &&
+    Boolean(learning.state.user) &&
+    assistant.state.layoutMode !== 'content',
+);
 const title = computed(() => {
   const names: Record<string, string> = {
     home: t('components.shell.titles.home'),
+    assistant: t('components.shell.titles.assistant'),
     topics: t('components.shell.titles.topics'),
     'topic-detail': t('components.shell.titles.topicDetail'),
     plan: t('components.shell.titles.plan'),
@@ -55,6 +66,7 @@ const title = computed(() => {
 });
 const primaryNav = computed(() => [
   { name: 'home', label: t('components.shell.titles.home'), icon: 'home' },
+  { name: 'assistant', label: t('components.shell.titles.assistant'), icon: 'assistant' },
   { name: 'topics', label: t('components.shell.titles.topics'), icon: 'topics' },
   {
     name: 'wrong-questions',
@@ -73,6 +85,11 @@ const secondaryNav = computed(() => [
 const adminNav = computed(() => [
   { name: 'admin-users', label: t('components.shell.titles.adminUsers'), icon: 'users' },
   { name: 'admin-models', label: t('components.shell.titles.adminModels'), icon: 'model' },
+  {
+    name: 'admin-assistant',
+    label: t('components.shell.titles.adminAssistant'),
+    icon: 'assistant',
+  },
   { name: 'admin-grading', label: t('components.shell.titles.adminGrading'), icon: 'server' },
   { name: 'admin-audit', label: t('components.shell.titles.adminAudit'), icon: 'history' },
 ]);
@@ -107,9 +124,14 @@ function isActive(name: string) {
   if (name === 'wrong-questions')
     return ['wrong-questions', 'wrong-question-detail'].includes(String(route.name));
   if (name === 'settings')
-    return ['settings', 'agent-tokens', 'admin-users', 'admin-models', 'admin-grading'].includes(
-      String(route.name),
-    );
+    return [
+      'settings',
+      'agent-tokens',
+      'admin-users',
+      'admin-models',
+      'admin-assistant',
+      'admin-grading',
+    ].includes(String(route.name));
   return route.name === name;
 }
 
@@ -130,7 +152,15 @@ async function logout() {
 
 <template>
   <RouterView v-if="immersive" />
-  <div v-else class="app-layout" :class="{ 'app-layout--focused': focused }">
+  <div
+    v-else
+    class="app-layout"
+    :class="{
+      'app-layout--focused': focused,
+      'app-layout--assistant': assistantActive && !focused,
+    }"
+    :style="assistantActive ? { '--assistant-width': `${assistant.state.chatWidth}px` } : undefined"
+  >
     <a class="skip-link" href="#main-content">{{ t('components.shell.skipToContent') }}</a>
     <aside v-if="!focused" class="sidebar">
       <RouterLink
@@ -195,10 +225,29 @@ async function logout() {
       </div>
     </aside>
 
+    <aside
+      v-if="assistantActive"
+      class="assistant-pane"
+      data-testid="assistant-pane"
+      aria-label="学习助手"
+    >
+      <AssistantPanel />
+    </aside>
+
     <div class="app-main">
       <header class="topbar">
         <h2>{{ title }}</h2>
         <div class="flex items-center gap-3.5">
+          <button
+            class="icon-button"
+            type="button"
+            data-testid="assistant-toggle"
+            :aria-label="t('components.assistant.open')"
+            :title="t('components.assistant.open')"
+            @click="assistant.state.open ? assistant.closePanel() : assistant.openPanel()"
+          >
+            <AppIcon name="assistant" :size="18" />
+          </button>
           <button
             v-if="learning.platform.kind === 'web'"
             class="button button--small"

@@ -479,3 +479,109 @@ export interface LogFilters {
   statusCode?: number;
   outcome?: LoginLogView['outcome'];
 }
+
+// ===== 内置对话助手（交互式用户功能，非外部 Agent API） =====
+export type SearchProviderKind = 'tavily' | 'brave' | 'searxng' | 'openai_responses';
+export interface SearchProviderView extends BaseRecord {
+  displayName: string;
+  kind: SearchProviderKind;
+  baseUrl: string | null;
+  modelKey: string | null;
+  enabled: boolean;
+  apiKeyConfigured: boolean;
+  testError: string | null;
+}
+export interface SearchResultItem {
+  title: string;
+  url: string;
+  snippet: string;
+}
+export type AssistantRouteName =
+  | 'home'
+  | 'topics'
+  | 'topic'
+  | 'plan'
+  | 'content'
+  | 'assessment'
+  | 'attempt'
+  | 'report'
+  | 'wrong-questions'
+  | 'wrong-question-detail'
+  | 'history'
+  | 'archive';
+export type AssistantLayoutMode = 'split' | 'chat' | 'content';
+export type AssistantUiAction =
+  | {
+      type: 'navigate';
+      route: AssistantRouteName;
+      params?: Record<string, string>;
+      query?: Record<string, string>;
+    }
+  | { type: 'set_layout'; mode: AssistantLayoutMode; chatWidth?: number };
+export interface AssistantThread extends BaseRecord {
+  ownerId: string;
+  title: string;
+  lastMessageAt: string;
+}
+export type AssistantMessageStatus = 'complete' | 'streaming' | 'failed' | 'interrupted';
+export interface AssistantMessageView extends BaseRecord {
+  threadId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  status: AssistantMessageStatus;
+  errorCode: string | null;
+}
+export type AssistantEventType = 'status' | 'tool_call' | 'tool_result' | 'ui_action' | 'error';
+export interface AssistantEventView {
+  id: string;
+  threadId: string;
+  turnId: string;
+  seq: number;
+  type: AssistantEventType;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+export interface AssistantTurnView extends BaseRecord {
+  threadId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  errorCode: string | null;
+}
+export interface AssistantThreadDetail {
+  thread: AssistantThread;
+  messages: AssistantMessageView[];
+  events: AssistantEventView[];
+  activeTurn: AssistantTurnView | null;
+}
+export interface AssistantStatus {
+  modelConfigured: boolean;
+  searchEnabled: boolean;
+  mcpEnabled: boolean;
+  customSkills: number;
+}
+export type McpTransport = 'stdio' | 'http';
+export interface McpServerView extends BaseRecord {
+  name: string;
+  transport: McpTransport;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  envConfigured: boolean;
+  headersConfigured: boolean;
+  timeoutSeconds: number;
+  exposure: 'direct' | 'deferred';
+  enabled: boolean;
+  testError: string | null;
+}
+export interface AssistantSkillView extends BaseRecord {
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+export interface AssistantSettingsView extends BaseRecord {
+  defaultProviderModelId: string | null;
+  maxSearchResults: number;
+  maxConcurrency: number;
+  turnTimeoutMs: number;
+}

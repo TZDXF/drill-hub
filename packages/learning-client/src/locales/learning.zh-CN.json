@@ -40,7 +40,8 @@
     "manageAgentTokens": "管理 Agent 授权",
     "browseTopics": "浏览主题",
     "reviewWrongQuestions": "复习错题",
-    "restoreArchive": "恢复归档"
+    "restoreArchive": "恢复归档",
+    "openAssistant": "学习助手"
   },
   "topics": {
     "title": "学习主题",
@@ -333,5 +334,10 @@
       "voidValid": "未作废",
       "voidVoided": "已作废"
     }
+  },
+  "assistant": {
+    "pageTitle": "与学习助手对话",
+    "pageHint": "在侧边的助手面板中对话即可。助手可以查询你的学习数据、创建内容，并为你打开对应的页面。",
+    "modelMissing": "管理员尚未配置默认助手模型，暂时无法对话。"
   }
 }

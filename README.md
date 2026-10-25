@@ -14,6 +14,7 @@
 - Token 用量页：个人统计、管理员全站统计、最近 7/30/90 天趋势与模型排行；记录模型评分、重试、重评和模型测试的供应商用量，未知用量单列。
 - 持久评分队列、失败重试、成绩报告、错题集、重练、归档与恢复。不开放永久删除和手工改分接口。
 - Agent 访问令牌、最小权限 scope 和可分发 Skill。
+- **内置学习助手**：基于 [Pi](https://pi.dev) 的应用内对话助手，以当前用户身份调用平台 API 查询与创建学习数据、执行 web 搜索、为用户打开页面并调整对话/内容布局；桌面三栏、平板窄栏、手机全屏覆盖三端适配；管理员可配置默认聊天模型、搜索服务（Tavily/Brave/SearXNG/OpenAI Responses）、MCP 服务器与助手 Skills。详见 [docs/07-built-in-assistant.md](docs/07-built-in-assistant.md)。
 - 支持正式/测试作答和保留历史的作答作废；测试及已作废作答不计学习统计、错题或计划进度。完全未答由系统记零分并单列，不增加答错次数；全空练习不完成任务，考试仍按提交/超时结算。
 - Agent 可为指定练习或考试生成限时免登录答题链接；链接秘钥只保存哈希，免登录作答归属链接所属用户，正式有效作答计入个人统计、错题及明确关联的计划任务；持链接者的作答都会记到所属用户名下，请勿转发。
 - 手机浏览器布局，以及 Tauri 2 Android 外壳：先填写 HTTP/HTTPS 服务器地址、验证连接，再登录。
@@ -79,6 +80,7 @@ pnpm --filter @drill-hub/server start
 | `PUBLIC_URL`                | 公开 HTTP/HTTPS 地址，用于 Secure Cookie 判断和生成完整答题链接，例如 `https://study.example.org` |
 | `TRUSTED_PROXIES`           | 逗号分隔的可信代理 IP/CIDR，默认不信任转发头；仅填写实际代理地址，禁止全网 CIDR                   |
 | `ALLOW_PRIVATE_MODEL_URLS`  | 默认 `false`；仅可信自建内网模型部署可显式设置 `true`，这会关闭模型地址隔离，但仍禁止重定向       |
+| `ALLOW_PRIVATE_SEARCH_URLS` | 默认 `false`；仅自建内网搜索服务（如 SearXNG）可显式设置 `true`，语义同上                         |
 | `ACCESS_LOG_RETENTION_DAYS` | API/登录日志保留天数，默认 7，范围 1–365；启动时及每小时清理，业务审计与评分历史不删除            |
 | `DRILL_HUB_ENCRYPTION_KEY`  | 64 位十六进制主密钥，生产必须设置并妥善备份                                                       |
 
@@ -87,6 +89,8 @@ pnpm --filter @drill-hub/server start
 评分适配器当前只支持 `chat_completions` 和内置 rubric 评分提示词；兼容端点也必须通过实际连接与模型探测，不能保证所有所谓兼容供应商都可用。服务端默认拒绝模型连接访问回环、私网、链路本地和保留地址，对实际连接使用经过校验的 DNS 结果，并禁止重定向。生产仍应配合模型域名/出口网络白名单。
 
 浏览器跨域允许任意来源并支持携带凭据，不按 Origin/Referer 设置白名单；Web 写操作仍校验 CSRF，所有接口继续按各自要求鉴权和检查权限。此策略保留了报告中的跨源会话访问风险，不能宣称已通过该项整改。Android WebView 无需登记来源，但这不代表已完成真机验收。可信代理仅用于真实 IP 与协议识别，不用于派生公开地址；HTTPS 终结时设置 HTTPS 的 `PUBLIC_URL`，并限制应用端口只能由可信代理访问。
+
+内置助手的 SSE 事件流（`/api/v1/me/assistant/threads/:id/stream`）需要反向代理关闭响应缓冲（nginx `proxy_buffering off` 或等效配置）并允许长连接，否则流式输出会退化为整段返回。
 
 匿名未匹配 API、匿名 429/403 及预检不逐条落库，避免扫描放大磁盘写入。登录按“用户名 + 来源 IP”限流，不再让代理后的不同账号共享低阈值桶；它仍是单实例内存限流，不能代替公网网关的连接数/速率控制。
 
@@ -206,7 +210,7 @@ pnpm test:docker drill-hub:nightly-test
 4. Agent 创建主题、内容、计划和题目/试卷；用户可登录后在应用中作答，也可通过 Agent 生成的临时链接免登录作答。
 5. Agent 按需读取报告与错题；只有 `external_rubric` 题可通过 `grade:write` 提交逐项等级，模型题由服务端调用配置的模型评分。
 
-内置聊天 Agent / Pi、云端主动回调和 Webhook 尚未实现。
+云端主动回调和 Webhook 尚未实现；内置学习助手已在应用内提供（见上），但它不是外部 Agent API，也不能替代 Agent 令牌的编程访问。
 
 ## 验证命令
 
@@ -239,6 +243,7 @@ pnpm test:e2e
 5. [页面、里程碑与验收](docs/04-pages-and-delivery.md)
 6. [内部模型与得分项评分](docs/05-model-grading.md)
 7. [质量工具与测试](docs/06-quality.md)
+8. [内置学习助手](docs/07-built-in-assistant.md)
 
 设计文档包含后续目标；实际已实现接口以当前代码和 Skill API 参考为准。
 

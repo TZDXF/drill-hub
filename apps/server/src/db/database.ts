@@ -11,6 +11,7 @@ import {
   AddAnswerLinks1792195200001,
   AddModelUsage1792368000000,
   AddAccessLogs1792368000001,
+  AddAssistantTables1792448000000,
 } from './schema.js';
 import type {
   AuditLogView,
@@ -43,6 +44,7 @@ export class Database {
         AddAnswerLinks1792195200001,
         AddModelUsage1792368000000,
         AddAccessLogs1792368000001,
+        AddAssistantTables1792448000000,
       ],
       synchronize: false,
       logging: false,

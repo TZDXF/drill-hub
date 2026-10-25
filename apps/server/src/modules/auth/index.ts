@@ -16,6 +16,7 @@ import {
   verifyPassword,
 } from '../../core/security.js';
 import { object, revision, text } from '../../core/validation.js';
+import { INTERNAL_TOKEN_PREFIX, verifyInternalToken } from '../../core/internal-auth.js';
 const COOKIE = 'dh_session';
 const dummyPassword = passwordHash(randomSecret());
 const csrf = (config: ServerConfig, sessionId: string) =>
@@ -49,8 +50,37 @@ async function activeUser(db: Database, userId: string) {
 }
 export function createAuthFunctions(
   db: Database,
+  config: ServerConfig,
 ): Pick<AppContext, 'requireUser' | 'requireAdmin' | 'requireAgent'> {
+  /**
+   * 助手内部令牌（dhi. 前缀）：服务端在同进程内为 drill_hub_api 工具签发，
+   * 以发起用户身份执行端点。HMAC 签名无法伪造，短 TTL 且绑定单一 turn。
+   */
+  function internalActor(request: FastifyRequest): { actor: Actor } | null {
+    const header = request.headers.authorization;
+    const bearer = header?.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!bearer.startsWith(INTERNAL_TOKEN_PREFIX)) return null;
+    const verified = verifyInternalToken(bearer, config.encryptionKey);
+    if (!verified) throw new AppError(401, 'INVALID_SESSION', '内部凭证无效或已过期');
+    return {
+      actor: {
+        id: `assistant:${verified.turnId}`,
+        userId: verified.userId,
+        role: verified.role,
+        channel: 'mobile',
+        scopes: [],
+        assistantTurnId: verified.turnId,
+      },
+    };
+  }
+
   async function requireUser(request: FastifyRequest): Promise<Actor> {
+    const internal = internalActor(request);
+    if (internal) {
+      const user = await activeUser(db, internal.actor.userId);
+      request.auditActor = internal.actor;
+      return { ...internal.actor, role: user.role };
+    }
     const header = request.headers.authorization;
     const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null;
     const raw = bearer ?? request.cookies[COOKIE];
@@ -87,10 +117,24 @@ export function createAuthFunctions(
   }
   async function requireAdmin(request: FastifyRequest) {
     const actor = await requireUser(request);
+    // 内部令牌即使是管理员用户发起，也不获得管理端点权限。
+    if (actor.assistantTurnId) throw new AppError(403, 'ADMIN_REQUIRED', '此操作仅管理员可用');
     if (actor.role !== 'admin') throw new AppError(403, 'ADMIN_REQUIRED', '此操作仅管理员可用');
     return actor;
   }
   async function requireAgent(request: FastifyRequest, scope: Scope = 'read'): Promise<Actor> {
+    const internal = internalActor(request);
+    if (internal) {
+      const user = await activeUser(db, internal.actor.userId);
+      const actor: Actor = {
+        ...internal.actor,
+        role: user.role,
+        channel: 'agent',
+        scopes: [...AGENT_SCOPES],
+      };
+      request.auditActor = actor;
+      return actor;
+    }
     const header = request.headers.authorization;
     const raw = header?.startsWith('Bearer ') ? header.slice(7) : '';
     if (!raw.startsWith('dhk.'))

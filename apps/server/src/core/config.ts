@@ -51,6 +51,9 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
   const privateUrls = process.env.ALLOW_PRIVATE_MODEL_URLS;
   if (privateUrls !== undefined && !['true', 'false'].includes(privateUrls))
     throw new Error('Invalid ALLOW_PRIVATE_MODEL_URLS');
+  const privateSearchUrls = process.env.ALLOW_PRIVATE_SEARCH_URLS;
+  if (privateSearchUrls !== undefined && !['true', 'false'].includes(privateSearchUrls))
+    throw new Error('Invalid ALLOW_PRIVATE_SEARCH_URLS');
   const accessLogRetentionDays =
     overrides.accessLogRetentionDays ?? Number(process.env.ACCESS_LOG_RETENTION_DAYS ?? 7);
   if (
@@ -62,6 +65,7 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
   return {
     trustedProxies,
     allowPrivateModelUrls: overrides.allowPrivateModelUrls ?? privateUrls === 'true',
+    allowPrivateSearchUrls: overrides.allowPrivateSearchUrls ?? privateSearchUrls === 'true',
     accessLogRetentionDays,
     databasePath,
     host: overrides.host ?? process.env.HOST ?? (production ? '127.0.0.1' : '0.0.0.0'),

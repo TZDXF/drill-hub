@@ -22,7 +22,7 @@ apps/server              Fastify + SQLite + TypeORM 服务端与 Agent API
 apps/web                 Vue 3 Web 入口及 Web 平台适配
 apps/mobile              Tauri 2 Android 外壳及移动平台适配
 packages/contracts       共享 DTO、枚举与 API 契约
-packages/api-client      鉴权、CSRF、超时、取消与错误处理
+packages/api-client      鉴权、CSRF、超时、取消、SSE 流式与错误处理
 packages/learning-client 共用 Vue 页面、路由、组件与样式
 skills/drill-hub         外部 Agent 使用说明和实际 API 参考
 scripts/e2e-server.ts    隔离的 Playwright 服务端
@@ -34,13 +34,13 @@ docs                     设计文档；其中可能包含尚未实现的后续�
 
 - `apps/web`、`apps/mobile` -> `packages/learning-client` -> `packages/api-client`、`packages/contracts`。
 - `apps/server` -> `packages/contracts`。
-- 服务端 ORM、答案、密钥和评分 Worker 不得进入浏览器或 Android 包。
+- 服务端 ORM、答案、密钥、评分 Worker 与内置助手的 Pi 运行时不得进入浏览器或 Android 包。
 - `packages/learning-client` 只通过注入的 `ClientPlatform` 处理 Web/Android 差异。
 
 ## 技术栈
 
 - Node.js 24、pnpm 12.4.1、TypeScript 5.9。
-- 服务端：Fastify 5、better-sqlite3、TypeORM 0.3。
+- 服务端：Fastify 5、better-sqlite3、TypeORM 0.3；内置助手基于 Pi（`@earendil-works/pi-coding-agent`、`@earendil-works/pi-ai`，仅服务端依赖）。
 - 前端：Vue 3、Vite 8、Reka UI、Vue Router、离线 Iconify Lucide 图标。
 - Android：Tauri 2，Rust 工程位于 `apps/mobile/src-tauri`。
 - 测试：Vitest 5、Playwright 1.64。
@@ -104,7 +104,8 @@ pnpm exec playwright install chromium
 - 修改 Agent 可见字段、状态、scope、错误码、评分或归档行为时，同步更新 contracts、服务端测试、Skill 说明和 API 参考。
 - Agent 写入遵循依赖顺序：主题 -> 内容/题目 -> 练习或试卷 -> 计划任务。不得伪造资源 ID、版本或完成状态。
 - 修改题目创建新版本；已有考试项固定引用题目版本，不能假定题干修改会自动传播。
-- 当前没有通用 `Idempotency-Key`、cursor 分页、Webhook 或应用内聊天 Agent；不要在文档或实现中假装已支持。
+- 当前没有通用 `Idempotency-Key`、cursor 分页或 Webhook；不要在文档或实现中假装已支持。
+- 内置学习助手（`apps/server/src/modules/assistant`）是交互式用户功能，不走也不接受 `dhk.` Agent 令牌；其 `drill_hub_api` 工具经端点白名单以用户身份自调用，修改白名单或内部令牌（`dhi.`）逻辑时必须同步安全测试。助手无管理端点权限、无逐条写确认；MCP stdio 服务器须管理员显式启用。
 
 ## 开发约定
 
@@ -135,6 +136,7 @@ pnpm test
 
 - Android SDK/NDK、Java、Android Rust target、签名和 APK/真机验收尚未完成。
 - Android 重启后需要重新登录，没有安全持久会话。
-- 通用创建请求幂等、cursor 分页、持久费用预算、Webhook、应用内聊天 Agent 和模型质量基准尚未实现。
+- 通用创建请求幂等、cursor 分页、持久费用预算、Webhook 和模型质量基准尚未实现。
+- 内置助手已实现但无逐条写确认、无跨设备实时推送、无历史会话向量检索；详见 `docs/07-built-in-assistant.md`。
 - 评分适配器当前只支持 `chat_completions` 和 `rubric-v1`，不要假定任意“OpenAI 兼容”供应商都可用。
 - 生产部署可使用 HTTP 或 HTTPS；建议 HTTPS，并需要显式主密钥和安全的数据库/密钥备份。
