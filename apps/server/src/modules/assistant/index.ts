@@ -301,8 +301,7 @@ export function registerAssistantRoutes(
       const model = await ctx.db.get('providerModels', settings.defaultProviderModelId);
       if (model?.enabled) {
         const connection = await ctx.db.get('modelConnections', model.connectionId);
-        modelConfigured =
-          Boolean(connection?.enabled) && model.verifiedConfigVersion === connection?.configVersion;
+        modelConfigured = Boolean(connection?.enabled);
       }
     }
     const providers = await ctx.db.list('searchProviders', { enabled: true });
@@ -746,12 +745,6 @@ export function registerAssistantRoutes(
         assert(model && model.enabled, 'INVALID_MODEL', '模型不存在或未启用', 422);
         const connection = await ctx.db.get('modelConnections', model.connectionId);
         assert(connection?.enabled, 'INVALID_MODEL', '模型所属连接未启用', 422);
-        assert(
-          model.verifiedConfigVersion === connection.configVersion,
-          'ASSISTANT_MODEL_STALE',
-          '模型需要先通过当前连接版本的测试',
-          409,
-        );
         updates.defaultProviderModelId = model.id;
       }
     }

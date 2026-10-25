@@ -61,8 +61,6 @@ export class PiSessionFactory {
     const connection = await this.ctx.db.get('modelConnections', model.connectionId);
     if (!connection || !connection.enabled)
       throw new AppError(409, 'ASSISTANT_MODEL_NOT_CONFIGURED', '默认助手模型的连接不可用');
-    if (model.verifiedConfigVersion !== connection.configVersion)
-      throw new AppError(409, 'ASSISTANT_MODEL_STALE', '默认助手模型需要重新完成连接测试');
     return { model, connection };
   }
 

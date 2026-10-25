@@ -611,7 +611,7 @@
     "tabMcp": "MCP 服务器",
     "tabSkills": "Skills",
     "defaultModel": "默认助手模型",
-    "defaultModelHint": "仅可选择已通过当前连接版本测试的模型；密钥沿用系统设置中的供应商连接。",
+    "defaultModelHint": "可选择任一已启用的模型；密钥沿用系统设置中的供应商连接。",
     "noModel": "未选择",
     "maxSearchResults": "每次搜索结果上限",
     "maxConcurrency": "同时执行的对话轮数",
