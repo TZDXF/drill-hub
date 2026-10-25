@@ -21,7 +21,7 @@ POST /me/assistant/threads/:id/messages → 202（创建 turn，进程内并发�
   → session.prompt() → session.subscribe 事件桥接（text_delta / tool_execution_*）
   → 事件与消息持久化 + 进程内 SSE hub 广播
 GET /me/assistant/threads/:id/stream?after=<seq>（SSE；断线游标补齐）
-GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式异常自动降级）
+GET /me/assistant/threads/:id/events?after=<seq>（按游标读取持久化事件，客户端不用于轮询）
 ```
 
 - turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn（409 `ACTIVE_TURN_EXISTS`）。
@@ -76,7 +76,7 @@ GET /me/assistant/threads/:id/events?after=<seq>（轮询降级，WebView 流式
 
 - 桌面（>1100px）：侧栏 + 助手面板（默认 400px，320–560 可调）+ 内容三栏；平板（781–1100px）：面板收窄至 300–340px；手机（≤780px）：全屏覆盖层，`navigate` 动作自动收起，经入口重新打开。
 - 入口：桌面顶栏助手按钮与侧边栏"学习助手"；手机首页快捷链接与 `/assistant` 路由。
-- 流式输出：SSE `text_delta` 逐字渲染（vue-stream-markdown）；连接失败自动降级 2s 轮询；页面隐藏暂停、恢复重连。
+- 流式输出：仅使用 SSE，`text_delta` 逐字渲染（vue-stream-markdown）；连接失败或提前结束时每隔 2s 重连 SSE，携带 `after` 游标补齐持久化事件，不降级轮询；页面隐藏或关闭面板时暂停，恢复或重新打开时重连。完成或失败事件统一刷新会话中的最终回复、耗时与过程摘要。
 - 管理页：`/admin/settings/assistant`（搜索/MCP/Skills）；供应商与模型在 `/admin/settings/models` 管理，助手使用的模型在对话中按轮选择。每轮 API 调用与写操作限额由服务端固定，不提供管理页配置。
 
 ## 9. 部署注意

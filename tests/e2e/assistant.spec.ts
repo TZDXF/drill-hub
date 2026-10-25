@@ -130,11 +130,75 @@ test.describe('内置学习助手', () => {
     await expect(page.getByTestId('assistant-panel')).toBeHidden();
   });
 
-  test('mock 流：渲染回复、执行页面跳转与布局切换', async ({ page }, testInfo) => {
+  test('仅 SSE：断线重连后刷新最终回复、耗时与折叠摘要', async ({ page }, testInfo) => {
     await login(page);
     const threadId = 'thread-e2e';
     const turnId = 'turn-e2e';
-    let pollCount = 0;
+    const streamCursors: string[] = [];
+    let eventRequests = 0;
+    let completed = false;
+    let completedDetailLoads = 0;
+    const createdAt = '2026-10-25T10:00:00.000Z';
+    const updatedAt = '2026-10-25T10:00:12.500Z';
+    const turn = {
+      id: turnId,
+      threadId,
+      userMessageId: 'u1',
+      assistantMessageId: 'a1',
+      status: 'running',
+      errorCode: null,
+      providerModelId: null,
+      createdAt,
+      updatedAt: createdAt,
+      revision: 1,
+    };
+    const events = [
+      {
+        id: 'e1',
+        threadId,
+        turnId,
+        seq: 1,
+        type: 'tool_call',
+        payload: { toolCallId: 't1', name: 'navigate', args: {} },
+        createdAt,
+      },
+      {
+        id: 'e2',
+        threadId,
+        turnId,
+        seq: 2,
+        type: 'ui_action',
+        payload: { action: { type: 'navigate', route: 'topics' } },
+        createdAt,
+      },
+      {
+        id: 'e3',
+        threadId,
+        turnId,
+        seq: 3,
+        type: 'tool_result',
+        payload: { toolCallId: 't1', name: 'navigate', isError: false },
+        createdAt,
+      },
+      {
+        id: 'e4',
+        threadId,
+        turnId,
+        seq: 4,
+        type: 'ui_action',
+        payload: { action: { type: 'set_layout', mode: 'split' } },
+        createdAt,
+      },
+      {
+        id: 'e5',
+        threadId,
+        turnId,
+        seq: 5,
+        type: 'status',
+        payload: { phase: 'turn_completed' },
+        createdAt: updatedAt,
+      },
+    ];
     await page.route('**/api/v1/me/assistant/threads', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -167,6 +231,7 @@ test.describe('内置学习助手', () => {
     });
     await page.route(`**/api/v1/me/assistant/threads/${threadId}`, async (route) => {
       if (route.request().method() === 'GET') {
+        if (completed) completedDetailLoads += 1;
         await route.fulfill({
           contentType: 'application/json',
           body: JSON.stringify({
@@ -180,9 +245,34 @@ test.describe('内置学习助手', () => {
                 updatedAt: new Date().toISOString(),
                 revision: 1,
               },
-              turns: [],
-              messages: [],
-              events: [],
+              turns: completed ? [{ ...turn, status: 'succeeded', updatedAt }] : [],
+              messages: completed
+                ? [
+                    {
+                      id: 'u1',
+                      threadId,
+                      role: 'user',
+                      content: '打开主题列表',
+                      status: 'complete',
+                      errorCode: null,
+                      createdAt,
+                      updatedAt: createdAt,
+                      revision: 1,
+                    },
+                    {
+                      id: 'a1',
+                      threadId,
+                      role: 'assistant',
+                      content: '已为你打开主题列表。',
+                      status: 'complete',
+                      errorCode: null,
+                      createdAt,
+                      updatedAt,
+                      revision: 1,
+                    },
+                  ]
+                : [],
+              events: completed ? events : [],
               activeTurn: null,
             },
           }),
@@ -197,87 +287,35 @@ test.describe('内置学习助手', () => {
         status: 202,
         body: JSON.stringify({
           data: {
-            turn: {
-              id: turnId,
-              threadId,
-              userMessageId: 'u1',
-              assistantMessageId: 'a1',
-              status: 'running',
-              errorCode: null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              revision: 1,
-            },
+            turn,
             userMessage: null,
           },
         }),
       });
     });
-    // SSE 流不可用（非 200）时前端自动降级轮询事件接口。
+    // 首次 SSE 提前结束，第二次连接失败，第三次通过 SSE 补齐完成事件。
     await page.route(`**/api/v1/me/assistant/threads/${threadId}/stream**`, async (route) => {
+      streamCursors.push(new URL(route.request().url()).searchParams.get('after') ?? '');
+      if (streamCursors.length === 2) {
+        await route.fulfill({ status: 503, body: 'unavailable' });
+        return;
+      }
+      completed = streamCursors.length >= 3;
+      const frames = completed ? events.slice(3) : events.slice(0, 3);
       await route.fulfill({
-        contentType: 'application/json',
-        status: 503,
-        body: JSON.stringify({ error: { code: 'STREAM_FAILED', message: 'unavailable' } }),
+        contentType: 'text/event-stream',
+        body:
+          frames
+            .map(
+              (event) =>
+                `event: ${event.type}\nid: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`,
+            )
+            .join('') + (completed ? '' : 'event: text_delta\ndata: {"delta":"正在打开"}\n\n'),
       });
     });
     await page.route(`**/api/v1/me/assistant/threads/${threadId}/events**`, async (route) => {
-      pollCount += 1;
-      const done = pollCount > 1;
-      const events: {
-        id: string;
-        threadId: string;
-        turnId: string;
-        seq: number;
-        type: string;
-        payload: Record<string, unknown>;
-        createdAt: string;
-      }[] = [
-        {
-          id: 'e1',
-          threadId,
-          turnId,
-          seq: 1,
-          type: 'tool_call',
-          payload: { toolCallId: 't1', name: 'navigate', args: {} },
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'e2',
-          threadId,
-          turnId,
-          seq: 2,
-          type: 'ui_action',
-          payload: { action: { type: 'navigate', route: 'topics' } },
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'e3',
-          threadId,
-          turnId,
-          seq: 3,
-          type: 'tool_result',
-          payload: { toolCallId: 't1', name: 'navigate', isError: false, summary: 'ok' },
-          createdAt: new Date().toISOString(),
-        },
-      ];
-      if (done) {
-        events.push({
-          id: 'e4',
-          threadId,
-          turnId,
-          seq: 4,
-          type: 'status',
-          payload: { phase: 'turn_completed' },
-          createdAt: new Date().toISOString(),
-        });
-      }
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: { events, activeTurn: done ? null : { id: turnId, status: 'running' } },
-        }),
-      });
+      eventRequests += 1;
+      await route.abort();
     });
 
     if (testInfo.project.name === 'chromium-mobile') await page.goto('/assistant');
@@ -287,17 +325,20 @@ test.describe('内置学习助手', () => {
 
     // ui_action navigate 应驱动真实路由跳转到主题列表页。
     await expect(page).toHaveURL(/\/topics$/, { timeout: 15000 });
-    if (testInfo.project.name === 'chromium-mobile') {
-      // 手机布局导航后自动收起面板，经 /assistant 重新打开。
-      await expect(page.getByTestId('assistant-panel')).toBeHidden();
-      await page.goto('/assistant');
-      await expect(page.getByTestId('assistant-panel')).toBeVisible();
-    } else {
-      // 桌面保持并排布局，活动轮显示单行状态（含“正在思考…”或关键操作）。
-      await expect(page.getByTestId('assistant-event-card')).toBeVisible();
-      await expect(page.getByTestId('assistant-panel')).toBeVisible();
+    await expect.poll(() => completedDetailLoads, { timeout: 15000 }).toBe(1);
+    // set_layout 动作重新打开手机面板；两个视口都直接检查完成事件触发的刷新。
+    await expect(page.getByTestId('assistant-panel')).toBeVisible();
+    if (testInfo.project.name !== 'chromium-mobile') {
       await expect(page.locator('.app-layout--assistant')).toBeVisible();
     }
+    await expect(page.getByTestId('assistant-reply')).toContainText('已为你打开主题列表。');
+    await expect(page.locator('.assistant-process__trigger')).toContainText('12.5');
+    await expect(page.locator('.assistant-process__list')).toBeHidden();
+    await page.locator('.assistant-process__trigger').click();
+    await expect(page.locator('.assistant-process__list')).toContainText('主题');
+    await expect(page.getByTestId('assistant-event-card')).toBeHidden();
+    expect(streamCursors).toEqual(['0', '3', '3']);
+    expect(eventRequests).toBe(0);
   });
 
   test('助手页面打开并排布局（桌面）', async ({ page }) => {

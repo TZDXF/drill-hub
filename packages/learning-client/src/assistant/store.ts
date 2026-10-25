@@ -56,7 +56,7 @@ export interface AssistantState {
   events: AssistantEventView[];
   activeTurnId: string | null;
   streamingText: string;
-  connection: 'idle' | 'connecting' | 'streaming' | 'polling';
+  connection: 'idle' | 'connecting' | 'streaming';
   error: string;
 }
 
@@ -65,7 +65,7 @@ type StreamHandle = { abort: AbortController };
 let learningRef: LearningContext | null = null;
 let routerRef: Router | null = null;
 let streamHandle: StreamHandle | null = null;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let visibilityBound = false;
 
 const state = reactive<AssistantState>({
@@ -98,10 +98,11 @@ function lastSeq(): number {
   return state.events.length ? state.events[state.events.length - 1]!.seq : 0;
 }
 
-function pushEvent(event: AssistantEventView): void {
-  if (state.events.some((existing) => existing.seq === event.seq)) return;
+function pushEvent(event: AssistantEventView): boolean {
+  if (state.events.some((existing) => existing.seq === event.seq)) return false;
   state.events.push(event);
   state.events.sort((left, right) => left.seq - right.seq);
+  return true;
 }
 
 async function refreshStatus(): Promise<void> {
@@ -117,6 +118,7 @@ async function loadThreads(): Promise<void> {
 }
 
 async function selectThread(threadId: string): Promise<void> {
+  stopStream();
   state.currentThreadId = threadId;
   state.streamingText = '';
   state.error = '';
@@ -146,6 +148,7 @@ async function deleteThread(threadId: string): Promise<void> {
   await learning().del(`/me/assistant/threads/${threadId}`);
   await loadThreads();
   if (state.currentThreadId === threadId) {
+    stopStream();
     state.currentThreadId = null;
     state.turns = [];
     state.messages = [];
@@ -218,13 +221,27 @@ async function cancelTurn(): Promise<void> {
 function stopStream(): void {
   streamHandle?.abort.abort();
   streamHandle = null;
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
   if (state.connection === 'streaming' || state.connection === 'connecting') {
     state.connection = 'idle';
   }
+}
+
+function completeTurn(message?: string): void {
+  const threadId = state.currentThreadId;
+  state.activeTurnId = null;
+  state.streamingText = '';
+  stopStream();
+  void refreshCurrentThread()
+    .catch((reason: unknown) => {
+      if (state.currentThreadId === threadId) state.error = errorMessage(reason);
+    })
+    .finally(() => {
+      if (message && state.currentThreadId === threadId) state.error = message;
+    });
 }
 
 function handleStreamEvent(payload: { event?: string; data: string; id?: string }): void {
@@ -242,20 +259,14 @@ function handleStreamEvent(payload: { event?: string; data: string; id?: string 
     const event = JSON.parse(payload.data) as AssistantEventView;
     if (event && event.type) {
       event.type = type as AssistantEventView['type'];
-      pushEvent(event);
+      if (!pushEvent(event)) return;
       if (event.type === 'error') {
         const message = String(event.payload?.message ?? '本轮对话未能完成');
-        state.activeTurnId = null;
-        state.streamingText = '';
         // 先刷新终稿消息再回填错误，避免刷新过程清空错误提示。
-        void refreshCurrentThread().finally(() => {
-          state.error = message;
-        });
+        completeTurn(message);
       }
       if (event.type === 'status' && event.payload?.phase === 'turn_completed') {
-        state.activeTurnId = null;
-        state.streamingText = '';
-        void refreshCurrentThread();
+        completeTurn();
       }
       if (event.type === 'ui_action') {
         const action = event.payload?.action as AssistantUiAction | undefined;
@@ -290,20 +301,26 @@ function executeUiAction(action: AssistantUiAction): void {
 }
 
 function connectStream(): void {
-  if (!state.currentThreadId || streamHandle) return;
+  if (!state.currentThreadId || !state.activeTurnId || streamHandle) return;
   const threadId = state.currentThreadId;
   const abort = new AbortController();
   streamHandle = { abort };
   state.connection = 'connecting';
   void learning()
-    .stream(`/me/assistant/threads/${threadId}/stream?after=${lastSeq()}`, abort.signal, (event) =>
-      handleStreamEvent(event),
+    .stream(
+      `/me/assistant/threads/${threadId}/stream?after=${lastSeq()}`,
+      abort.signal,
+      (event) => {
+        if (streamHandle?.abort !== abort || state.currentThreadId !== threadId) return;
+        state.connection = 'streaming';
+        state.error = '';
+        handleStreamEvent(event);
+      },
     )
     .then(() => {
       if (streamHandle?.abort.signal === abort.signal) {
         streamHandle = null;
-        state.connection = state.activeTurnId ? 'polling' : 'idle';
-        if (state.activeTurnId) startPolling();
+        scheduleReconnect();
       }
     })
     .catch(() => {
@@ -313,49 +330,19 @@ function connectStream(): void {
         state.connection = 'idle';
         return;
       }
-      state.connection = 'polling';
-      if (state.activeTurnId) startPolling();
-      else state.connection = 'idle';
+      scheduleReconnect();
     });
 }
 
-function startPolling(): void {
-  if (pollTimer || !state.currentThreadId) return;
-  pollTimer = setInterval(async () => {
-    if (!state.currentThreadId || !state.activeTurnId) {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = null;
-      state.connection = 'idle';
-      return;
-    }
-    try {
-      const data = await learning().get<{
-        events: AssistantEventView[];
-        activeTurn: AssistantTurnView | null;
-      }>(`/me/assistant/threads/${state.currentThreadId}/events?after=${lastSeq()}`);
-      for (const event of data.events) {
-        pushEvent(event);
-        if (event.type === 'ui_action') {
-          const action = event.payload?.action as AssistantUiAction | undefined;
-          if (action) executeUiAction(action);
-        }
-        if (event.type === 'error') {
-          state.activeTurnId = null;
-          state.streamingText = '';
-        }
-        if (event.type === 'status' && event.payload?.phase === 'turn_completed') {
-          state.activeTurnId = null;
-          state.streamingText = '';
-        }
-      }
-      if (!data.activeTurn && state.activeTurnId) {
-        state.activeTurnId = null;
-        state.streamingText = '';
-        void refreshCurrentThread();
-      }
-    } catch {
-      /* 轮询失败时下个周期重试。 */
-    }
+function scheduleReconnect(): void {
+  state.connection = 'idle';
+  if (!state.currentThreadId || !state.activeTurnId || reconnectTimer) return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  state.connection = 'connecting';
+  state.error = '事件流连接中断，正在重新连接…';
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectStream();
   }, 2000);
 }
 
@@ -376,6 +363,7 @@ let openingPromise: Promise<void> | null = null;
 function openPanel(): void {
   state.open = true;
   bindVisibility();
+  if (state.activeTurnId && !reconnectTimer) connectStream();
   if (!state.currentThreadId && !openingPromise) {
     openingPromise = loadThreads()
       .then(async () => {
