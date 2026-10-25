@@ -2,6 +2,12 @@ export interface AssistantSelectionQuote {
   id: string;
   text: string;
   comment?: string;
+  anchor?: AssistantSelectionAnchor;
+}
+export interface AssistantSelectionAnchor {
+  messageId: string;
+  start: number;
+  end: number;
 }
 export const ASSISTANT_SELECTION_MAX = 8000;
 export function createSelectionQuote(text: string): AssistantSelectionQuote | null {

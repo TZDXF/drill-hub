@@ -314,6 +314,8 @@
     "timeline": "对话时间线",
     "timelineJump": "跳转到第 {number} 轮",
     "quoteSelection": "引用这段文字",
+    "commentSelection": "添加批注",
+    "locateQuote": "定位引用原文",
     "editQuote": "编辑引用批注",
     "removeQuote": "移除引用",
     "quoteComment": "给这段引用添加批注（可选）",

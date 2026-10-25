@@ -24,7 +24,7 @@ async function copy() {
   <div class="assistant-user-wrap" :data-message-id="message.id" data-selection-source="user">
     <div class="assistant-message assistant-message--user" data-testid="assistant-user-message">
       <AssistantImages :images="message.images" @preview="emit('preview', $event)" />
-      <span v-if="parsed.visibleContent">{{ parsed.visibleContent }}</span>
+      <span v-if="parsed.visibleContent" data-selection-content>{{ parsed.visibleContent }}</span>
       <div v-if="parsed.quotes.length" class="assistant-quote-list">
         <span
           v-for="quote in parsed.quotes"

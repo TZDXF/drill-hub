@@ -4057,15 +4057,81 @@
   z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 10px;
+  gap: 3px;
+  padding: 4px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 4px 20px rgb(0 0 0 / 16%);
   font-size: 0.76rem;
+}
+.assistant-selection-menu button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  white-space: nowrap;
   cursor: pointer;
+}
+.assistant-selection-menu button:hover {
+  background: var(--paper-muted);
+}
+.assistant-selection-comment {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: min(288px, calc(100vw - 16px));
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 16%);
+}
+.assistant-selection-comment textarea {
+  min-width: 0;
+  min-height: 28px;
+  max-height: 96px;
+  flex: 1;
+  padding: 4px 6px;
+  resize: vertical;
+  font-size: 0.78rem;
+}
+.assistant-selection-comment button {
+  display: inline-flex;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--teal-dark);
+  cursor: pointer;
+}
+.assistant-selection-highlight {
+  position: fixed;
+  z-index: 900;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--teal) 28%, transparent);
+  pointer-events: none;
+  animation: assistant-selection-flash 1.6s ease-out forwards;
+}
+@keyframes assistant-selection-flash {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-selection-highlight {
+    animation: none;
+  }
 }
 .assistant-thread-menu {
   max-height: min(520px, 70vh);

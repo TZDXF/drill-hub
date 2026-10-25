@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{ busy?: boolean; sending?: boolean }>(),
 const emit = defineEmits<{
   submit: [mode: AssistantQueueMode];
   editQuote: [quote: AssistantSelectionQuote];
+  locateQuote: [quote: AssistantSelectionQuote];
 }>();
 const { t } = useI18n();
 const assistant = useAssistant();
@@ -106,6 +107,15 @@ defineExpose({ clear, images });
       <span v-for="quote in quotes" :key="quote.id" class="assistant-quote-chip">
         <AppIcon name="quote" :size="12" /><span :title="quote.text">{{ quote.text }}</span
         ><small v-if="quote.comment"> · {{ quote.comment }}</small>
+        <button
+          v-if="quote.anchor"
+          type="button"
+          :aria-label="t('components.assistant.locateQuote')"
+          :title="t('components.assistant.locateQuote')"
+          @click="emit('locateQuote', quote)"
+        >
+          <AppIcon name="target" :size="11" />
+        </button>
         <button
           type="button"
           :aria-label="t('components.assistant.editQuote')"

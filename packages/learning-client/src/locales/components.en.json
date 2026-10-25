@@ -314,6 +314,8 @@
     "timeline": "Conversation timeline",
     "timelineJump": "Jump to turn {number}",
     "quoteSelection": "Quote this selection",
+    "commentSelection": "Add comment",
+    "locateQuote": "Locate quoted text",
     "editQuote": "Edit quote comment",
     "removeQuote": "Remove quote",
     "quoteComment": "Add an optional comment to this quote",

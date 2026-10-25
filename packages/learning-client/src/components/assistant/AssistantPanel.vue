@@ -37,6 +37,7 @@ import AssistantVirtualItem from '#learning-client/components/assistant/Assistan
 import AssistantQueue from '#learning-client/components/assistant/AssistantQueue.vue';
 import AssistantTimeline from '#learning-client/components/assistant/AssistantTimeline.vue';
 import AssistantSelectionMenu from '#learning-client/components/assistant/AssistantSelectionMenu.vue';
+import { flashSelection, selectionContentRoot } from '#learning-client/assistant/selectionAnchors';
 
 const { t } = useI18n();
 const assistant = useAssistant();
@@ -57,6 +58,7 @@ const quoteComment = ref('');
 const copied = ref(false);
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
+let clearSelectionFlash: (() => void) | null = null;
 const busy = computed(() => Boolean(state.activeTurnId));
 const currentThread = computed(
   () => state.threads.find((thread) => thread.id === state.currentThreadId) ?? null,
@@ -202,7 +204,59 @@ async function onHistoryScroll() {
   }
 }
 function addQuote(quote: AssistantSelectionQuote) {
-  if (!quotes.value.some((item) => item.text === quote.text)) quotes.value.push(quote);
+  if (
+    !quotes.value.some(
+      (item) =>
+        item.text === quote.text &&
+        item.anchor?.messageId === quote.anchor?.messageId &&
+        item.anchor?.start === quote.anchor?.start &&
+        item.anchor?.end === quote.anchor?.end,
+    )
+  )
+    quotes.value.push(quote);
+}
+async function locateQuote(quote: AssistantSelectionQuote) {
+  const anchor = quote.anchor;
+  const viewport = scroll.viewport.value;
+  if (!anchor || !viewport) return;
+  clearSelectionFlash?.();
+  clearSelectionFlash = null;
+  scroll.stop();
+  const threadId = state.currentThreadId;
+  const revealMessage = async () => {
+    const index = history.value.findIndex((item) =>
+      item.kind === 'message'
+        ? item.message.id === anchor.messageId
+        : item.turn.userMessage?.id === anchor.messageId ||
+          item.turn.assistantMessage?.id === anchor.messageId,
+    );
+    if (index < 0) return;
+    const key = itemKey(history.value[index]!, index);
+    viewport
+      .querySelector(`[data-history-key="${CSS.escape(key)}"]`)
+      ?.dispatchEvent(new CustomEvent('virtual-reveal'));
+    await nextTick();
+  };
+  await revealMessage();
+  let root = selectionContentRoot(viewport, anchor.messageId);
+  while (!root && state.hasOlder) {
+    const previousOldest = state.oldestMessageId;
+    await assistant.loadOlder();
+    if (state.currentThreadId !== threadId) return;
+    await revealMessage();
+    root = selectionContentRoot(viewport, anchor.messageId);
+    if (!root && state.oldestMessageId === previousOldest) return;
+  }
+  if (!root) return;
+  viewport.scrollTo({
+    top:
+      viewport.scrollTop +
+      root.getBoundingClientRect().top -
+      viewport.getBoundingClientRect().top -
+      Math.max(24, (viewport.clientHeight - root.clientHeight) / 2),
+    behavior: 'instant',
+  });
+  clearSelectionFlash = flashSelection(root, anchor);
 }
 function editQuote(quote: AssistantSelectionQuote) {
   quoteToEdit.value = quote;
@@ -243,12 +297,15 @@ watch(
 watch(
   () => state.currentThreadId,
   () => {
+    clearSelectionFlash?.();
+    clearSelectionFlash = null;
     draft.value = '';
     quotes.value = [];
   },
 );
 onBeforeUnmount(() => {
   if (clock) clearInterval(clock);
+  clearSelectionFlash?.();
 });
 </script>
 
@@ -347,6 +404,7 @@ onBeforeUnmount(() => {
             <AssistantVirtualItem
               :pinned="index >= history.length - 4"
               :live="item.kind === 'turn' && item.turn.active"
+              :data-history-key="itemKey(item, index)"
             >
               <AssistantTurn
                 v-if="item.kind === 'turn'"
@@ -373,11 +431,13 @@ onBeforeUnmount(() => {
                 v-else
                 class="assistant-message assistant-message--assistant"
                 :data-message-id="item.message.id"
+                data-selection-source="assistant"
                 data-testid="assistant-reply"
               >
                 <MessageResponse
                   :content="item.message.content || ' '"
                   class="assistant-markdown"
+                  data-selection-content
                 />
               </div>
             </AssistantVirtualItem>
@@ -406,6 +466,7 @@ onBeforeUnmount(() => {
       :sending="sending"
       @submit="submit"
       @edit-quote="editQuote"
+      @locate-quote="locateQuote"
     />
     <span v-if="copied" class="assistant-copied" role="status">{{
       t('components.assistant.copied')

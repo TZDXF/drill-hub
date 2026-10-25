@@ -84,6 +84,7 @@ async function copy() {
         :content="content || ' '"
         :streaming="item.active"
         class="assistant-markdown"
+        data-selection-content
       />
       <p v-if="item.failed && item.errorMessage" class="assistant-turn-error" role="alert">
         {{ item.errorMessage }}
