@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '#server/app.js';
 import { signInternalToken } from '#server/core/internal-auth.js';
@@ -7,15 +10,17 @@ import type { SearchProviderRecord } from '#server/db/records.js';
 
 const PASSWORD = 'Test-only-password-42!';
 const apps: FastifyInstance[] = [];
+const dataDirs: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllGlobals();
   await Promise.allSettled(apps.splice(0).map((app) => app.close()));
+  await Promise.all(dataDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-async function setupApp() {
+async function setupApp(databasePath = ':memory:') {
   const app = await createApp({
-    databasePath: ':memory:',
+    databasePath,
     encryptionKey: 'a'.repeat(64),
     startWorkers: false,
     bootstrapAdmin: { username: 'admin', password: PASSWORD },
@@ -201,6 +206,28 @@ async function pollUntil(
 }
 
 describe('built-in assistant', () => {
+  it('runs with assistant artifacts beside the configured database in a separate data volume', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'drill-hub-assistant-'));
+    dataDirs.push(dataDir);
+    const { app, admin } = await setupApp(join(dataDir, 'drill-hub.sqlite'));
+    installProvider({});
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '你好' },
+    });
+    expect(sent.statusCode).toBe(202);
+    const final = await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+    expect(final.events.some((event) => event.type === 'error')).toBe(false);
+    expect(final.events.some((event) => event.payload.phase === 'turn_completed')).toBe(true);
+    const models = await readFile(join(dataDir, 'assistant-runtime', 'models.json'), 'utf8');
+    expect(models).toContain('assistant-model');
+    expect(models).not.toContain('test-only-secret');
+  });
+
   it('runs a full turn with a tool call and records usage without admin endpoints', async () => {
     const { app, admin } = await setupApp();
     installProvider({

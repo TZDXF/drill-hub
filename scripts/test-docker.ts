@@ -148,6 +148,39 @@ async function main() {
   let cleanupFailed = false;
   try {
     let base = await start(true);
+    // 在镜像的普通用户和真实数据卷下构建助手会话，不调用模型供应商。
+    docker(
+      'exec',
+      container,
+      'node',
+      '--input-type=module',
+      '-e',
+      `
+        import assert from 'node:assert/strict';
+        import { readFile } from 'node:fs/promises';
+        import { dirname, join } from 'node:path';
+        import { PiSessionFactory } from './apps/server/dist/modules/assistant/pi-session.js';
+        const connection = {
+          id: 'docker-smoke', enabled: true, baseUrl: 'https://provider.invalid/v1',
+          encryptedApiKey: null,
+        };
+        const model = {
+          id: 'docker-model', connectionId: connection.id, modelKey: 'smoke-model',
+          displayName: 'Smoke model', enabled: true, createdAt: '2026-01-01T00:00:00Z',
+        };
+        const factory = new PiSessionFactory({
+          config: { databasePath: process.env.DATABASE_PATH },
+          db: { list: async (table) => ({
+            modelConnections: [connection], providerModels: [model],
+            assistantSkills: [], mcpServers: [],
+          })[table] ?? [] },
+        });
+        const { session } = await factory.buildSession({ app: {}, customTools: [] });
+        session.dispose();
+        const modelsPath = join(dirname(process.env.DATABASE_PATH), 'assistant-runtime', 'models.json');
+        assert.match(await readFile(modelsPath, 'utf8'), /smoke-model/);
+      `,
+    );
     const deployment = docker('exec', container, 'cat', '/app/deploy/docker-compose.yml');
     assert.match(deployment, /ghcr\.io\/tzdxf\/drill-hub:nightly/, '镜像应包含部署配置');
     assert.match(
@@ -234,7 +267,9 @@ async function main() {
     }
   }
   if (!cleanupFailed)
-    console.log('Docker 验收通过：Compose、非 root、健康检查、Web、登录、CSRF 和数据卷持久化。');
+    console.log(
+      'Docker 验收通过：Compose、非 root、助手会话初始化、健康检查、Web、登录、CSRF 和数据卷持久化。',
+    );
 }
 
 void main().catch((error: unknown) => {

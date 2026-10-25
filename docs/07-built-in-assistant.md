@@ -85,7 +85,7 @@ GET /me/assistant/models（对话可选模型：仅返回启用模型及其启�
 ## 9. 部署注意
 
 - SSE 需要反向代理关闭响应缓冲（nginx：`proxy_buffering off`，或等效配置），并允许长连接。
-- `.data/assistant-runtime/` 保存 Pi 运行时的 models.json（不含密钥）与物化 Skills，可随 `.data` 一起备份；密钥始终只存于数据库加密字段。
+- 助手运行文件保存在 `DATABASE_PATH` 所在目录下的 `assistant-runtime/`：默认开发环境为 `.data/assistant-runtime/`，Docker 数据卷中为 `/app/data/assistant-runtime/`（PostgreSQL 部署也以 `DATABASE_PATH` 定位该目录）。该目录保存 Pi 运行时的 models.json（不含密钥）与物化 Skills，需要服务端进程具备写权限，可随数据目录一起备份；密钥始终只存于数据库加密字段。
 - 新增环境变量 `ALLOW_PRIVATE_SEARCH_URLS`（默认 `false`），语义同 `ALLOW_PRIVATE_MODEL_URLS`。
 
 ## 10. 当前边界

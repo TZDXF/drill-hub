@@ -1,5 +1,5 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { workspaceRoot } from '#server/core/paths.js';
 import type { FastifyInstance } from 'fastify';
 import type { ProviderModel } from '@drill-hub/contracts';
@@ -40,9 +40,15 @@ export interface ResolvedAssistantModel {
 
 export class PiSessionFactory {
   private bundle: RuntimeBundle | null = null;
-  private readonly runtimeDir = join(workspaceRoot, '.data', 'assistant-runtime');
+  private readonly runtimeDir: string;
 
-  constructor(private readonly ctx: AppContext) {}
+  constructor(private readonly ctx: AppContext) {
+    const dataDir =
+      ctx.config.databasePath === ':memory:'
+        ? join(workspaceRoot, '.data')
+        : dirname(resolve(workspaceRoot, ctx.config.databasePath));
+    this.runtimeDir = join(dataDir, 'assistant-runtime');
+  }
 
   invalidateRuntime(): void {
     this.bundle = null;
