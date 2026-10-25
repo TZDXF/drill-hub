@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type {
@@ -55,10 +55,23 @@ const costInput = ref<number | null>(null);
 const costOutput = ref<number | null>(null);
 const costCacheRead = ref<number | null>(null);
 const costCacheWrite = ref<number | null>(null);
-const catalogQuery = ref('');
 const catalogSearching = ref(false);
 const catalogSearched = ref(false);
 const catalogMatches = ref<ModelCatalogMatch[]>([]);
+let catalogRequestId = 0;
+const catalogQueries = computed(() => {
+  const key = modelKey.value.trim();
+  const unprefixed = key.slice(key.lastIndexOf('/') + 1);
+  return [...new Set([key, unprefixed])].filter(
+    (query) => query.length >= 2 && query.length <= 200,
+  );
+});
+watch([modelKey, modelOpen], () => {
+  catalogRequestId += 1;
+  catalogSearching.value = false;
+  catalogSearched.value = false;
+  catalogMatches.value = [];
+});
 const discoverOpen = ref(false);
 const discovering = ref(false);
 const discoveredModels = ref<DiscoveredProviderModel[]>([]);
@@ -356,32 +369,42 @@ function openModelDialog(model: ProviderModel | null) {
   costOutput.value = model?.costPerMillion?.output ?? null;
   costCacheRead.value = model?.costPerMillion?.cacheRead ?? null;
   costCacheWrite.value = model?.costPerMillion?.cacheWrite ?? null;
-  catalogQuery.value = '';
-  catalogMatches.value = [];
   modelOpen.value = true;
 }
 
 async function searchCatalog() {
-  const query = catalogQuery.value.trim();
-  if (query.length < 2) return;
+  if (catalogSearching.value || !catalogQueries.value.length) return;
+  const requestId = ++catalogRequestId;
   catalogSearching.value = true;
+  catalogSearched.value = false;
+  catalogMatches.value = [];
   try {
-    catalogMatches.value = await learning.get<ModelCatalogMatch[]>(
-      `/admin/models-catalog?q=${encodeURIComponent(query)}`,
+    const results = await Promise.allSettled(
+      catalogQueries.value.map((query) =>
+        learning.get<ModelCatalogMatch[]>(`/admin/models-catalog?q=${encodeURIComponent(query)}`),
+      ),
     );
-    catalogSearched.value = true;
-  } catch (reason) {
-    catalogMatches.value = [];
-    catalogSearched.value = true;
-    learning.notify.error(t('management.models.catalogFailed'), errorMessage(reason));
+    if (requestId !== catalogRequestId) return;
+    const matches = new Map<string, ModelCatalogMatch>();
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      for (const match of result.value) {
+        const key = JSON.stringify([match.providerId, match.modelId]);
+        if (!matches.has(key)) matches.set(key, match);
+      }
+    }
+    catalogMatches.value = [...matches.values()];
+    catalogSearched.value = results.some((result) => result.status === 'fulfilled');
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected')
+      learning.notify.error(t('management.models.catalogFailed'), errorMessage(failure.reason));
   } finally {
-    catalogSearching.value = false;
+    if (requestId === catalogRequestId) catalogSearching.value = false;
   }
 }
 
 /** 用 models.dev 的匹配结果回填默认参数与价格（美元/百万 tokens）。 */
 function applyCatalogMatch(match: ModelCatalogMatch) {
-  if (!editingModel.value) modelKey.value = match.modelId;
   if (!modelName.value || editingModel.value) modelName.value = match.name ?? match.modelId;
   contextWindow.value = match.contextWindow;
   maxTokens.value = match.maxTokens;
@@ -1208,21 +1231,17 @@ onMounted(() => void load(true));
         <p class="field-hint form-field--full">{{ t('management.models.costUnitHint') }}</p>
         <AppFormField
           class="form-field--full model-dialog__catalog"
-          id="catalog-query"
+          id="catalog-fetch"
           :label="t('management.models.catalogTitle')"
+          :hint="t('management.models.catalogHint')"
         >
           <div class="model-dialog__catalog-row">
-            <input
-              id="catalog-query"
-              v-model="catalogQuery"
-              class="input"
-              :placeholder="t('management.models.catalogPlaceholder')"
-              @keydown.enter.prevent="searchCatalog"
-            />
             <button
+              id="catalog-fetch"
               class="button"
               type="button"
-              :disabled="catalogSearching || catalogQuery.trim().length < 2"
+              :aria-label="t('management.models.catalogSearch')"
+              :disabled="catalogSearching || !catalogQueries.length"
               @click="searchCatalog"
             >
               <span v-if="catalogSearching" class="spinner" /><AppIcon
@@ -1247,10 +1266,7 @@ onMounted(() => void load(true));
               </button>
             </li>
           </ul>
-          <p
-            v-else-if="!catalogSearching && catalogQuery.trim().length >= 2 && catalogSearched"
-            class="field-hint"
-          >
+          <p v-else-if="!catalogSearching && catalogSearched" class="field-hint">
             {{ t('management.models.catalogEmpty') }}
           </p>
         </AppFormField>
@@ -1391,9 +1407,6 @@ onMounted(() => void load(true));
 .model-dialog__catalog-row {
   display: flex;
   gap: 8px;
-}
-.model-dialog__catalog-row .input {
-  flex: 1;
 }
 .model-dialog__matches {
   list-style: none;
