@@ -247,6 +247,8 @@
     "threads": "对话列表",
     "newThread": "新对话",
     "deleteThread": "删除对话",
+    "deleteThreadTitle": "删除这个对话？",
+    "deleteThreadDescription": "确定删除“{title}”吗？删除后将无法恢复此对话。",
     "close": "关闭",
     "send": "发送",
     "stop": "停止生成",

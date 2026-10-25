@@ -14,6 +14,7 @@ import { buildHistory } from '../../assistant/turns';
 import { errorMessage } from '../../utils';
 import AppIcon from '../AppIcon.vue';
 import AppTooltip from '../AppTooltip.vue';
+import ConfirmDialog from '../ConfirmDialog.vue';
 import MessageResponse from '../ai-elements/message/MessageResponse.vue';
 import AssistantComposer from './AssistantComposer.vue';
 import AssistantProcessLine from './AssistantProcessLine.vue';
@@ -23,6 +24,9 @@ const assistant = useAssistant();
 const state = assistant.state;
 
 const messageList = ref<HTMLElement | null>(null);
+const threadToDelete = ref<{ id: string; title: string } | null>(null);
+const deletingThread = ref(false);
+const deleteError = ref('');
 
 const currentThread = computed(
   () => state.threads.find((thread) => thread.id === state.currentThreadId) ?? null,
@@ -46,12 +50,24 @@ function itemKey(item: (typeof history.value)[number], index: number): string {
   return item.turn.turnId ?? `turn-${index}`;
 }
 
+function requestRemoveThread() {
+  if (!currentThread.value || deletingThread.value) return;
+  threadToDelete.value = { id: currentThread.value.id, title: currentThread.value.title };
+  deleteError.value = '';
+}
+
 async function removeThread() {
-  if (!state.currentThreadId) return;
+  if (!threadToDelete.value || deletingThread.value) return;
+  const threadId = threadToDelete.value.id;
+  deletingThread.value = true;
+  deleteError.value = '';
   try {
-    await assistant.deleteThread(state.currentThreadId);
+    await assistant.deleteThread(threadId);
+    threadToDelete.value = null;
   } catch (reason) {
-    state.error = errorMessage(reason);
+    deleteError.value = errorMessage(reason);
+  } finally {
+    deletingThread.value = false;
   }
 }
 
@@ -122,7 +138,7 @@ watch(
               <DropdownMenuItem
                 v-if="currentThread"
                 class="dropdown-item dropdown-item--danger"
-                @select="removeThread"
+                @select="requestRemoveThread"
                 ><AppIcon name="trash" :size="16" />{{
                   t('components.assistant.deleteThread')
                 }}</DropdownMenuItem
@@ -210,5 +226,21 @@ watch(
     </div>
 
     <AssistantComposer />
+    <ConfirmDialog
+      :open="Boolean(threadToDelete)"
+      :title="t('components.assistant.deleteThreadTitle')"
+      :description="
+        threadToDelete
+          ? t('components.assistant.deleteThreadDescription', { title: threadToDelete.title })
+          : ''
+      "
+      :confirm-label="t('components.assistant.deleteThread')"
+      :busy="deletingThread"
+      danger
+      @update:open="!$event && !deletingThread && (threadToDelete = null)"
+      @confirm="removeThread"
+    >
+      <p v-if="deleteError" class="assistant-panel__error" role="alert">{{ deleteError }}</p>
+    </ConfirmDialog>
   </div>
 </template>
