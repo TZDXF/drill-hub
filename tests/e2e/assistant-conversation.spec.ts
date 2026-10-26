@@ -371,7 +371,11 @@ test('回复中直接输入并加入队列，可编辑、排序、立即发送�
   await expect(input).toBeEnabled();
   await expect(page.getByText('正在回复，可继续输入')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: '发送方式' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '加入追问队列' })).toHaveCount(0);
   await input.fill('第一条追问');
+  await expect(page.getByRole('button', { name: '停止生成' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '加入追问队列' })).toBeVisible();
   await input.press('Enter');
   await input.fill('第二条追问');
   await page.getByRole('button', { name: '加入追问队列' }).click();

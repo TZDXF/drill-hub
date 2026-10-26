@@ -40,25 +40,13 @@ function json(value: unknown): string {
 <template>
   <div class="assistant-process-wrap">
     <div
-      v-if="active && (runningAction || reasoning)"
+      v-if="active && runningAction"
       class="assistant-process__live"
       data-testid="assistant-event-card"
     >
-      <template v-if="runningAction"
-        ><AppIcon
-          :name="runningAction.icon"
-          :size="14"
-          class="assistant-process__spinner"
-        /><span>{{ actionLabel(runningAction) }}</span></template
-      >
-      <template v-else
-        ><span class="assistant-dotting" aria-hidden="true" /><span
-          data-testid="assistant-waiting"
-          >{{
-            reasoning ? t('components.assistant.reasoning') : t('components.assistant.thinking')
-          }}</span
-        ></template
-      >
+      <AppIcon :name="runningAction.icon" :size="14" class="assistant-process__spinner" /><span>{{
+        actionLabel(runningAction)
+      }}</span>
     </div>
     <CollapsibleRoot
       v-else-if="!active && (actions.length || failed || reasoning || durationMs != null)"
