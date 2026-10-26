@@ -3925,9 +3925,6 @@
   align-items: center;
   gap: 4px;
 }
-.assistant-composer__button--queue {
-  background: var(--teal-dark);
-}
 .assistant-queue {
   max-height: 220px;
   overflow-y: auto;

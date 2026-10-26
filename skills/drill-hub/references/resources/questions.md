@@ -86,6 +86,17 @@ POST /api/v1/agent/topics/{topicId}/questions/batch
           }
         ]
       }
+    },
+    {
+      "clientRef": "q-2",
+      "type": "fill_blank",
+      "stem": "计算 1 + 2 = __。",
+      "gradingMode": "rule",
+      "slots": [{ "id": "s1" }],
+      "gradingKey": {
+        "acceptedAnswers": { "s1": ["3", "3.0"] }
+      },
+      "explanation": "1 + 2 = 3。"
     }
   ]
 }
@@ -102,8 +113,8 @@ POST /api/v1/agent/topics/{topicId}/questions/batch
 | ----------------- | ------------------------------------------------------------------------------ |
 | `type`            | `single_choice`、`multiple_choice`、`true_false`、`fill_blank`、`short_answer` |
 | `stem`            | 必填题干，纯文本                                                               |
-| `options`         | 选择题必填，2 至 100 个 `{ id, text }`                                         |
-| `slots`           | 填空题必填，1 至 100 个 `{ id }`                                               |
+| `options`         | 单选/多选必填，2 至 100 个 `{ id: string, text: string }`                      |
+| `slots`           | 填空题必填，1 至 100 个 `{ id: string }`                                       |
 | `gradingMode`     | `rule`、`model_rubric`、`external_rubric`                                      |
 | `gradingKey`      | 仅 `rule`；按题型提供正确选项/布尔值/各空位可接受答案                          |
 | `referenceAnswer` | 可选参考答案                                                                   |
@@ -119,7 +130,7 @@ POST /api/v1/agent/topics/{topicId}/questions/batch
 | `fill_blank`                                       | `rule` / `model_rubric` / `external_rubric` |
 | `short_answer`                                     | `model_rubric` / `external_rubric`          |
 
-不适用的 `options`、`slots` 不应提交。`stem` 最多 100000 字符；选项 ID、空位 ID 最多 128 字符且各自不可重复；选项文本最多 20000 字符。
+不适用的 `options`、`slots` 不应提交。`stem` 最多 100000 字符；选项 ID、空位 ID 最多 128 字符且各自不可重复；选项文本最多 20000 字符。选项 ID、选项文本、空位 ID 均为非空字符串；数字选项也要写成字符串，例如 `{ "id": "a", "text": "5" }`，不能写成 `{ "id": "a", "text": 5 }`。
 
 rubric 结构约束：
 
@@ -135,7 +146,7 @@ rubric 结构约束：
 - 单选：`{ "optionId": "..." }`
 - 多选：`{ "optionIds": ["...", "..."] }`
 - 判断：`{ "value": true }`
-- 填空：`{ "acceptedAnswers": { "slotId": ["答案1", "答案2"] } }`，必须覆盖每个空位；填空按精确字符串匹配，不做 trim/大小写折叠。
+- 填空：`{ "acceptedAnswers": { "slotId": ["答案1", "答案2"] } }`。`acceptedAnswers` 必须是 JSON 对象，键与 `slots[].id` 完全一致并覆盖每个空位，不能有多余空位；每个值都必须是字符串数组，包含 1 至 100 个不重复的非空字符串。数字答案也要写成字符串，例如 `{ "acceptedAnswers": { "s1": ["3", "3.0"] } }`，不能写成数字、单个字符串或序列化后的 JSON 字符串。填空按精确字符串匹配，不做 trim/大小写折叠。
 
 修改题目：
 

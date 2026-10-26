@@ -28,6 +28,17 @@ beforeAll(async () => {
 afterAll(async () => app.close());
 
 describe('assistant learning API coverage', () => {
+  it('documents exact JSON types and a complete fill-blank question example', () => {
+    const help = assistantApiHelp('questions');
+    expect(help).toContain('options: [{id:string,text:string}]');
+    expect(help).toContain('acceptedAnswers:{空位ID:string[]}');
+    expect(help).toContain(
+      '{type:"fill_blank",stem:"计算 1+2=__",gradingMode:"rule",slots:[{id:"s1"}],gradingKey:{acceptedAnswers:{s1:["3","3.0"]}}}',
+    );
+    expect(help).toContain('数字答案也必须写成字符串');
+    expect(help).toContain('不要创建“探测题”测试格式');
+  });
+
   it('documents existing endpoints and covers every learner route', () => {
     const documented = new Set(
       ASSISTANT_API_OPERATIONS.map((operation) => {

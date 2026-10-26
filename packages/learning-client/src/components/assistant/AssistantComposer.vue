@@ -24,12 +24,10 @@ const images = ref<AssistantImageAttachment[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const composing = ref(false);
 const readingFiles = ref(false);
-const canSubmit = computed(
-  () =>
-    !props.sending &&
-    !readingFiles.value &&
-    Boolean(text.value.trim() || images.value.length || quotes.value.length),
+const hasContent = computed(() =>
+  Boolean(text.value.trim() || images.value.length || quotes.value.length),
 );
+const canSubmit = computed(() => !props.sending && !readingFiles.value && hasContent.value);
 function onInputKey(event: KeyboardEvent) {
   if (
     event.key !== 'Enter' ||
@@ -165,7 +163,7 @@ defineExpose({ clear, images });
           >
             <AppIcon name="paperclip" :size="16" /></button
         ></AppTooltip>
-        <AppTooltip v-if="busy" :label="t('components.assistant.stop')"
+        <AppTooltip v-if="busy && !hasContent" :label="t('components.assistant.stop')"
           ><button
             class="assistant-composer__button"
             type="button"
@@ -175,23 +173,15 @@ defineExpose({ clear, images });
           >
             <AppIcon name="square" :size="15" /></button
         ></AppTooltip>
-        <AppTooltip v-else :label="t('components.assistant.send')"
+        <AppTooltip
+          v-else
+          :label="t(busy ? 'components.assistant.queueSend' : 'components.assistant.send')"
           ><button
             class="assistant-composer__button"
             type="button"
             data-testid="assistant-send"
             :disabled="!canSubmit"
-            :aria-label="t('components.assistant.send')"
-            @click="submit"
-          >
-            <AppIcon name="send" :size="15" /></button
-        ></AppTooltip>
-        <AppTooltip v-if="busy" :label="t('components.assistant.queueSend')"
-          ><button
-            class="assistant-composer__button assistant-composer__button--queue"
-            type="button"
-            :disabled="!canSubmit"
-            :aria-label="t('components.assistant.queueSend')"
+            :aria-label="t(busy ? 'components.assistant.queueSend' : 'components.assistant.send')"
             @click="submit"
           >
             <AppIcon name="send" :size="15" /></button

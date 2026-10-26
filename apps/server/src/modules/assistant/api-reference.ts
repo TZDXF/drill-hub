@@ -307,9 +307,12 @@ const RESOURCE_NOTES: Partial<Record<Resource, string>> = {
   questions: [
     'QuestionDefinition: {type, stem, gradingMode, options?, slots?, gradingKey?, referenceAnswer?, rubric?, explanation?, tags?}。',
     '单选 single_choice、多选 multiple_choice、判断 true_false 使用 rule；填空 fill_blank 可用 rule/model_rubric/external_rubric；简答 short_answer 使用 model_rubric/external_rubric。',
-    '选择题 options: [{id,text}]；填空 slots: [{id}]。rule 的 gradingKey 按题型为 {optionId}、{optionIds}、{value:boolean}、{acceptedAnswers:{空位ID:[可接受答案]}}。',
+    '选择题 options: [{id:string,text:string}]，id 和 text 都必须是非空字符串，数字选项也要写成字符串，例如 {id:"a",text:"5"}；填空 slots: [{id:string}]。',
+    'rule 的 gradingKey 按题型为 {optionId:string}、{optionIds:string[]}、{value:boolean}、{acceptedAnswers:{空位ID:string[]}}。acceptedAnswers 必须是 JSON 对象，键与 slots 的 id 完全一致，每个值是字符串数组，包含 1–100 个不重复的非空字符串；数字答案也必须写成字符串。',
+    '完整填空示例：{type:"fill_blank",stem:"计算 1+2=__",gradingMode:"rule",slots:[{id:"s1"}],gradingKey:{acceptedAnswers:{s1:["3","3.0"]}}}。不要把 acceptedAnswers 写成数组、字符串或序列化后的 JSON 字符串。',
     'rubric: {version:1, criteria:[{id,description,weight:正整数,levels:[{id,creditBps:0到10000整数,description}],slotId?:填空空位ID}]}；每项必须含 0 和 10000 两档，填空必须覆盖全部空位。',
     '读取题库只返回安全的题目定义；修改时需提供完整的新定义，不要将隐藏字段当作空值覆盖。',
+    '参数校验失败时按 error.code 和 error.message 修正原请求，不要创建“探测题”测试格式；批次中任一题失败则整批回滚。',
   ].join('\n'),
   attempts:
     'Answer 按题型为 {optionId:string}、{optionIds:string[]}、{value:boolean}、{slots:{空位ID:string}} 或 {text:string}。进行中考试的答案与评分项遵循服务端释放规则。临时链接作答只能只读查看，不能代答或交卷。',
