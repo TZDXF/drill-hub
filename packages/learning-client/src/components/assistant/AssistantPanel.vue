@@ -14,6 +14,7 @@ import type {
   AssistantMessageView,
   AssistantQueueMode,
   AssistantQueuedMessage,
+  AssistantThread,
   AssistantTimelineTurn,
 } from '@drill-hub/contracts';
 import { useAssistant } from '#learning-client/assistant/store';
@@ -53,6 +54,10 @@ const sending = ref(false);
 const threadToDelete = ref<{ id: string; title: string } | null>(null);
 const deletingThread = ref(false);
 const deleteError = ref('');
+const threadToRename = ref<AssistantThread | null>(null);
+const renamingThread = ref(false);
+const renameError = ref('');
+const renameTitle = ref('');
 const previewImage = ref<AssistantImageAttachment | null>(null);
 const quoteToEdit = ref<AssistantSelectionQuote | null>(null);
 const quoteComment = ref('');
@@ -103,6 +108,27 @@ async function removeThread() {
     deleteError.value = errorMessage(reason);
   } finally {
     deletingThread.value = false;
+  }
+}
+function requestRenameThread() {
+  if (!currentThread.value || renamingThread.value) return;
+  threadToRename.value = { ...currentThread.value };
+  renameTitle.value = currentThread.value.title;
+  renameError.value = '';
+}
+async function renameThread() {
+  const thread = threadToRename.value;
+  const title = renameTitle.value.trim();
+  if (!thread || !title || renamingThread.value) return;
+  renamingThread.value = true;
+  renameError.value = '';
+  try {
+    await assistant.renameThread(thread.id, title);
+    threadToRename.value = null;
+  } catch (reason) {
+    renameError.value = errorMessage(reason);
+  } finally {
+    renamingThread.value = false;
   }
 }
 async function switchThread(threadId: string) {
@@ -368,6 +394,15 @@ onBeforeUnmount(() => {
               >
               <DropdownMenuItem
                 v-if="currentThread"
+                class="dropdown-item"
+                data-testid="assistant-rename-thread"
+                @select="requestRenameThread"
+                ><AppIcon name="edit" :size="16" />{{
+                  t('components.assistant.renameThread')
+                }}</DropdownMenuItem
+              >
+              <DropdownMenuItem
+                v-if="currentThread"
                 class="dropdown-item dropdown-item--danger"
                 @select="requestRemoveThread"
                 ><AppIcon name="trash" :size="16" />{{
@@ -509,6 +544,48 @@ onBeforeUnmount(() => {
         {{ deleteError }}
       </p></ConfirmDialog
     >
+    <AppDialog
+      class="dialog-content"
+      :open="Boolean(threadToRename)"
+      :title="t('components.assistant.renameThreadTitle')"
+      :busy="renamingThread"
+      @update:open="!$event && !renamingThread && (threadToRename = null)"
+    >
+      <form class="form-field" @submit.prevent="renameThread">
+        <label for="assistant-thread-title">{{ t('components.assistant.threadTitle') }}</label>
+        <input
+          id="assistant-thread-title"
+          v-model="renameTitle"
+          class="input"
+          data-testid="assistant-thread-title-input"
+          maxlength="200"
+          autofocus
+          :disabled="renamingThread"
+        />
+        <p v-if="renameError" class="assistant-panel__error" role="alert">{{ renameError }}</p>
+      </form>
+      <template #actions>
+        <button
+          class="button"
+          type="button"
+          :disabled="renamingThread"
+          @click="threadToRename = null"
+        >
+          {{ t('components.assistant.cancelRename') }}
+        </button>
+        <button
+          class="button button--primary"
+          type="button"
+          data-testid="assistant-save-thread-title"
+          :disabled="renamingThread || !renameTitle.trim()"
+          @click="renameThread"
+        >
+          <span v-if="renamingThread" class="spinner" />{{
+            t('components.assistant.saveThreadTitle')
+          }}
+        </button>
+      </template>
+    </AppDialog>
     <AppDialog
       class="dialog-content"
       :open="Boolean(previewImage)"

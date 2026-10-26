@@ -110,7 +110,7 @@ async function readLimited(response: Response, maxBytes: number): Promise<string
   return new TextDecoder().decode(combined);
 }
 
-interface ProviderRequestOptions {
+export interface ProviderRequestOptions {
   baseUrl: string;
   allowPrivateUrls?: boolean;
   apiKey: string;
@@ -120,7 +120,7 @@ interface ProviderRequestOptions {
   body?: unknown;
 }
 
-async function providerRequest(options: ProviderRequestOptions): Promise<unknown> {
+export async function providerRequest(options: ProviderRequestOptions): Promise<unknown> {
   if (
     !Number.isInteger(options.timeoutMs) ||
     options.timeoutMs < 1 ||

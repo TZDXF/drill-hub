@@ -28,16 +28,23 @@ const TEXT_FLUSH_INTERVAL_MS = 1000;
 const INTERNAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AssistantStreamFrame {
-  kind: 'event' | 'text_delta' | 'reasoning_delta' | 'snapshot' | 'queue' | 'heartbeat';
+  kind: 'event' | 'text_delta' | 'reasoning_delta' | 'snapshot' | 'queue' | 'title' | 'heartbeat';
   event?: AssistantEventView;
   delta?: string;
   content?: string;
   reasoning?: string;
   queued?: AssistantQueuedMessage[];
+  title?: string;
+  revision?: number;
 }
 export type StreamListener = (frame: AssistantStreamFrame) => void;
 export interface AssistantServiceImpl extends AssistantService {
   enqueue(turnId: string): void;
+  generateThreadTitle(
+    threadId: string,
+    content: string,
+    providerModelId: string | null,
+  ): Promise<void>;
   queueMessage(input: QueueMessageInput): Promise<AssistantQueuedMessage>;
   sendQueuedMessage(queued: AssistantQueuedMessageRecord): Promise<AssistantQueuedMessage>;
   notifyQueue(threadId: string): Promise<void>;
@@ -503,6 +510,40 @@ export function createAssistantService(
 
   return {
     enqueue: enqueueTurn,
+    generateThreadTitle: async (threadId, content, providerModelId) => {
+      const initial = await ctx.db.get('assistantThreads', threadId);
+      if (!initial || initial.title !== '新对话') return;
+      let generated: Awaited<ReturnType<typeof runtime.generateTitle>> | null = null;
+      try {
+        generated = await runtime.generateTitle(content, providerModelId);
+      } catch {
+        // 自动命名失败不阻断主对话，使用首条消息作为可读的后备标题。
+      }
+      if (generated) {
+        await ctx.db.insert('modelUsage', {
+          ...baseRecord(),
+          ownerId: initial.ownerId,
+          connectionId: generated.model.connectionId,
+          modelKey: generated.model.modelKey,
+          purpose: 'assistant_title',
+          jobId: null,
+          status: 'succeeded',
+          usage: generated.usage,
+        });
+      }
+      const current = await ctx.db.get('assistantThreads', threadId);
+      if (!current || current.title !== '新对话') return;
+      const title =
+        generated?.title ?? (Array.from(content.trim()).slice(0, 30).join('') || '图片对话');
+      const updated = await ctx.db.update('assistantThreads', current.id, current.revision, {
+        title,
+      });
+      broadcast(threadId, {
+        kind: 'title',
+        title: updated.title,
+        revision: updated.revision,
+      });
+    },
     queueMessage: async (input) => {
       const pending = await queuedMessages(input.threadId);
       const row: AssistantQueuedMessageRecord = {

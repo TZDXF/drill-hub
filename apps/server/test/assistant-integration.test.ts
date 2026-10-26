@@ -96,14 +96,17 @@ function assistantTextRound(text: string) {
   ];
 }
 
-/** stub 全局 fetch：区分本机直连、/models 与助手对话（流式，带工具声明）。 */
+/** stub 全局 fetch：区分本机直连、/models、非流式命名与助手主对话。 */
 function installProvider(options: {
   assistant?: (callIndex: number, init?: RequestInit) => Response | Promise<Response>;
+  title?: (callIndex: number, init?: RequestInit) => Response | Promise<Response>;
   models?: unknown[];
 }) {
   const assistantCalls: Record<string, any>[] = [];
+  const titleCalls: Record<string, any>[] = [];
   const realFetch = globalThis.fetch.bind(globalThis);
   let assistantIndex = 0;
+  let titleIndex = 0;
   const fake = vi.fn<typeof fetch>(async (url: string | URL | Request, init?: RequestInit) => {
     const target = String(url instanceof Request ? url.url : url);
     // 测试进程内的真实本机服务（如 SSE 端点）不经过桩。
@@ -114,6 +117,25 @@ function installProvider(options: {
         headers: { 'Content-Type': 'application/json' },
       });
     const body = JSON.parse(String(init?.body ?? '{}'));
+    if (body.stream === false) {
+      titleCalls.push(body);
+      titleIndex += 1;
+      return (
+        options.title?.(titleIndex, init) ??
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: '测试对话标题' },
+                finish_reason: 'stop',
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      );
+    }
     const isAssistant = Array.isArray(body.tools) && body.tools.length > 0 && body.stream === true;
     if (isAssistant) {
       assistantCalls.push(body);
@@ -125,7 +147,7 @@ function installProvider(options: {
     throw new Error('unexpected provider request');
   });
   vi.stubGlobal('fetch', fake);
-  return { assistantCalls };
+  return { assistantCalls, titleCalls };
 }
 
 async function configureAssistantModel(app: FastifyInstance, admin: Record<string, string>) {
@@ -208,6 +230,98 @@ async function pollUntil(
 }
 
 describe('built-in assistant', () => {
+  it('generates a non-streaming title without reasoning and allows manual renaming', async () => {
+    const { app, admin } = await setupApp();
+    const provider = installProvider({});
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '请帮我制定数据库复习计划' },
+    });
+    expect(sent.statusCode).toBe(202);
+    await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+    await expect
+      .poll(async () => {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/v1/me/assistant/threads/${thread.id}`,
+          headers: { cookie: admin.cookie },
+        });
+        return response.json().data.thread.title;
+      })
+      .toBe('测试对话标题');
+    expect(provider.titleCalls).toHaveLength(1);
+    expect(provider.titleCalls[0]).toMatchObject({
+      model: 'assistant-model',
+      stream: false,
+      max_completion_tokens: 100,
+    });
+    expect(provider.titleCalls[0]).not.toHaveProperty('tools');
+    expect(provider.titleCalls[0]).not.toHaveProperty('reasoning');
+    expect(provider.titleCalls[0]).not.toHaveProperty('reasoning_effort');
+    expect(provider.titleCalls[0]).not.toHaveProperty('enable_thinking');
+    expect(provider.titleCalls[0].messages[1].content).toBe('请帮我制定数据库复习计划');
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/assistant/threads',
+      headers: { cookie: admin.cookie },
+    });
+    const current = list.json().data.find((item: { id: string }) => item.id === thread.id);
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/me/assistant/threads/${thread.id}`,
+      headers: admin,
+      payload: { title: '我的复习会话', expectedRevision: current.revision },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().data.title).toBe('我的复习会话');
+    const usage = await app.ctx.db.list('modelUsage', { purpose: 'assistant_title' });
+    expect(usage).toHaveLength(1);
+    expect(usage[0].usage?.totalTokens).toBe(16);
+  });
+
+  it('does not overwrite a manual title when automatic naming finishes late', async () => {
+    const { app, admin } = await setupApp();
+    let releaseTitle!: () => void;
+    const titleGate = new Promise<Response>((resolve) => {
+      releaseTitle = () =>
+        resolve(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: '迟到的自动标题' }, finish_reason: 'stop' }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+    });
+    const provider = installProvider({ title: () => titleGate });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '开始一个新的学习话题' },
+    });
+    await expect.poll(() => provider.titleCalls.length).toBe(1);
+    const current = await app.ctx.db.get('assistantThreads', thread.id);
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/me/assistant/threads/${thread.id}`,
+      headers: admin,
+      payload: { title: '手动保留的标题', expectedRevision: current!.revision },
+    });
+    expect(renamed.statusCode).toBe(200);
+    releaseTitle();
+    await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await app.ctx.db.get('assistantThreads', thread.id))?.title).toBe('手动保留的标题');
+  });
+
   it('runs with assistant artifacts beside the configured database in a separate data volume', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'drill-hub-assistant-'));
     dataDirs.push(dataDir);

@@ -53,6 +53,54 @@ test.describe('内置学习助手', () => {
     await expect(trigger).toHaveText('自动选择');
   });
 
+  test('支持手动修改当前对话标题', async ({ page, isMobile }) => {
+    await login(page);
+    const thread = {
+      id: 'thread-rename',
+      ownerId: 'me',
+      title: '原始标题',
+      lastMessageAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      revision: 1,
+    };
+    await page.route('**/api/v1/me/assistant/threads**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (request.method() === 'PATCH') {
+        expect(path).toBe(`/api/v1/me/assistant/threads/${thread.id}`);
+        const payload = request.postDataJSON() as { title: string; expectedRevision: number };
+        expect(payload).toEqual({ title: '手动修改的标题', expectedRevision: 1 });
+        thread.title = payload.title;
+        thread.revision += 1;
+        await route.fulfill({ json: { data: thread } });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          data: path.endsWith(`/${thread.id}`)
+            ? { thread, turns: [], messages: [], events: [], activeTurn: null }
+            : [thread],
+        },
+      });
+    });
+
+    if (isMobile) await page.goto('/assistant');
+    else await page.getByTestId('assistant-toggle').click();
+    const panel = page.getByTestId('assistant-panel');
+    await expect(panel.locator('.assistant-panel__title')).toHaveText('原始标题');
+    await page.getByTestId('assistant-threads').click();
+    await page.getByTestId('assistant-rename-thread').click();
+    const dialog = page.getByRole('dialog', { name: '修改对话标题' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByTestId('assistant-thread-title-input').fill('  手动修改的标题  ');
+    await dialog.getByTestId('assistant-save-thread-title').click();
+    await expect(dialog).toBeHidden();
+    await expect(panel.locator('.assistant-panel__title')).toHaveText('手动修改的标题');
+    await page.getByTestId('assistant-threads').click();
+    await expect(page.getByRole('menuitem', { name: '手动修改的标题', exact: true })).toBeVisible();
+  });
+
   test('删除对话需确认，支持取消、失败重试并阻止重复提交', async ({ page, isMobile }) => {
     await login(page);
     const threads = ['待删除的对话', '保留的对话'].map((title, index) => ({

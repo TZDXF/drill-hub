@@ -330,11 +330,12 @@ export function registerAssistantRoutes(
         providerModelId,
         images,
       );
-      const title = thread.title === '新对话' ? content.slice(0, 30) || thread.title : thread.title;
       await ctx.db.update('assistantThreads', thread.id, thread.revision, {
-        title,
         lastMessageAt: now(),
       });
+      if (thread.title === '新对话') {
+        void assistant.generateThreadTitle(thread.id, content, providerModelId).catch(() => {});
+      }
       assistant.enqueue(handle.turnId);
       reply.code(202);
       const userMessage = await ctx.db.get('assistantMessages', handle.userMessageId);
@@ -469,6 +470,12 @@ export function registerAssistantRoutes(
         sseWrite(
           reply,
           `event: snapshot\ndata: ${JSON.stringify({ content: frame.content ?? '', reasoning: frame.reasoning ?? '' })}\n\n`,
+        );
+      }
+      if (frame.kind === 'title' && frame.title) {
+        sseWrite(
+          reply,
+          `event: title\ndata: ${JSON.stringify({ title: frame.title, revision: frame.revision })}\n\n`,
         );
       }
       if (frame.kind === 'queue') {

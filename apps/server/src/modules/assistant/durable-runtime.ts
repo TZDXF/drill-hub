@@ -36,6 +36,7 @@ import { AppError } from '#server/core/errors.js';
 import type { AppContext } from '#server/core/context.js';
 import type { AssistantThreadRecord, McpServerRecord } from '#server/db/records.js';
 import { createAssistantTools } from '#server/modules/assistant/tools.js';
+import { requestAssistantTitle } from '#server/modules/assistant/title.js';
 
 export const ASSISTANT_SYSTEM_PROMPT = [
   '你是 Drill Hub 学习工作台的内置学习助手，通过对话帮助用户规划学习、讲解知识点、练习与复盘。',
@@ -321,11 +322,37 @@ export class DurableAssistantRuntime {
       },
       BACKGROUND_CONTEXT,
     );
-    await this.ctx.db.update('assistantThreads', thread.id, thread.revision, {
-      durableConversationId: conversation.id,
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.ctx.db.get('assistantThreads', thread.id);
+      if (!current) throw new AppError(404, 'NOT_FOUND', '资源不存在');
+      try {
+        const updated = await this.ctx.db.update('assistantThreads', thread.id, current.revision, {
+          durableConversationId: conversation.id,
+        });
+        Object.assign(thread, updated);
+        return conversation;
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === 'VERSION_CONFLICT') || attempt === 2)
+          throw error;
+      }
+    }
+    throw new AppError(409, 'VERSION_CONFLICT', '数据已发生变化，请刷新后重试');
+  }
+
+  async generateTitle(content: string, providerModelId: string | null) {
+    const model = await this.resolveModel(providerModelId);
+    const connection = await this.ctx.db.get('modelConnections', model.connectionId);
+    if (!connection?.enabled) {
+      throw new AppError(422, 'INVALID_MODEL', '模型不存在或未启用，请在对话中重新选择');
+    }
+    const result = await requestAssistantTitle({
+      baseUrl: connection.baseUrl,
+      allowPrivateUrls: this.ctx.config.allowPrivateModelUrls,
+      apiKey: connection.encryptedApiKey ? this.ctx.vault.decrypt(connection.encryptedApiKey) : '',
+      modelKey: model.modelKey,
+      content,
     });
-    thread.durableConversationId = conversation.id;
-    return conversation;
+    return { ...result, model };
   }
 
   async submit(

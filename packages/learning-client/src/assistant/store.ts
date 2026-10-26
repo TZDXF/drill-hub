@@ -165,6 +165,11 @@ function applyDetail(detail: AssistantThreadDetail, prepend = false, preserveStr
   state.timeline = detail.timeline ?? [];
   state.hasOlder = detail.hasOlder ?? false;
   state.oldestMessageId = detail.oldestMessageId ?? null;
+  if (detail.thread) {
+    const threadIndex = state.threads.findIndex((thread) => thread.id === detail.thread.id);
+    if (threadIndex >= 0 && state.threads[threadIndex]!.revision <= detail.thread.revision)
+      state.threads.splice(threadIndex, 1, detail.thread);
+  }
   state.activeTurnId = detail.activeTurn?.id ?? null;
   state.activeStartedAt = detail.activeTurn?.createdAt ?? null;
   if (!preserveStream) {
@@ -200,7 +205,13 @@ function selectModel(modelId: string): void {
   state.selectedModelId = modelId;
 }
 async function loadThreads(): Promise<void> {
-  state.threads = await learning().get<AssistantThread[]>('/me/assistant/threads');
+  const threads = await learning().get<AssistantThread[]>('/me/assistant/threads');
+  state.threads = threads.map(
+    (thread) =>
+      state.threads.find(
+        (current) => current.id === thread.id && current.revision > thread.revision,
+      ) ?? thread,
+  );
   state.threads.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
 }
 async function selectThread(threadId: string, preserveStream = false): Promise<void> {
@@ -229,6 +240,16 @@ async function newThread(): Promise<AssistantThread> {
   await selectThread(thread.id);
   return thread;
 }
+async function renameThread(threadId: string, title: string): Promise<void> {
+  const thread = state.threads.find((item) => item.id === threadId);
+  if (!thread) throw new Error('对话不存在');
+  const updated = await learning().patch<AssistantThread>(`/me/assistant/threads/${threadId}`, {
+    title: title.trim(),
+    expectedRevision: thread.revision,
+  });
+  state.threads = state.threads.map((item) => (item.id === threadId ? updated : item));
+}
+
 async function deleteThread(threadId: string): Promise<void> {
   await learning().del(`/me/assistant/threads/${threadId}`);
   await loadThreads();
@@ -336,6 +357,7 @@ async function send(
       ...(state.selectedModelId ? { providerModelId: state.selectedModelId } : {}),
     });
     if (state.currentThreadId !== threadId) return active ? 'queued' : 'started';
+    void loadThreads().catch(() => {});
     if (result.queuedMessage) {
       if (!state.queued.some((item) => item.id === result.queuedMessage!.id))
         state.queued.push(result.queuedMessage);
@@ -433,6 +455,8 @@ function handleStreamEvent(payload: { event?: string; data: string; id?: string 
       content?: string;
       reasoning?: string;
       queued?: AssistantQueuedMessage[];
+      title?: string;
+      revision?: number;
     } & AssistantEventView;
     if (type === 'text_delta') {
       if (parsed.delta) state.streamingText += parsed.delta;
@@ -449,6 +473,16 @@ function handleStreamEvent(payload: { event?: string; data: string; id?: string 
     }
     if (type === 'queue') {
       state.queued = parsed.queued ?? [];
+      return;
+    }
+    if (type === 'title') {
+      const title = parsed.title?.trim();
+      if (title)
+        state.threads = state.threads.map((thread) =>
+          thread.id === state.currentThreadId
+            ? { ...thread, title, revision: parsed.revision ?? thread.revision }
+            : thread,
+        );
       return;
     }
     const event = parsed as AssistantEventView;
@@ -569,6 +603,7 @@ export interface AssistantStore {
   loadThreads(): Promise<void>;
   selectThread(threadId: string): Promise<void>;
   newThread(): Promise<AssistantThread>;
+  renameThread(threadId: string, title: string): Promise<void>;
   deleteThread(threadId: string): Promise<void>;
   send(
     content: string,
@@ -600,6 +635,7 @@ export function useAssistant(): AssistantStore {
     loadThreads,
     selectThread,
     newThread,
+    renameThread,
     deleteThread,
     send,
     cancelTurn,

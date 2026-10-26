@@ -27,12 +27,14 @@ GET /me/assistant/threads/:id/events?after=<seq>（按游标读取持久化事�
 GET /me/assistant/models（对话可选模型：仅返回启用模型及其启用连接，含价格与默认参数）
 GET /me/assistant/threads/:id?before=<messageId>&limit=<1..100>（按消息分页读取，保留时间线）
 POST /me/assistant/threads/:id/fork（before/through 复制历史到新对话，原对话不变）
+PATCH /me/assistant/threads/:id（expectedRevision 乐观并发控制，手动修改会话标题）
 PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息）
 ```
 
 - turn 状态机：`queued → running → succeeded | failed | cancelled`；同线程同时仅 1 个活动 turn。活动期间的第二条消息进入服务端持久化队列：`followUp` 等本轮结束后执行，`steer` 取消当前生成并优先执行；队列在重连和服务重启后仍可恢复。
 - 不再限制同时执行的对话轮数、单轮超时与搜索结果上限；用户可随时取消（`POST /me/assistant/turns/:id/cancel`）。
 - 模型选择在对话中完成：输入框上方按供应商分组选择（或"自动选择"），选择随该轮请求发送；无效/停用的模型在提交时立即 422 `INVALID_MODEL`。
+- 新会话收到首条消息时使用本轮所选模型异步生成标题；标题请求使用普通非流式 Chat Completions（`stream: false`），不启用思考模式。自动命名失败时回退为首条消息摘要，模型未返回或用户已手动改名时不会覆盖现有标题。
 - 进程重开时重新打开 `durable.sqlite` 并 `resume()` 未完成任务；watcher 按 `turnId` 对账提交状态，将最终回复、取消或失败投影回应用消息与 SSE。
 - 文本与推理增量每秒 flush 到消息记录；SSE 同时提供增量、活动消息快照和队列快照。流式中断时保留已生成部分，客户端在终稿返回前保持同一棵回复渲染树。
 - 用户消息最多附 4 张 PNG/JPEG/WebP/GIF 图片（单张 5 MB）；图片只在本人消息与当轮模型请求中使用。
