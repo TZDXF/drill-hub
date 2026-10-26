@@ -197,6 +197,73 @@ test.describe('内置学习助手', () => {
     expect(deleteRequests).toBe(2);
   });
 
+  test('划词批注支持取消、编辑、原文编号定位与删除', async ({ page, isMobile }) => {
+    const thread = {
+      id: 'thread-selection-comments',
+      ownerId: 'me',
+      title: '划词批注',
+      lastMessageAt: '2026-10-25T10:00:00.000Z',
+      createdAt: '2026-10-25T10:00:00.000Z',
+      updatedAt: '2026-10-25T10:00:00.000Z',
+      revision: 1,
+    };
+    await page.route('**/api/v1/me/assistant/threads**', async (route) => {
+      const detail = new URL(route.request().url()).pathname.endsWith(`/${thread.id}`);
+      await route.fulfill({
+        json: {
+          data: detail
+            ? {
+                thread,
+                turns: [],
+                messages: [
+                  {
+                    id: 'assistant-selection-source',
+                    threadId: thread.id,
+                    role: 'assistant',
+                    content: '贝叶斯定理可以根据新的证据更新判断。',
+                    createdAt: '2026-10-25T10:00:00.000Z',
+                  },
+                ],
+                events: [],
+                activeTurn: null,
+              }
+            : [thread],
+        },
+      });
+    });
+    await login(page);
+    if (isMobile) await page.getByRole('link', { name: '学习助手', exact: true }).click();
+    else await page.getByTestId('assistant-toggle').click();
+    const source = page.getByTestId('assistant-reply').locator('p').first();
+    await expect(source).toContainText('贝叶斯定理');
+    await source.selectText();
+    await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })));
+    await page.getByRole('button', { name: '引用到输入框', exact: true }).click();
+    const popup = page.locator('[data-selection-popup]');
+    await expect(popup).toBeVisible();
+    await popup.getByRole('textbox').press('Escape');
+    await expect(popup).toHaveCount(0);
+    const summary = page.locator('.assistant-selection-summary-trigger');
+    await expect(summary).toHaveText('1 条注释');
+    await expect(page.locator('.assistant-selection-badge--overlay')).toHaveText('1');
+
+    await summary.hover();
+    await page.getByRole('button', { name: '编辑引用批注', exact: true }).click();
+    await expect(popup).toBeVisible();
+    await popup.getByRole('textbox').fill('补充一个例子');
+    await popup.getByRole('textbox').press('Control+Enter');
+    await expect(popup).toHaveCount(0);
+    await summary.hover();
+    await expect(page.locator('.assistant-selection-summary__comment')).toHaveText('补充一个例子');
+
+    await page.locator('.assistant-selection-badge--overlay').click();
+    await expect(popup.getByRole('textbox')).toHaveValue('补充一个例子');
+    await popup.getByRole('button', { name: '移除引用', exact: true }).click();
+    await expect(popup).toHaveCount(0);
+    await expect(summary).toHaveCount(0);
+    await expect(page.locator('.assistant-selection-badge--overlay')).toHaveCount(0);
+  });
+
   test('Markdown 表格全屏使用不透明背景', async ({ page }) => {
     const thread = {
       id: 'thread-markdown-table',
@@ -495,6 +562,26 @@ test.describe('内置学习助手', () => {
     await expect(page.getByTestId('assistant-page')).toBeVisible();
     await expect(page.getByTestId('assistant-panel')).toBeVisible();
     await expect(page.locator('.app-layout--assistant')).toBeVisible();
+  });
+
+  test('布局按钮在专注对话与并排布局间切换', async ({ page, isMobile }) => {
+    test.skip(isMobile, '手机端助手始终全屏覆盖');
+    await login(page);
+    await page.goto('/assistant');
+    const layout = page.locator('.app-layout');
+    const toggle = page.getByTestId('assistant-layout-toggle');
+
+    await expect(toggle).toHaveAttribute('aria-label', '专注对话布局');
+    await expect(page.locator('.app-main')).toBeVisible();
+    await toggle.click();
+    await expect(layout).toHaveClass(/app-layout--assistant-chat/);
+    await expect(page.locator('.app-main')).toBeHidden();
+    await expect(page.getByTestId('assistant-panel')).toBeVisible();
+
+    await toggle.click();
+    await expect(layout).not.toHaveClass(/app-layout--assistant-chat/);
+    await expect(page.locator('.app-main')).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-label', '专注对话布局');
   });
 
   test('助手侧边栏仅在学习路由展示', async ({ page, isMobile }) => {

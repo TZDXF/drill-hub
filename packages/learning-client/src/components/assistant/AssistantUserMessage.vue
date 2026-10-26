@@ -7,11 +7,23 @@ import { copyTextToClipboard } from '#learning-client/utils';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import AssistantImages from '#learning-client/components/assistant/AssistantImages.vue';
-const props = defineProps<{ message: AssistantMessageView; canEdit?: boolean; busy?: boolean }>();
+import AssistantSelectionBadges, {
+  type AssistantSelectionBadge,
+} from '#learning-client/components/assistant/AssistantSelectionBadges.vue';
+const props = withDefaults(
+  defineProps<{
+    message: AssistantMessageView;
+    canEdit?: boolean;
+    busy?: boolean;
+    selectionBadges?: AssistantSelectionBadge[];
+  }>(),
+  { selectionBadges: () => [] },
+);
 const emit = defineEmits<{
   edit: [message: AssistantMessageView];
   copy: [text: string];
   preview: [image: import('@drill-hub/contracts').AssistantImageAttachment];
+  editSelection: [id: string];
 }>();
 const { t } = useI18n();
 const parsed = computed(() => parsePromptQuotes(props.message.content));
@@ -37,6 +49,7 @@ async function copy() {
         </span>
       </div>
     </div>
+    <AssistantSelectionBadges :badges="selectionBadges" @edit="emit('editSelection', $event)" />
     <div class="assistant-message-actions">
       <AppTooltip v-if="canEdit" :label="t('components.assistant.editPrompt')">
         <button

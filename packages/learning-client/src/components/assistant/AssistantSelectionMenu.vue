@@ -1,120 +1,130 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
+  ASSISTANT_SELECTION_MAX,
   createSelectionQuote,
   type AssistantSelectionQuote,
+  type AssistantSelectionSource,
 } from '#learning-client/assistant/selection';
-import { captureSelectionAnchor } from '#learning-client/assistant/selectionAnchors';
+import {
+  captureSelectionAnchor,
+  selectionEndRect,
+} from '#learning-client/assistant/selectionAnchors';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 const props = defineProps<{ root: Ref<HTMLElement | null> }>();
 const emit = defineEmits<{ quote: [quote: AssistantSelectionQuote] }>();
 const { t } = useI18n();
-const visible = ref(false);
-const commenting = ref(false);
-const comment = ref('');
-const commentInput = ref<HTMLTextAreaElement | null>(null);
-const position = ref({ left: 0, top: 0 });
-let selected: AssistantSelectionQuote | null = null;
+const state = ref<{
+  quote: AssistantSelectionQuote;
+  anchor: { left: number; top: number; bottom: number };
+} | null>(null);
+const tooLong = computed(() => (state.value?.quote.text.length ?? 0) > ASSISTANT_SELECTION_MAX);
+function anchorElement(node: Node | null): HTMLElement | null {
+  return node?.nodeType === 1 ? (node as HTMLElement) : (node?.parentElement ?? null);
+}
+function isExcludedEndpoint(node: Node | null): boolean {
+  const element = anchorElement(node);
+  if (!element) return true;
+  return Boolean(
+    element.closest(
+      'button, a, textarea, input, select, [data-selection-anchor], [contenteditable], [data-no-selection]',
+    ),
+  );
+}
 function inspect() {
   const root = props.root.value;
   const selection = window.getSelection();
-  if (!root || !selection || selection.isCollapsed || !selection.rangeCount) {
-    visible.value = false;
-    return;
-  }
+  if (!root || !selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
   const range = selection.getRangeAt(0);
-  if (!root.contains(range.commonAncestorContainer)) {
-    visible.value = false;
-    return;
-  }
-  selected = createSelectionQuote(selection.toString());
-  if (!selected) {
-    visible.value = false;
-    return;
-  }
-  const rect = range.getBoundingClientRect();
-  position.value = {
-    left: Math.max(8, Math.min(window.innerWidth - 296, rect.left)),
-    top: Math.max(8, rect.top - 42),
-  };
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  if (isExcludedEndpoint(range.startContainer) || isExcludedEndpoint(range.endContainer))
+    return null;
+  const sourceElement = anchorElement(range.startContainer)?.closest('[data-selection-source]');
+  if (
+    !sourceElement ||
+    sourceElement !== anchorElement(range.endContainer)?.closest('[data-selection-source]')
+  )
+    return null;
+  const source = sourceElement.getAttribute('data-selection-source') as AssistantSelectionSource;
+  if (source !== 'user' && source !== 'assistant') return null;
   const anchor = captureSelectionAnchor(root, range);
-  if (selected && anchor) selected.anchor = anchor;
-  visible.value = true;
+  const quote = createSelectionQuote(selection.toString());
+  const endRect = selectionEndRect(range);
+  if (!anchor || !quote || !endRect) return null;
+  quote.source = source;
+  quote.anchor = anchor;
+  return {
+    quote,
+    anchor: { left: endRect.right, top: endRect.top, bottom: endRect.bottom },
+  };
 }
 function clear() {
-  selected = null;
-  visible.value = false;
-  commenting.value = false;
-  comment.value = '';
-  window.getSelection()?.removeAllRanges();
+  state.value = null;
+}
+function onSelectionChange() {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) clear();
+}
+function onMouseUp() {
+  state.value = inspect();
+}
+function onKeyUp(event: KeyboardEvent) {
+  if (!event.shiftKey && event.key !== 'Shift') return;
+  state.value = inspect();
 }
 function quote() {
-  if (selected) emit('quote', selected);
+  if (!state.value || tooLong.value) return;
+  const inspected = inspect();
   clear();
-}
-async function addComment() {
-  commenting.value = true;
-  visible.value = false;
-  await nextTick();
-  commentInput.value?.focus();
-}
-function saveComment() {
-  if (selected) emit('quote', { ...selected, comment: comment.value.trim() });
-  clear();
-}
-function hide(event: MouseEvent) {
-  if (
-    !(event.target as Element)?.closest('.assistant-selection-menu, .assistant-selection-comment')
-  )
-    clear();
+  if (inspected) emit('quote', inspected.quote);
 }
 onMounted(() => {
-  document.addEventListener('mouseup', inspect);
-  document.addEventListener('keyup', inspect);
-  document.addEventListener('mousedown', hide);
+  document.addEventListener('selectionchange', onSelectionChange);
+  document.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('keyup', onKeyUp);
+  document.addEventListener('scroll', clear, true);
 });
+watch(
+  () => props.root.value,
+  () => clear(),
+);
 onBeforeUnmount(() => {
-  document.removeEventListener('mouseup', inspect);
-  document.removeEventListener('keyup', inspect);
-  document.removeEventListener('mousedown', hide);
+  document.removeEventListener('selectionchange', onSelectionChange);
+  document.removeEventListener('mouseup', onMouseUp);
+  document.removeEventListener('keyup', onKeyUp);
+  document.removeEventListener('scroll', clear, true);
+});
+const placement = computed(() => {
+  const anchor = state.value?.anchor;
+  if (!anchor) return null;
+  const left = Math.max(8, Math.min(anchor.left, window.innerWidth - 168));
+  const flip = window.innerHeight - anchor.bottom < 48;
+  return {
+    left: `${left}px`,
+    ...(flip
+      ? { bottom: `${window.innerHeight - anchor.top + 4}px` }
+      : { top: `${anchor.bottom + 4}px` }),
+  };
 });
 </script>
 <template>
-  <Teleport to="body"
-    ><div
-      v-if="visible"
-      class="assistant-selection-menu"
-      :style="{ left: `${position.left}px`, top: `${position.top}px` }"
-    >
-      <button type="button" @mousedown.prevent @click="quote">
-        <AppIcon name="quote" :size="14" />{{ t('components.assistant.quoteSelection') }}
-      </button>
-      <button type="button" @mousedown.prevent @click="addComment">
-        <AppIcon name="message" :size="14" />{{ t('components.assistant.commentSelection') }}
-      </button>
-    </div>
+  <Teleport to="body">
     <div
-      v-if="commenting"
-      class="assistant-selection-comment"
-      :style="{ left: `${position.left}px`, top: `${position.top}px` }"
+      v-if="state && placement"
+      class="assistant-selection-menu"
+      :style="placement"
+      :data-no-selection="true"
     >
-      <textarea
-        ref="commentInput"
-        v-model="comment"
-        rows="1"
-        :placeholder="t('components.assistant.quoteComment')"
-        @keydown.esc.stop="clear"
-        @keydown.ctrl.enter.prevent="saveComment"
-        @keydown.meta.enter.prevent="saveComment"
-      />
       <button
         type="button"
-        :aria-label="t('components.assistant.saveQuote')"
+        :disabled="tooLong"
+        :title="tooLong ? t('components.assistant.selectionLimitSingle') : undefined"
         @mousedown.prevent
-        @click="saveComment"
+        @click="quote"
       >
-        <AppIcon name="check" :size="15" />
-      </button></div
-  ></Teleport>
+        <AppIcon name="quote" :size="14" />{{ t('components.assistant.quoteSelection') }}
+      </button>
+    </div>
+  </Teleport>
 </template>

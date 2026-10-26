@@ -8,6 +8,7 @@ import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppTextarea from '#learning-client/components/AppTextarea.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import AssistantModelSelect from '#learning-client/components/assistant/AssistantModelSelect.vue';
+import AssistantSelectionSummary from '#learning-client/components/assistant/AssistantSelectionSummary.vue';
 const text = defineModel<string>('text', { default: '' });
 const quotes = defineModel<AssistantSelectionQuote[]>('quotes', { default: () => [] });
 const props = withDefaults(defineProps<{ busy?: boolean; sending?: boolean }>(), {
@@ -16,8 +17,8 @@ const props = withDefaults(defineProps<{ busy?: boolean; sending?: boolean }>(),
 });
 const emit = defineEmits<{
   submit: [mode: AssistantQueueMode];
-  editQuote: [quote: AssistantSelectionQuote];
-  locateQuote: [quote: AssistantSelectionQuote];
+  editQuote: [id: string];
+  locateQuote: [id: string];
 }>();
 const { t } = useI18n();
 const assistant = useAssistant();
@@ -100,33 +101,12 @@ defineExpose({ clear, images });
       <AssistantModelSelect />
     </div>
     <div v-if="quotes.length" class="assistant-composer-quotes">
-      <span v-for="quote in quotes" :key="quote.id" class="assistant-quote-chip">
-        <AppIcon name="quote" :size="12" /><span :title="quote.text">{{ quote.text }}</span
-        ><small v-if="quote.comment"> · {{ quote.comment }}</small>
-        <button
-          v-if="quote.anchor"
-          type="button"
-          :aria-label="t('components.assistant.locateQuote')"
-          :title="t('components.assistant.locateQuote')"
-          @click="emit('locateQuote', quote)"
-        >
-          <AppIcon name="target" :size="11" />
-        </button>
-        <button
-          type="button"
-          :aria-label="t('components.assistant.editQuote')"
-          @click="emit('editQuote', quote)"
-        >
-          <AppIcon name="edit" :size="11" />
-        </button>
-        <button
-          type="button"
-          :aria-label="t('components.assistant.removeQuote')"
-          @click="quotes = quotes.filter((item) => item.id !== quote.id)"
-        >
-          <AppIcon name="close" :size="11" />
-        </button>
-      </span>
+      <AssistantSelectionSummary
+        :items="quotes"
+        @locate="emit('locateQuote', $event)"
+        @edit="emit('editQuote', $event)"
+        @remove="quotes = quotes.filter((item) => item.id !== $event)"
+      />
     </div>
     <div v-if="images.length" class="assistant-composer-images">
       <span

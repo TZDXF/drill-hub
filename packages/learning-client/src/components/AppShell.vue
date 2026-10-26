@@ -161,6 +161,8 @@ async function logout() {
     :class="{
       'app-layout--focused': focused,
       'app-layout--assistant': assistantActive && !focused,
+      'app-layout--assistant-chat':
+        assistantActive && !focused && assistant.state.layoutMode === 'chat',
     }"
     :style="assistantActive ? { '--assistant-width': `${assistant.state.chatWidth}px` } : undefined"
   >

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  type WatchStopHandle,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   DropdownMenuContent,
@@ -19,15 +27,18 @@ import type {
 } from '@drill-hub/contracts';
 import { useAssistant } from '#learning-client/assistant/store';
 import { useAssistantHistory } from '#learning-client/assistant/history';
+import { useAssistantQuotes } from '#learning-client/assistant/quoteStore';
+import { useLearning } from '#learning-client/injection';
 import {
+  ASSISTANT_SELECTION_MAX_COUNT,
   buildPromptWithQuotes,
   parsePromptQuotes,
+  type AssistantSelectionAppendResult,
   type AssistantSelectionQuote,
 } from '#learning-client/assistant/selection';
 import { useConversationScroll } from '#learning-client/assistant/useConversationScroll';
 import { errorMessage } from '#learning-client/utils';
 import AppIcon from '#learning-client/components/AppIcon.vue';
-import AppTextarea from '#learning-client/components/AppTextarea.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import AppDialog from '#learning-client/components/AppDialog.vue';
 import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
@@ -39,16 +50,36 @@ import AssistantVirtualItem from '#learning-client/components/assistant/Assistan
 import AssistantQueue from '#learning-client/components/assistant/AssistantQueue.vue';
 import AssistantTimeline from '#learning-client/components/assistant/AssistantTimeline.vue';
 import AssistantSelectionMenu from '#learning-client/components/assistant/AssistantSelectionMenu.vue';
-import { flashSelection, selectionContentRoot } from '#learning-client/assistant/selectionAnchors';
+import AssistantSelectionPopup, {
+  type AssistantSelectionPopupState,
+} from '#learning-client/components/assistant/AssistantSelectionPopup.vue';
+import AssistantSelectionBadges, {
+  type AssistantSelectionBadge,
+} from '#learning-client/components/assistant/AssistantSelectionBadges.vue';
+import {
+  boundaryRect,
+  flashSelection,
+  restoreSelection,
+  selectionContentRoot,
+  selectionEndRect,
+} from '#learning-client/assistant/selectionAnchors';
 
 const { t } = useI18n();
+const learning = useLearning();
 const assistant = useAssistant();
 const state = assistant.state;
 const { history } = useAssistantHistory(state);
 const content = ref<HTMLElement | null>(null);
 const scroll = useConversationScroll(content);
 const draft = ref('');
-const quotes = ref<AssistantSelectionQuote[]>([]);
+const selectionScope = computed(() => state.currentThreadId ?? 'new-thread');
+const {
+  quotes,
+  add: addStoredQuote,
+  update: updateStoredQuote,
+  remove: removeStoredQuote,
+  clear: clearStoredQuotes,
+} = useAssistantQuotes(selectionScope);
 const composer = ref<InstanceType<typeof AssistantComposer> | null>(null);
 const sending = ref(false);
 const threadToDelete = ref<{ id: string; title: string } | null>(null);
@@ -59,12 +90,14 @@ const renamingThread = ref(false);
 const renameError = ref('');
 const renameTitle = ref('');
 const previewImage = ref<AssistantImageAttachment | null>(null);
-const quoteToEdit = ref<AssistantSelectionQuote | null>(null);
-const quoteComment = ref('');
+const selectionPopup = ref<AssistantSelectionPopupState | null>(null);
+const anchorOverlays = ref<Map<string, AssistantSelectionBadge[]>>(new Map());
 const copied = ref(false);
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
 let clearSelectionFlash: (() => void) | null = null;
+let selectionRequest = 0;
+let anchorsWatcher: WatchStopHandle | undefined;
 const busy = computed(() => Boolean(state.activeTurnId));
 const currentThread = computed(
   () => state.threads.find((thread) => thread.id === state.currentThreadId) ?? null,
@@ -151,13 +184,14 @@ async function submit(mode: AssistantQueueMode) {
   if (sending.value) return;
   const text = draft.value;
   const selectedQuotes = [...quotes.value];
+  const selectedScope = selectionScope.value;
   const images = [...(composer.value?.images ?? [])];
   sending.value = true;
   try {
     await assistant.send(buildPromptWithQuotes(text, selectedQuotes), { images, mode });
     composer.value?.clear();
     draft.value = '';
-    quotes.value = [];
+    clearStoredQuotes(selectedScope);
     scroll.scrollToBottom();
   } catch {
     draft.value = text;
@@ -230,26 +264,89 @@ async function onHistoryScroll() {
     state.error = errorMessage(reason);
   }
 }
-function addQuote(quote: AssistantSelectionQuote) {
-  if (
-    !quotes.value.some(
-      (item) =>
-        item.text === quote.text &&
-        item.anchor?.messageId === quote.anchor?.messageId &&
-        item.anchor?.start === quote.anchor?.start &&
-        item.anchor?.end === quote.anchor?.end,
-    )
-  )
-    quotes.value.push(quote);
+function notifySelectionResult(result: AssistantSelectionAppendResult): void {
+  if (!result.ok) {
+    const key =
+      result.reason === 'count'
+        ? 'components.assistant.selectionLimitCount'
+        : result.reason === 'total'
+          ? 'components.assistant.selectionLimitTotal'
+          : 'components.assistant.selectionLimitSingle';
+    learning.notify.warning(t(key, { count: ASSISTANT_SELECTION_MAX_COUNT }));
+  } else if (result.duplicate) {
+    learning.notify.info(t('components.assistant.selectionDuplicate'));
+  }
 }
-async function locateQuote(quote: AssistantSelectionQuote) {
-  const anchor = quote.anchor;
+function recomputeAnchors(): void {
   const viewport = scroll.viewport.value;
-  if (!anchor || !viewport) return;
+  const map = new Map<string, AssistantSelectionBadge[]>();
+  if (viewport) {
+    quotes.value.forEach((quote, index) => {
+      const anchor = quote.anchor;
+      if (!anchor) return;
+      const root = selectionContentRoot(viewport, anchor.messageId);
+      const wrapper = root?.closest<HTMLElement>('[data-selection-source]');
+      if (!root || !wrapper) return;
+      const rect = boundaryRect(root, anchor.end);
+      if (!rect) return;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const badges = map.get(anchor.messageId) ?? [];
+      badges.push({
+        id: quote.id,
+        index: index + 1,
+        left: rect.right - wrapperRect.left + 2,
+        top: rect.top - wrapperRect.top - 16,
+      });
+      map.set(anchor.messageId, badges);
+    });
+  }
+  if (JSON.stringify([...anchorOverlays.value]) !== JSON.stringify([...map]))
+    anchorOverlays.value = map;
+}
+function syncSelectionAnchors(): void {
+  const popup = selectionPopup.value;
+  if (popup && !quotes.value.some((item) => item.id === popup.id)) selectionPopup.value = null;
+  void nextTick(recomputeAnchors);
+}
+function addQuote(quote: AssistantSelectionQuote): void {
+  const selection = window.getSelection();
+  const rect = selection?.rangeCount ? selectionEndRect(selection.getRangeAt(0)) : null;
+  const result = addStoredQuote(quote);
+  notifySelectionResult(result);
+  selection?.removeAllRanges();
+  if (!result.ok || result.duplicate) return;
+  if (rect) {
+    selectionPopup.value = {
+      id: quote.id,
+      comment: '',
+      anchor: { left: rect.right, top: rect.top, bottom: rect.bottom },
+    };
+  } else {
+    void editQuote(quote.id);
+  }
+}
+async function locateQuote(id: string): Promise<void> {
+  const quote = quotes.value.find((item) => item.id === id);
+  const anchor = quote?.anchor;
+  const viewport = scroll.viewport.value;
+  if (!quote || !anchor || !viewport) return;
+  const request = ++selectionRequest;
   clearSelectionFlash?.();
   clearSelectionFlash = null;
   scroll.stop();
   const threadId = state.currentThreadId;
+  const flash = () => {
+    const root = selectionContentRoot(viewport, anchor.messageId);
+    if (root) clearSelectionFlash = flashSelection(root, anchor);
+  };
+  const badge = () =>
+    viewport?.querySelector<HTMLElement>(`[data-selection-anchor="${CSS.escape(id)}"]`);
+  const existingBadge = badge();
+  if (existingBadge) {
+    existingBadge.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    flash();
+    return;
+  }
   const revealMessage = async () => {
     const index = history.value.findIndex((item) =>
       item.kind === 'message'
@@ -269,29 +366,62 @@ async function locateQuote(quote: AssistantSelectionQuote) {
   while (!root && state.hasOlder) {
     const previousOldest = state.oldestMessageId;
     await assistant.loadOlder();
-    if (state.currentThreadId !== threadId) return;
+    if (request !== selectionRequest || state.currentThreadId !== threadId) return;
     await revealMessage();
     root = selectionContentRoot(viewport, anchor.messageId);
     if (!root && state.oldestMessageId === previousOldest) return;
   }
-  if (!root) return;
-  viewport.scrollTo({
-    top:
-      viewport.scrollTop +
-      root.getBoundingClientRect().top -
-      viewport.getBoundingClientRect().top -
-      Math.max(24, (viewport.clientHeight - root.clientHeight) / 2),
-    behavior: 'instant',
-  });
-  clearSelectionFlash = flashSelection(root, anchor);
+  if (!root || request !== selectionRequest || state.currentThreadId !== threadId) return;
+  recomputeAnchors();
+  await nextTick();
+  const locatedBadge = badge();
+  if (locatedBadge) locatedBadge.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  else
+    viewport.scrollTo({
+      top:
+        viewport.scrollTop +
+        root.getBoundingClientRect().top -
+        viewport.getBoundingClientRect().top -
+        Math.max(24, (viewport.clientHeight - root.clientHeight) / 2),
+      behavior: 'instant',
+    });
+  flash();
 }
-function editQuote(quote: AssistantSelectionQuote) {
-  quoteToEdit.value = quote;
-  quoteComment.value = quote.comment ?? '';
+async function editQuote(id: string): Promise<void> {
+  const quote = quotes.value.find((item) => item.id === id);
+  if (!quote) return;
+  await locateQuote(id);
+  await nextTick();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  if (!quotes.value.some((item) => item.id === id)) return;
+  const viewport = scroll.viewport.value;
+  const root =
+    quote.anchor && viewport ? selectionContentRoot(viewport, quote.anchor.messageId) : null;
+  const badge = viewport?.querySelector<HTMLElement>(`[data-selection-anchor="${CSS.escape(id)}"]`);
+  let anchor: AssistantSelectionPopupState['anchor'] | null = null;
+  if (root && quote.anchor && restoreSelection(root, quote.anchor)) {
+    const selection = window.getSelection();
+    const rect = selection?.rangeCount ? selectionEndRect(selection.getRangeAt(0)) : null;
+    if (rect) anchor = { left: rect.right, top: rect.top, bottom: rect.bottom };
+  }
+  if (!anchor && badge) {
+    const rect = badge.getBoundingClientRect();
+    anchor = { left: rect.right, top: rect.top, bottom: rect.bottom };
+  }
+  if (!anchor) return;
+  selectionPopup.value = { id, comment: quote.comment ?? '', anchor };
 }
-function saveQuote() {
-  if (quoteToEdit.value) quoteToEdit.value.comment = quoteComment.value.trim();
-  quoteToEdit.value = null;
+function saveQuote(comment: string): void {
+  if (selectionPopup.value) updateStoredQuote(selectionPopup.value.id, comment);
+  closeSelectionPopup();
+}
+function removeQuote(): void {
+  if (selectionPopup.value) removeStoredQuote(selectionPopup.value.id);
+  closeSelectionPopup();
+}
+function closeSelectionPopup(): void {
+  selectionPopup.value = null;
+  window.getSelection()?.removeAllRanges();
 }
 async function updateQueue(item: AssistantQueuedMessage, text: string, mode: AssistantQueueMode) {
   try {
@@ -340,11 +470,53 @@ watch(
   () => {
     clearSelectionFlash?.();
     clearSelectionFlash = null;
+    selectionRequest++;
+    selectionPopup.value = null;
     draft.value = '';
-    quotes.value = [];
   },
 );
+watch(
+  () => quotes.value.length,
+  (count) => {
+    if (count > 0 && !anchorsWatcher) {
+      anchorsWatcher = watch([quotes, history], syncSelectionAnchors, {
+        deep: true,
+        immediate: true,
+      });
+    } else if (count === 0 && anchorsWatcher) {
+      anchorsWatcher();
+      anchorsWatcher = undefined;
+      selectionPopup.value = null;
+      anchorOverlays.value = new Map();
+    }
+  },
+  { immediate: true },
+);
+watch(
+  [scroll.viewport, () => quotes.value.length],
+  ([viewport, count], _, onCleanup) => {
+    if (!viewport || !count) return;
+    let frame: number | undefined;
+    const observer = new MutationObserver(() => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        recomputeAnchors();
+      });
+    });
+    observer.observe(viewport, { childList: true, subtree: true, characterData: true });
+    void nextTick(recomputeAnchors);
+    onCleanup(() => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    });
+  },
+  { flush: 'post', immediate: true },
+);
+onMounted(() => window.addEventListener('resize', recomputeAnchors));
 onBeforeUnmount(() => {
+  anchorsWatcher?.();
+  window.removeEventListener('resize', recomputeAnchors);
   if (clock) clearInterval(clock);
   clearSelectionFlash?.();
 });
@@ -412,14 +584,31 @@ onBeforeUnmount(() => {
             </DropdownMenuContent></DropdownMenuPortal
           >
         </DropdownMenuRoot>
-        <AppTooltip :label="t('components.assistant.layoutSplit')"
+        <AppTooltip
+          :label="
+            t(
+              state.layoutMode === 'split'
+                ? 'components.assistant.layoutChat'
+                : 'components.assistant.layoutSplit',
+            )
+          "
           ><button
             class="icon-button"
             type="button"
-            :aria-label="t('components.assistant.layoutSplit')"
-            @click="assistant.setLayout('split')"
+            :aria-label="
+              t(
+                state.layoutMode === 'split'
+                  ? 'components.assistant.layoutChat'
+                  : 'components.assistant.layoutSplit',
+              )
+            "
+            data-testid="assistant-layout-toggle"
+            @click="assistant.setLayout(state.layoutMode === 'split' ? 'chat' : 'split')"
           >
-            <AppIcon name="panel" :size="17" /></button
+            <AppIcon
+              :name="state.layoutMode === 'split' ? 'message' : 'panel'"
+              :size="17"
+            /></button
         ></AppTooltip>
         <AppTooltip :label="t('components.assistant.close')"
           ><button
@@ -464,6 +653,8 @@ onBeforeUnmount(() => {
                 :now="now"
                 :can-edit="item.turn.userMessage?.id === lastUserId"
                 :busy="busy"
+                :selection-badges="anchorOverlays"
+                @edit-selection="editQuote"
                 @edit="editMessage"
                 @fork="forkTurn"
                 @retry="retryTurn"
@@ -474,6 +665,8 @@ onBeforeUnmount(() => {
                 v-else-if="item.message.role === 'user'"
                 :message="item.message"
                 :busy="busy"
+                :selection-badges="anchorOverlays.get(item.message.id) ?? []"
+                @edit-selection="editQuote"
                 @copy="notifyCopied"
                 @preview="previewImage = $event"
               />
@@ -488,6 +681,10 @@ onBeforeUnmount(() => {
                   :content="item.message.content || ' '"
                   class="assistant-markdown"
                   data-selection-content
+                />
+                <AssistantSelectionBadges
+                  :badges="anchorOverlays.get(item.message.id) ?? []"
+                  @edit="editQuote"
                 />
               </div>
             </AssistantVirtualItem>
@@ -506,6 +703,12 @@ onBeforeUnmount(() => {
           <AppIcon name="arrowDown" :size="17" /></button
       ></AppTooltip>
       <AssistantSelectionMenu :root="scroll.viewport" @quote="addQuote" />
+      <AssistantSelectionPopup
+        :state="selectionPopup"
+        @save="saveQuote"
+        @remove="removeQuote"
+        @cancel="closeSelectionPopup"
+      />
     </div>
     <AssistantQueue
       :items="state.queued"
@@ -597,22 +800,5 @@ onBeforeUnmount(() => {
         :src="`data:${previewImage.mimeType};base64,${previewImage.data}`"
         :alt="previewImage.name"
     /></AppDialog>
-    <AppDialog
-      class="dialog-content"
-      :open="Boolean(quoteToEdit)"
-      :title="t('components.assistant.editQuote')"
-      @update:open="!$event && (quoteToEdit = null)"
-    >
-      <AppTextarea
-        v-model="quoteComment"
-        class="assistant-quote-comment"
-        rows="3"
-        :placeholder="t('components.assistant.quoteComment')"
-      /><template #actions
-        ><button class="button button--primary" type="button" @click="saveQuote">
-          {{ t('components.assistant.saveQuote') }}
-        </button></template
-      ></AppDialog
-    >
   </div>
 </template>

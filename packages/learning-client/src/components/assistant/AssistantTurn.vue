@@ -9,6 +9,9 @@ import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import MessageResponse from '#learning-client/components/ai-elements/message/MessageResponse.vue';
 import AssistantProcessLine from '#learning-client/components/assistant/AssistantProcessLine.vue';
 import AssistantUserMessage from '#learning-client/components/assistant/AssistantUserMessage.vue';
+import AssistantSelectionBadges, {
+  type AssistantSelectionBadge,
+} from '#learning-client/components/assistant/AssistantSelectionBadges.vue';
 const props = defineProps<{
   item: AssistantTurnItem;
   streamingText: string;
@@ -16,6 +19,7 @@ const props = defineProps<{
   now: number;
   canEdit: boolean;
   busy: boolean;
+  selectionBadges?: Map<string, AssistantSelectionBadge[]>;
 }>();
 const emit = defineEmits<{
   edit: [message: AssistantMessageView];
@@ -23,6 +27,7 @@ const emit = defineEmits<{
   retry: [turn: AssistantTurnItem];
   copy: [text: string];
   preview: [image: AssistantImageAttachment];
+  editSelection: [id: string];
 }>();
 const { t } = useI18n();
 const content = computed(() =>
@@ -48,6 +53,8 @@ async function copy() {
       :message="item.userMessage"
       :can-edit="canEdit"
       :busy="busy"
+      :selection-badges="selectionBadges?.get(item.userMessage?.id ?? '') ?? []"
+      @edit-selection="emit('editSelection', $event)"
       @edit="emit('edit', $event)"
       @copy="emit('copy', $event)"
       @preview="emit('preview', $event)"
@@ -85,6 +92,10 @@ async function copy() {
         :streaming="item.active"
         class="assistant-markdown"
         data-selection-content
+      />
+      <AssistantSelectionBadges
+        :badges="selectionBadges?.get(item.assistantMessage?.id ?? '') ?? []"
+        @edit="emit('editSelection', $event)"
       />
       <p v-if="item.failed && item.errorMessage" class="assistant-turn-error" role="alert">
         {{ item.errorMessage }}

@@ -67,6 +67,45 @@ function setBoundary(root: Element, range: Range, offset: number, start: boolean
   else range[start ? 'setStart' : 'setEnd'](root, 0);
 }
 
+/** Restore the original browser selection when editing a pending quote. */
+export function restoreSelection(root: HTMLElement, anchor: AssistantSelectionAnchor): boolean {
+  const range = document.createRange();
+  setBoundary(root, range, anchor.start, true);
+  setBoundary(root, range, anchor.end, false);
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+/** Last selected-character rectangle, avoiding wrapped-line boundaries at the next line start. */
+export function boundaryRect(root: HTMLElement, offset: number): DOMRect | null {
+  const range = document.createRange();
+  if (offset > 0) {
+    setBoundary(root, range, offset - 1, true);
+    setBoundary(root, range, offset, false);
+    const rects = range.getClientRects();
+    for (let index = rects.length - 1; index >= 0; index--) {
+      const rect = rects[index]!;
+      if (rect.width > 0 && rect.height > 0) return rect;
+    }
+  }
+  setBoundary(root, range, offset, true);
+  range.collapse(true);
+  const rects = range.getClientRects();
+  if (rects.length) return rects[rects.length - 1]!;
+  const rect = range.getBoundingClientRect();
+  return rect.width || rect.height || rect.top || rect.left ? rect : null;
+}
+
+export function selectionEndRect(range: Range): DOMRect | null {
+  const rects = range.getClientRects();
+  if (rects.length) return rects[rects.length - 1]!;
+  const rect = range.getBoundingClientRect();
+  return rect.width || rect.height || rect.top || rect.left ? rect : null;
+}
+
 /** Flash the exact source range without changing Markdown DOM or the user's selection. */
 export function flashSelection(root: HTMLElement, anchor: AssistantSelectionAnchor): () => void {
   const range = document.createRange();
