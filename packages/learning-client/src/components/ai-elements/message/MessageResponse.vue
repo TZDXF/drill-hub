@@ -11,6 +11,7 @@ import { mermaid } from '@stream-markdown/mermaid';
 import { Markdown } from 'vue-stream-markdown';
 import 'katex/dist/katex.min.css';
 import 'vue-stream-markdown/index.css';
+import 'vue-stream-markdown/theme.css';
 import InfographicPreview from '#learning-client/components/infographic/InfographicPreview.vue';
 
 const props = defineProps<{

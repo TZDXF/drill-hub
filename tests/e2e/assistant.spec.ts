@@ -149,6 +149,64 @@ test.describe('内置学习助手', () => {
     expect(deleteRequests).toBe(2);
   });
 
+  test('Markdown 表格全屏使用不透明背景', async ({ page }) => {
+    const thread = {
+      id: 'thread-markdown-table',
+      ownerId: 'me',
+      title: '表格全屏',
+      lastMessageAt: '2026-10-25T10:00:00.000Z',
+      createdAt: '2026-10-25T10:00:00.000Z',
+      updatedAt: '2026-10-25T10:00:00.000Z',
+      revision: 1,
+    };
+    await page.route('**/api/v1/me/assistant/threads**', async (route) => {
+      const detail = new URL(route.request().url()).pathname.endsWith(`/${thread.id}`);
+      await route.fulfill({
+        json: {
+          data: detail
+            ? {
+                thread,
+                turns: [],
+                messages: [
+                  {
+                    id: 'assistant-markdown-table',
+                    threadId: thread.id,
+                    role: 'assistant',
+                    content: '| 主题 | 进度 |\n| --- | --- |\n| Vue | 80% |',
+                    status: 'complete',
+                    errorCode: null,
+                    createdAt: thread.createdAt,
+                    updatedAt: thread.updatedAt,
+                    revision: 1,
+                  },
+                ],
+                events: [],
+                activeTurn: null,
+              }
+            : [thread],
+        },
+      });
+    });
+    await login(page);
+    await page.goto('/assistant');
+
+    const table = page.locator('[data-stream-markdown="table-wrapper"]');
+    await expect(table).toContainText('Vue');
+    await table.locator('[data-stream-markdown="table-controls"] button').last().click();
+    const dialog = page.locator('[data-stream-markdown="modal"]');
+    await expect(dialog).toBeVisible();
+    // Chromium 可能将 oklch 计算为 color(srgb ...)，通过画布归一化后断言颜色及不透明度。
+    const background = await dialog.evaluate((element) => {
+      const context = document.createElement('canvas').getContext('2d');
+      if (!context) throw new Error('Canvas 2D context unavailable');
+      context.fillStyle = getComputedStyle(element).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    });
+    expect(background).toEqual([255, 255, 255, 255]);
+    await expect(dialog.locator('[data-stream-markdown="table-fullscreen"]')).toContainText('Vue');
+  });
+
   test('真实服务端：打开面板、发送消息并可见未配置模型失败', async ({ page, isMobile }) => {
     await login(page);
     // 手机视口的顶栏隐藏，助手入口是 /assistant 页面（首页快捷链接同址）。
