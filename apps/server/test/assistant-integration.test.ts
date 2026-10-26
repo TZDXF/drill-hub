@@ -281,6 +281,42 @@ describe('built-in assistant', () => {
     expect(usage[0].usage?.totalTokens).toBe(40);
   });
 
+  it('allows tool calls beyond the former per-turn API and write quotas', async () => {
+    const { app, admin } = await setupApp();
+    installProvider({
+      assistant: async (index) => {
+        if (index !== 1) return sseResponse(assistantTextRound('已创建主题。'));
+        const turn = (await app.ctx.db.list('assistantTurns', {}))[0]!;
+        await app.ctx.db.update('assistantTurns', turn.id, turn.revision, {
+          apiCalls: 100,
+          writeCalls: 30,
+        });
+        return sseResponse(
+          assistantToolCallRound('drill_hub_api', {
+            method: 'POST',
+            path: '/api/v1/agent/topics',
+            body: { title: '超过原额度后创建的主题' },
+          }),
+        );
+      },
+    });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '继续创建主题' },
+    });
+    await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+
+    expect(await app.ctx.db.list('topics', {})).toHaveLength(1);
+    const turn = (await app.ctx.db.list('assistantTurns', { threadId: thread.id }))[0]!;
+    expect(turn.status).toBe('succeeded');
+    expect(turn.apiCalls).toBe(101);
+    expect(turn.writeCalls).toBe(31);
+  });
+
   it('rejects admin and answer endpoints from the api allowlist', async () => {
     const { app, admin } = await setupApp();
     installProvider({

@@ -45,9 +45,6 @@ const ROUTE_PARAMS: Record<AssistantRouteName, string[]> = {
 
 const ROUTE_KEYS = Object.keys(ROUTE_PARAMS) as AssistantRouteName[];
 
-export const MAX_API_CALLS_PER_TURN = 100;
-export const MAX_WRITE_CALLS_PER_TURN = 30;
-
 export type AssistantToolEmitEvent = (
   type: 'ui_action',
   payload: { action: AssistantUiAction },
@@ -145,16 +142,12 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       const { internalToken, turn } = await deps.resolve(api);
       const apiCalls = turn.apiCalls + 1;
       await deps.ctx.db.update('assistantTurns', turn.id, turn.revision, { apiCalls });
-      if (apiCalls > MAX_API_CALLS_PER_TURN)
-        return textResult('本轮对话的 API 调用次数已达上限', true);
       const method: string = params.method;
       if (method !== 'GET') {
         const writeCalls = turn.writeCalls + 1;
         const latest = await deps.ctx.db.get('assistantTurns', turn.id);
         if (latest)
           await deps.ctx.db.update('assistantTurns', turn.id, latest.revision, { writeCalls });
-        if (writeCalls > MAX_WRITE_CALLS_PER_TURN)
-          return textResult('本轮对话的写操作次数已达上限', true);
       }
       const rawPath: string = params.path;
       if (!rawPath.startsWith('/api/v1/') || rawPath.includes('..') || rawPath.includes('\0'))

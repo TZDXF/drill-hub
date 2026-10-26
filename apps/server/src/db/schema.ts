@@ -651,7 +651,7 @@ export class OrderAssistantQueue1793000000001 implements MigrationInterface {
   }
 }
 
-/** Pi Durable 持久会话绑定与跨重启可追踪的工具调用限额。 */
+/** Pi Durable 持久会话绑定与跨重启可追踪的工具调用用量。 */
 export class MigrateAssistantToDurable1793000000002 implements MigrationInterface {
   name = 'MigrateAssistantToDurable1793000000002';
   async up(runner: QueryRunner) {
