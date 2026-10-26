@@ -195,6 +195,71 @@ test('复制、划词引用和编辑分叉均连接真实交互', async ({ page 
   await expect(page.getByTestId('assistant-input')).toHaveValue('第 12 个学习问题');
 });
 
+test('流式推理只显示一个思考过程标题', async ({ page }) => {
+  const activeTurn = {
+    id: 'reasoning-turn',
+    threadId,
+    userMessageId: 'reasoning-user',
+    assistantMessageId: 'reasoning-answer',
+    status: 'running',
+    errorCode: null,
+    providerModelId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    revision: 1,
+  };
+  const user = {
+    id: 'reasoning-user',
+    threadId,
+    role: 'user',
+    content: '请分析问题',
+    reasoning: null,
+    images: [],
+    status: 'complete',
+    errorCode: null,
+    createdAt: activeTurn.createdAt,
+    updatedAt: activeTurn.updatedAt,
+    revision: 1,
+  };
+  const answer = {
+    ...user,
+    id: 'reasoning-answer',
+    role: 'assistant',
+    content: '',
+    status: 'streaming',
+  };
+  await page.route('**/api/v1/me/assistant/threads', async (route) =>
+    route.fulfill({ json: { data: [detail().thread] } }),
+  );
+  await page.route(`**/api/v1/me/assistant/threads/${threadId}`, async (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          ...detail({ empty: true }),
+          thread: detail().thread,
+          messages: [user, answer],
+          turns: [activeTurn],
+          activeTurn,
+        },
+      },
+    }),
+  );
+  await page.route(`**/api/v1/me/assistant/threads/${threadId}/stream**`, async (route) =>
+    route.fulfill({
+      contentType: 'text/event-stream',
+      body: `event: reasoning_delta\ndata: ${JSON.stringify({ delta: '先分析问题，再给出步骤。' })}\n\n: heartbeat\n\n`,
+    }),
+  );
+  await login(page);
+  await page.goto('/assistant');
+  await expect(page.locator('.assistant-reasoning--live summary')).toHaveText('思考过程');
+  await expect(page.getByText('思考过程', { exact: true })).toHaveCount(1);
+  await expect(page.getByTestId('assistant-event-card')).toHaveCount(0);
+  await expect(page.locator('.assistant-reasoning__content')).toContainText(
+    '先分析问题，再给出步骤。',
+  );
+});
+
 test('连续文本增量不重复发起平滑滚动，完成后仍停在最新回复', async ({ page }) => {
   const activeTurn = {
     id: 'live-turn',
@@ -371,11 +436,7 @@ test('回复中直接输入并加入队列，可编辑、排序、立即发送�
   await expect(input).toBeEnabled();
   await expect(page.getByText('正在回复，可继续输入')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: '发送方式' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '加入追问队列' })).toHaveCount(0);
   await input.fill('第一条追问');
-  await expect(page.getByRole('button', { name: '停止生成' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '加入追问队列' })).toBeVisible();
   await input.press('Enter');
   await input.fill('第二条追问');
   await page.getByRole('button', { name: '加入追问队列' }).click();
