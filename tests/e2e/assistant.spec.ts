@@ -448,4 +448,43 @@ test.describe('内置学习助手', () => {
     await expect(page.getByTestId('assistant-panel')).toBeVisible();
     await expect(page.locator('.app-layout--assistant')).toBeVisible();
   });
+
+  test('助手侧边栏仅在学习路由展示', async ({ page, isMobile }) => {
+    await login(page);
+    if (isMobile) {
+      await page.goto('/assistant');
+      await expect(page.getByTestId('assistant-panel')).toBeVisible();
+      await page
+        .locator('.bottom-nav a[href="/settings"]')
+        .evaluate((link) => (link as HTMLAnchorElement).click());
+      await expect(page).toHaveURL(/\/settings$/);
+      await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+      await expect(page.getByTestId('assistant-toggle')).toHaveCount(0);
+      return;
+    }
+
+    await page.getByTestId('assistant-toggle').click();
+    await expect(page.getByTestId('assistant-panel')).toBeVisible();
+
+    for (const path of [
+      '/archive',
+      '/settings',
+      '/token-usage',
+      '/settings/agent-tokens',
+      '/admin/users',
+      '/admin/settings/models',
+      '/admin/settings/assistant',
+      '/admin/audit',
+      '/admin/grading',
+    ]) {
+      await page.locator(`.sidebar-nav a[href="${path}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+      await expect(page.getByTestId('assistant-toggle')).toHaveCount(0);
+    }
+
+    await page.locator('.sidebar-nav a[href="/topics"]').click();
+    await expect(page.getByTestId('assistant-panel')).toBeVisible();
+    await expect(page.getByTestId('assistant-toggle')).toBeAttached();
+  });
 });

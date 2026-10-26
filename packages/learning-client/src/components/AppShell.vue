@@ -33,9 +33,11 @@ const route = useRoute();
 const router = useRouter();
 const immersive = computed(() => Boolean(route.meta.immersive));
 const focused = computed(() => Boolean(route.meta.focus));
+const assistantAvailable = computed(() => Boolean(route.meta.assistantPanel));
 const assistantActive = computed(
   () =>
     assistant.state.open &&
+    assistantAvailable.value &&
     !immersive.value &&
     Boolean(learning.state.user) &&
     assistant.state.layoutMode !== 'content',
@@ -225,7 +227,7 @@ async function logout() {
       <header class="topbar">
         <h2>{{ title }}</h2>
         <div class="flex items-center gap-3.5">
-          <AppTooltip :label="t('components.assistant.open')">
+          <AppTooltip v-if="assistantAvailable" :label="t('components.assistant.open')">
             <button
               class="icon-button"
               type="button"
