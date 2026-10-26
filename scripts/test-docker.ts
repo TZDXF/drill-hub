@@ -148,7 +148,7 @@ async function main() {
   let cleanupFailed = false;
   try {
     let base = await start(true);
-    // 在镜像的普通用户和真实数据卷下构建助手会话，不调用模型供应商。
+    // 在镜像的普通用户和真实数据卷下初始化助手持久运行时，不调用模型供应商。
     docker(
       'exec',
       container,
@@ -157,28 +157,33 @@ async function main() {
       '-e',
       `
         import assert from 'node:assert/strict';
-        import { readFile } from 'node:fs/promises';
+        import { stat } from 'node:fs/promises';
         import { dirname, join } from 'node:path';
-        import { PiSessionFactory } from './apps/server/dist/modules/assistant/pi-session.js';
+        import { DurableAssistantRuntime } from './apps/server/dist/modules/assistant/durable-runtime.js';
         const connection = {
-          id: 'docker-smoke', enabled: true, baseUrl: 'https://provider.invalid/v1',
+          id: 'docker-smoke', displayName: 'Smoke provider', enabled: true,
+          baseUrl: 'https://provider.invalid/v1',
           encryptedApiKey: null,
         };
         const model = {
           id: 'docker-model', connectionId: connection.id, modelKey: 'smoke-model',
           displayName: 'Smoke model', enabled: true, createdAt: '2026-01-01T00:00:00Z',
         };
-        const factory = new PiSessionFactory({
+        const runtime = new DurableAssistantRuntime({
           config: { databasePath: process.env.DATABASE_PATH },
           db: { list: async (table) => ({
             modelConnections: [connection], providerModels: [model],
             assistantSkills: [], mcpServers: [],
           })[table] ?? [] },
-        });
-        const { session } = await factory.buildSession({ app: {}, customTools: [] });
-        session.dispose();
-        const modelsPath = join(dirname(process.env.DATABASE_PATH), 'assistant-runtime', 'models.json');
-        assert.match(await readFile(modelsPath, 'utf8'), /smoke-model/);
+        }, {
+          resolveTool: async () => { throw new Error('Smoke test must not execute tools'); },
+          onModel: () => {},
+          onBatch: async () => {},
+        }, {});
+        await runtime.start([], []);
+        await runtime.close();
+        const durablePath = join(dirname(process.env.DATABASE_PATH), 'assistant-runtime', 'durable.sqlite');
+        assert.ok((await stat(durablePath)).size > 0, '助手持久运行时应创建 SQLite 数据库');
       `,
     );
     const deployment = docker('exec', container, 'cat', '/app/deploy/docker-compose.yml');
