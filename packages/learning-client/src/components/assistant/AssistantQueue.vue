@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AssistantQueueMode, AssistantQueuedMessage } from '@drill-hub/contracts';
 import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppTextarea from '#learning-client/components/AppTextarea.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 const props = defineProps<{ items: AssistantQueuedMessage[] }>();
 const emit = defineEmits<{
@@ -65,7 +66,7 @@ function drop(targetId: string) {
         ><AppIcon name="grip" :size="14"
       /></span>
       <template v-if="editing === item.id">
-        <textarea
+        <AppTextarea
           v-model="draft"
           rows="2"
           :aria-label="t('components.assistant.editQueue')"

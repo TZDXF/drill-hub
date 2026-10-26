@@ -26,6 +26,7 @@ import {
 import { useConversationScroll } from '#learning-client/assistant/useConversationScroll';
 import { errorMessage } from '#learning-client/utils';
 import AppIcon from '#learning-client/components/AppIcon.vue';
+import AppTextarea from '#learning-client/components/AppTextarea.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import AppDialog from '#learning-client/components/AppDialog.vue';
 import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
@@ -525,7 +526,7 @@ onBeforeUnmount(() => {
       :title="t('components.assistant.editQuote')"
       @update:open="!$event && (quoteToEdit = null)"
     >
-      <textarea
+      <AppTextarea
         v-model="quoteComment"
         class="assistant-quote-comment"
         rows="3"
