@@ -300,6 +300,10 @@ export const ASSISTANT_API_OPERATIONS: ApiOperation[] = [
 ];
 
 const RESOURCE_NOTES: Partial<Record<Resource, string>> = {
+  assessments: [
+    '组卷必须使用正确的 JSON 类型：questionVersion、durationSeconds 是数字，maxScore 是字符串，不能写成数字。',
+    '完整创建练习 body 示例：{kind:"practice",title:"阶段练习",durationSeconds:1800,items:[{questionId:"替换为真实题目ID",questionVersion:1,maxScore:"10.00"}]}。创建考试时将 kind 改为 "exam"。',
+  ].join('\n'),
   plans: [
     'Task: {title, kind: reading|practice|exam|manual, targetId?: 同主题内容或评估ID, scheduledDate?: YYYY-MM-DD|null, estimatedMinutes?: 正整数|null}。manual 无 targetId，其他类型必须提供 targetId。',
     '先创建内容/试卷，再创建引用它们的计划。阶段只是任务分组，不是可打开的内容；每个阶段至少一项任务，不要只创建阶段标题。创建后读取计划核对任务与目标。',

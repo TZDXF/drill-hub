@@ -39,6 +39,15 @@ describe('assistant learning API coverage', () => {
     expect(help).toContain('不要创建“探测题”测试格式');
   });
 
+  it('documents exact JSON types and a complete assessment example', () => {
+    const help = assistantApiHelp('assessments');
+    expect(help).toContain('questionVersion、durationSeconds 是数字');
+    expect(help).toContain('maxScore 是字符串，不能写成数字');
+    expect(help).toContain(
+      '{kind:"practice",title:"阶段练习",durationSeconds:1800,items:[{questionId:"替换为真实题目ID",questionVersion:1,maxScore:"10.00"}]}',
+    );
+  });
+
   it('documents existing endpoints and covers every learner route', () => {
     const documented = new Set(
       ASSISTANT_API_OPERATIONS.map((operation) => {
