@@ -40,6 +40,63 @@ describe('server connection and request isolation', () => {
       'X-CSRF-Token': 'test-csrf',
     });
   });
+  it('replays a mutating request once after refreshing a rotated CSRF token', async () => {
+    let call = 0;
+    const mock = vi.fn<typeof fetch>(async (_url, init) => {
+      call += 1;
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      if (call === 1 && headers['X-CSRF-Token'] === 'stale-token')
+        return new Response(
+          JSON.stringify({ error: { code: 'CSRF_REQUIRED', message: '过期' }, meta: {} }),
+          { status: 403 },
+        );
+      return new Response(
+        JSON.stringify({ data: { ok: true }, meta: { requestId: 'test', serverTime: '' } }),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const refreshCsrf = vi.fn(async () => 'fresh-token');
+    const client = new ApiClient({
+      baseUrl: 'https://study.example.org',
+      credentials: 'omit',
+      fetch: mock as typeof fetch,
+      refreshCsrf,
+    });
+    client.setCsrfToken('stale-token');
+    expect(await client.post('/topics', { title: 'test' })).toEqual({ ok: true });
+    expect(refreshCsrf).toHaveBeenCalledTimes(1);
+    expect(mock).toHaveBeenCalledTimes(2);
+    const replayHeaders = (mock.mock.calls[1] as unknown as [URL, RequestInit])[1]
+      .headers as Record<string, string>;
+    expect(replayHeaders['X-CSRF-Token']).toBe('fresh-token');
+  });
+
+  it('does not replay GET requests or retry when refresh fails', async () => {
+    const mock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { code: 'CSRF_REQUIRED', message: '过期' }, meta: {} }),
+          { status: 403 },
+        ),
+    );
+    const refreshCsrf = vi.fn(async () => null);
+    const client = new ApiClient({
+      baseUrl: 'https://study.example.org',
+      credentials: 'omit',
+      fetch: mock as typeof fetch,
+      refreshCsrf,
+    });
+    client.setCsrfToken('stale-token');
+    await expect(client.post('/topics', {})).rejects.toMatchObject({ code: 'CSRF_REQUIRED' });
+    // 尝试刷新一次但拿不到新令牌（返回 null），不重放。
+    expect(refreshCsrf).toHaveBeenCalledTimes(1);
+    expect(mock).toHaveBeenCalledTimes(1);
+    // GET 请求不触发刷新重放。
+    await expect(client.get('/topics')).rejects.toMatchObject({ code: 'CSRF_REQUIRED' });
+    expect(refreshCsrf).toHaveBeenCalledTimes(1);
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects paths that escape the server and decodes structured errors', async () => {
     const client = new ApiClient({
       baseUrl: 'https://study.example.org/learn',

@@ -371,4 +371,97 @@ describe('temporary public answer links', () => {
     expect(expired.statusCode).toBe(410);
     expect(expired.json().error.code).toBe('ANSWER_LINK_EXPIRED');
   });
+
+  it('lists owner links with assessment info and status', async () => {
+    const { app, learner, createLink } = await setup();
+    const created = await createLink();
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/answer-links',
+      headers: learner,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().data;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: created.id,
+      assessmentTitle: '临时考试',
+      status: 'active',
+      revokedAt: null,
+    });
+    expect(items[0].topicId).toBeTruthy();
+    expect(JSON.stringify(items)).not.toContain('secretHash');
+    expect(JSON.stringify(items)).not.toContain('answerUrl');
+  });
+
+  it('marks expired links and lets the owner revoke active ones', async () => {
+    const { app, user, learner, createLink } = await setup();
+    const active = await createLink();
+    // 直接插入一条已过期链接，验证状态推导。
+    const stored = await app.ctx.db.get('answerLinks', active.id);
+    await app.ctx.db.insert('answerLinks', {
+      ...stored!,
+      id: 'link-expired-1',
+      secretHash: hashSecret(randomSecret()),
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/answer-links',
+      headers: learner,
+    });
+    const byId = new Map(
+      (listed.json().data as { id: string; status: string }[]).map((item) => [
+        item.id,
+        item.status,
+      ]),
+    );
+    expect(byId.get(active.id)).toBe('active');
+    expect(byId.get('link-expired-1')).toBe('expired');
+
+    const revoked = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/answer-links/${active.id}/revoke`,
+      headers: learner,
+    });
+    expect(revoked.statusCode).toBe(200);
+    const afterList = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/answer-links',
+      headers: learner,
+    });
+    expect(
+      (afterList.json().data as { id: string; status: string }[]).find(
+        (item) => item.id === active.id,
+      )!.status,
+    ).toBe('revoked');
+
+    // 吊销后原令牌立即失效。
+    const token = new URL(active.answerUrl).hash.slice(1);
+    const rejected = await app.inject({
+      url: '/api/v1/public/answer',
+      headers: { 'x-answer-link-token': token },
+    });
+    expect(rejected.statusCode).toBe(410);
+
+    // 重复吊销幂等，只写一条审计。
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/answer-links/${active.id}/revoke`,
+      headers: learner,
+    });
+    expect(again.statusCode).toBe(200);
+    const audits = await app.ctx.db.list('auditLogs', { ownerId: user.id });
+    expect(audits.filter((entry) => entry.action === 'answer-link.revoked')).toHaveLength(1);
+  });
+
+  it('returns 404 for foreign or unknown links', async () => {
+    const { app, learner } = await setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/answer-links/no-such-link/revoke',
+      headers: learner,
+    });
+    expect(response.statusCode).toBe(404);
+  });
 });

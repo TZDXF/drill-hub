@@ -17,6 +17,7 @@ import {
   OrderAssistantQueue1793000000001,
   MigrateAssistantToDurable1793000000002,
   AddRateLimits1793100000000,
+  DropSessionCsrfHash1793100000001,
 } from '#server/db/schema.js';
 import type {
   AuditLogView,
@@ -79,6 +80,7 @@ export class Database {
         OrderAssistantQueue1793000000001,
         MigrateAssistantToDurable1793000000002,
         AddRateLimits1793100000000,
+        DropSessionCsrfHash1793100000001,
       ],
       synchronize: false,
       logging: false,

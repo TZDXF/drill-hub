@@ -74,6 +74,18 @@ export function createLearningContext(platform: ClientPlatform) {
       baseUrl: connection.baseUrl,
       credentials: platform.kind === 'web' ? 'include' : 'omit',
       getAccessToken: () => accessToken,
+      // Web CSRF 令牌按时间窗轮换；被拒时重取一次并重放。
+      refreshCsrf:
+        platform.kind === 'web'
+          ? async () => {
+              try {
+                const csrf = await direct<CsrfResult>('get', '/auth/csrf');
+                return csrf.csrfToken;
+              } catch {
+                return null;
+              }
+            }
+          : undefined,
     });
   }
 

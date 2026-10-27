@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '#server/app.js';
-import { createUser } from '#server/modules/auth/index.js';
+import { CSRF_WINDOW_MS, createUser, csrfTokenFor } from '#server/modules/auth/index.js';
 import { SecretVault } from '#server/core/security.js';
 const ADMIN = 'test_admin';
 const PASSWORD = 'Test-only-password-42!';
@@ -123,6 +123,42 @@ describe('accounts, sessions and scope boundaries', () => {
     expect(rejected.statusCode).toBe(403);
     const csrf = await app.inject({ url: '/api/v1/auth/csrf', headers: session.headers });
     expect(csrf.json().data.csrfToken).toBe(session.value.csrfToken);
+  });
+  it('rotates CSRF tokens per time window and accepts only the previous one', async () => {
+    const session = await login();
+    const sessionId = session.headers.cookie.split('.')[1]!;
+    const window = Math.floor(Date.now() / CSRF_WINDOW_MS);
+    const mutate = async (token: string) =>
+      app.inject({
+        method: 'PATCH',
+        url: '/api/v1/me',
+        headers: { cookie: session.headers.cookie, 'x-csrf-token': token },
+        payload: { displayName: '窗口测试' },
+      });
+    // 登录返回的当前窗令牌有效。
+    expect((await mutate(session.value.csrfToken!)).statusCode).toBe(200);
+    // 上一窗令牌仍然有效（轮换宽限）。
+    const previous = csrfTokenFor(app.ctx.config, sessionId, window - 1);
+    expect((await mutate(previous)).statusCode).toBe(200);
+    // 两窗之前的令牌失效。
+    const stale = csrfTokenFor(app.ctx.config, sessionId, window - 2);
+    expect((await mutate(stale)).statusCode).toBe(403);
+    expect((await mutate(stale)).json().error.code).toBe('CSRF_REQUIRED');
+    // /auth/csrf 发放的令牌有效。
+    const refreshed = await app.inject({
+      url: '/api/v1/auth/csrf',
+      headers: { cookie: session.headers.cookie },
+    });
+    expect((await mutate(refreshed.json().data.csrfToken)).statusCode).toBe(200);
+    // mobile 令牌不受 CSRF 校验影响。
+    const mobile = await login(ADMIN, PASSWORD, 'mobile');
+    const mobileWrite = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/me',
+      headers: { authorization: `Bearer ${mobile.value.accessToken}` },
+      payload: { displayName: '移动端' },
+    });
+    expect(mobileWrite.statusCode).toBe(200);
   });
   it('enforces password length limits', async () => {
     const admin = await login();

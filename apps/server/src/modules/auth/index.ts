@@ -19,10 +19,20 @@ import { object, revision, text } from '#server/core/validation.js';
 import { INTERNAL_TOKEN_PREFIX, verifyInternalToken } from '#server/core/internal-auth.js';
 const COOKIE = 'dh_session';
 const dummyPassword = passwordHash(randomSecret());
-const csrf = (config: ServerConfig, sessionId: string) =>
+/**
+ * CSRF 令牌按会话 + 时间窗派生：每 30 分钟轮换一次，服务端同时接受当前窗与上一窗，
+ * 客户端收到 403 CSRF_REQUIRED 后经 /auth/csrf 重取即可，无需落库。
+ */
+const CSRF_WINDOW_MS = 30 * 60 * 1000;
+const csrfWindow = (at: number) => Math.floor(at / CSRF_WINDOW_MS);
+const csrfTokenFor = (config: ServerConfig, sessionId: string, window: number) =>
   createHmac('sha256', Buffer.from(config.encryptionKey, 'hex'))
-    .update('csrf:' + sessionId)
+    .update(`csrf:${sessionId}:${window}`)
     .digest('base64url');
+const csrf = (config: ServerConfig, sessionId: string, at = Date.now()) =>
+  csrfTokenFor(config, sessionId, csrfWindow(at));
+/** 供安全测试构造相邻时间窗的令牌。 */
+export { CSRF_WINDOW_MS, csrfTokenFor };
 export function userView(user: UserRecord): UserView {
   const { passwordHash: _secret, ...view } = user;
   return view;
@@ -106,7 +116,13 @@ export function createAuthFunctions(
     };
     if (session.channel === 'web' && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
       const token = request.headers['x-csrf-token'];
-      if (typeof token !== 'string' || !session.csrfHash || !sameSecret(token, session.csrfHash))
+      const at = Date.now();
+      const current = hashSecret(csrfTokenFor(config, session.id, csrfWindow(at)));
+      const previous = hashSecret(csrfTokenFor(config, session.id, csrfWindow(at) - 1));
+      if (
+        typeof token !== 'string' ||
+        (!sameSecret(token, current) && !sameSecret(token, previous))
+      )
         throw new AppError(403, 'CSRF_REQUIRED', '安全校验失败，请刷新页面后重试');
     }
     return {
@@ -243,7 +259,6 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
       secretHash: hashSecret(raw),
       refreshHash: refreshToken ? hashSecret(refreshToken) : null,
       usedRefreshHashes: [],
-      csrfHash: csrfToken ? hashSecret(csrfToken) : null,
       expiresAt: new Date(
         Date.now() + (channel === 'web' ? 12 * 3600000 : 15 * 60000),
       ).toISOString(),

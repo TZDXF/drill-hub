@@ -34,6 +34,11 @@ export interface ApiClientOptions {
   credentials?: RequestCredentials;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Web 渠道 CSRF 令牌按时间窗轮换；收到 403 CSRF_REQUIRED 时调用一次以重新取令牌并重放请求。
+   * 返回 null 表示取不到（如未登录），放弃重放。
+   */
+  refreshCsrf?: () => Promise<string | null>;
 }
 export interface RequestOptions {
   method?: string;
@@ -75,59 +80,84 @@ export class ApiClient {
     )
       throw new ApiError('INVALID_PATH', 'API 路径不能离开当前服务器');
     const method = options.method ?? 'GET';
-    const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-    const access = this.options.getAccessToken?.();
-    if (access) headers.Authorization = 'Bearer ' + access;
-    if (this.csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method))
-      headers['X-CSRF-Token'] = this.csrfToken;
-    const timer = new AbortController();
-    const handle = setTimeout(
-      () => timer.abort(),
-      options.timeoutMs ?? this.options.timeoutMs ?? 20000,
-    );
-    const signals = [
-      this.controller.signal,
-      timer.signal,
-      ...(options.signal ? [options.signal] : []),
-    ];
-    try {
-      const response = await (this.options.fetch ?? fetch)(target, {
-        method,
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        credentials: this.options.credentials ?? 'same-origin',
-        redirect: 'error',
-        signal: AbortSignal.any(signals),
-      });
-      if (response.status === 204) return undefined as T;
-      let result: ApiResponse<T> | ApiFailure;
+    const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+    let timedOut = false;
+    const execute = async (): Promise<T> => {
+      timedOut = false;
+      const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
+      if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+      const access = this.options.getAccessToken?.();
+      if (access) headers.Authorization = 'Bearer ' + access;
+      if (this.csrfToken && mutating) headers['X-CSRF-Token'] = this.csrfToken;
+      const timer = new AbortController();
+      const handle = setTimeout(
+        () => {
+          timedOut = true;
+          timer.abort();
+        },
+        options.timeoutMs ?? this.options.timeoutMs ?? 20000,
+      );
+      const signals = [
+        this.controller.signal,
+        timer.signal,
+        ...(options.signal ? [options.signal] : []),
+      ];
       try {
-        result = (await response.json()) as ApiResponse<T> | ApiFailure;
-      } catch {
-        throw new ApiError('INVALID_RESPONSE', '服务器未返回有效的应用响应', response.status);
+        const response = await (this.options.fetch ?? fetch)(target, {
+          method,
+          headers,
+          body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          credentials: this.options.credentials ?? 'same-origin',
+          redirect: 'error',
+          signal: AbortSignal.any(signals),
+        });
+        if (response.status === 204) return undefined as T;
+        let result: ApiResponse<T> | ApiFailure;
+        try {
+          result = (await response.json()) as ApiResponse<T> | ApiFailure;
+        } catch {
+          throw new ApiError('INVALID_RESPONSE', '服务器未返回有效的应用响应', response.status);
+        }
+        if (!response.ok || 'error' in result) {
+          if ('error' in result)
+            throw new ApiError(
+              result.error.code,
+              result.error.message,
+              response.status,
+              result.error.fields,
+            );
+          throw new ApiError('REQUEST_FAILED', '请求失败', response.status);
+        }
+        if (!('data' in result))
+          throw new ApiError('INVALID_RESPONSE', '服务器响应格式不正确', response.status);
+        return result.data;
+      } finally {
+        clearTimeout(handle);
       }
-      if (!response.ok || 'error' in result) {
-        if ('error' in result)
-          throw new ApiError(
-            result.error.code,
-            result.error.message,
-            response.status,
-            result.error.fields,
-          );
-        throw new ApiError('REQUEST_FAILED', '请求失败', response.status);
-      }
-      if (!('data' in result))
-        throw new ApiError('INVALID_RESPONSE', '服务器响应格式不正确', response.status);
-      return result.data;
+    };
+    try {
+      return await execute();
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === 'CSRF_REQUIRED' &&
+        mutating &&
+        !timedOut &&
+        !this.controller.signal.aborted &&
+        !options.signal?.aborted &&
+        this.options.refreshCsrf
+      ) {
+        const token = await this.options.refreshCsrf();
+        if (token !== null) {
+          this.setCsrfToken(token);
+          return await execute();
+        }
+      }
       if (error instanceof ApiError) throw error;
       if (this.controller.signal.aborted || options.signal?.aborted)
         throw new ApiError('REQUEST_CANCELLED', '请求已取消');
-      if (timer.signal.aborted) throw new ApiError('REQUEST_TIMEOUT', '连接超时，请稍后重试');
+      if (timedOut) throw new ApiError('REQUEST_TIMEOUT', '连接超时，请稍后重试');
       throw new ApiError('NETWORK_ERROR', '无法连接服务器，请检查网络、地址或传输设置');
-    } finally {
-      clearTimeout(handle);
     }
   }
   get<T>(path: string, options: Omit<RequestOptions, 'method' | 'body'> = {}) {
@@ -141,6 +171,9 @@ export class ApiClient {
   }
   put<T>(path: string, body?: unknown, options: Omit<RequestOptions, 'method' | 'body'> = {}) {
     return this.request<T>(path, { ...options, method: 'PUT', body });
+  }
+  delete<T>(path: string, body?: unknown, options: Omit<RequestOptions, 'method' | 'body'> = {}) {
+    return this.request<T>(path, { ...options, method: 'DELETE', body });
   }
   /**
    * 订阅服务端 SSE 流（如内置助手事件流）。长连接不设默认超时；

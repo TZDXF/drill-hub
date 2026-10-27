@@ -7,8 +7,9 @@ import type {
   PublicAssessmentSummary,
 } from '@drill-hub/contracts';
 import type { Actor, AppContext } from '#server/core/context.js';
-import { baseRecord } from '#server/core/ids.js';
+import { baseRecord, now } from '#server/core/ids.js';
 import { hashSecret, randomSecret } from '#server/core/security.js';
+import { AppError } from '#server/core/errors.js';
 import type { Database } from '#server/db/database.js';
 import type { AnswerLinkRecord } from '#server/db/records.js';
 import {
@@ -174,6 +175,61 @@ export function registerAnswerLinkRoutes(app: FastifyInstance, ctx: AppContext):
     reply.code(201);
     return { data: created };
   });
+
+  app.get(`${API_PREFIX}/me/answer-links`, async (request) => {
+    const actor = await ctx.requireUser(request);
+    const links = await ctx.db.list('answerLinks', { ownerId: actor.userId });
+    const assessments = await ctx.db.list('assessments', { ownerId: actor.userId });
+    const byId = new Map(assessments.map((assessment) => [assessment.id, assessment]));
+    const now = Date.now();
+    const data = links.map((link) => {
+      const assessment = byId.get(link.assessmentId);
+      const status =
+        link.revokedAt !== null
+          ? ('revoked' as const)
+          : Date.parse(link.expiresAt) <= now
+            ? ('expired' as const)
+            : ('active' as const);
+      return {
+        id: link.id,
+        createdAt: link.createdAt,
+        updatedAt: link.updatedAt,
+        revision: link.revision,
+        topicId: assessment?.topicId ?? '',
+        assessmentId: link.assessmentId,
+        assessmentTitle: assessment?.title ?? '',
+        purpose: link.purpose,
+        taskId: link.taskId,
+        expiresAt: link.expiresAt,
+        revokedAt: link.revokedAt,
+        status,
+      };
+    });
+    return { data };
+  });
+
+  app.post<{ Params: { id: string } }>(
+    `${API_PREFIX}/me/answer-links/:id/revoke`,
+    async (request) => {
+      const actor = await ctx.requireUser(request);
+      const link = await ctx.db.get('answerLinks', request.params.id);
+      if (!link || link.ownerId !== actor.userId)
+        throw new AppError(404, 'NOT_FOUND', '答题链接不存在');
+      if (link.revokedAt === null)
+        await ctx.db.transaction(async (tx) => {
+          await tx.update('answerLinks', link.id, link.revision, { revokedAt: now() });
+          await ctx.audit(
+            actor,
+            'answer-link.revoked',
+            'assessment',
+            link.assessmentId,
+            { answerLinkId: link.id },
+            tx,
+          );
+        });
+      return { data: { revoked: true } };
+    },
+  );
 
   app.get(`${API_PREFIX}/public/answer`, async (request) => {
     const link = await resolveAnswerLink(request, ctx.db);

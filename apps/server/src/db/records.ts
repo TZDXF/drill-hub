@@ -33,7 +33,6 @@ export interface SessionRecord extends BaseRecord {
   secretHash: string;
   refreshHash: string | null;
   usedRefreshHashes: string[];
-  csrfHash: string | null;
   expiresAt: string;
   refreshExpiresAt: string | null;
   revokedAt: string | null;
