@@ -8,7 +8,8 @@ export type Scope =
   | 'grading:request'
   | 'grade:write'
   | 'attempt:write'
-  | 'archive:write';
+  | 'archive:write'
+  | 'topic:purge';
 export const AGENT_SCOPES: Scope[] = [
   'read',
   'content:write',
@@ -17,6 +18,7 @@ export const AGENT_SCOPES: Scope[] = [
   'grade:write',
   'attempt:write',
   'archive:write',
+  'topic:purge',
 ];
 export interface ApiMeta {
   requestId: string;
@@ -447,6 +449,82 @@ export interface WrongQuestionListItem extends WrongQuestion {
   stem: string;
   topicTitle: string;
   type: QuestionType | null;
+}
+
+/** 站内搜索命中的资源类型；题目详情以所属主题页承载。 */
+export type SearchResourceType = 'topic' | 'content' | 'plan' | 'question' | 'assessment';
+export interface SearchResult extends BaseRecord {
+  resourceType: SearchResourceType;
+  topicId: string;
+  title: string;
+  /** 命中位置附近的纯文本摘录；标题命中时可能为 null。 */
+  snippet: string | null;
+  archived: boolean;
+}
+export interface SearchOutcome {
+  query: string;
+  counts: Record<SearchResourceType, number>;
+  results: SearchResult[];
+}
+
+/** 永久删除影响预览：按子资源统计将被级联删除的记录数。 */
+export interface PurgeCounts {
+  contents: number;
+  plans: number;
+  questions: number;
+  questionVersions: number;
+  assessments: number;
+  attempts: number;
+  wrongQuestions: number;
+  answerLinks: number;
+  gradingJobs: number;
+}
+export interface PurgePreview {
+  topic: Pick<Topic, 'id' | 'title' | 'revision' | 'archivedAt'>;
+  counts: PurgeCounts;
+  total: number;
+}
+
+/** 免登录答题链接管理视图；临时秘钥从不落库，因此无法回显完整链接。 */
+export interface AnswerLinkListItem extends BaseRecord {
+  topicId: string;
+  assessmentId: string;
+  assessmentTitle: string;
+  purpose: Attempt['purpose'];
+  taskId: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  status: 'active' | 'revoked' | 'expired';
+}
+
+/** GET /me/export 返回的用户学习数据快照；不含助手会话、评分任务与日志类数据。 */
+export interface ExportBundle {
+  formatVersion: 1;
+  exportedAt: string;
+  account: { userId: string; username: string; displayName: string };
+  topics: Topic[];
+  contents: Content[];
+  plans: LearningPlan[];
+  questions: Question[];
+  questionVersions: QuestionVersionItem[];
+  assessments: Assessment[];
+  attempts: Attempt[];
+  wrongQuestions: WrongQuestion[];
+  answerLinks: ExportAnswerLink[];
+}
+export interface QuestionVersionItem extends BaseRecord {
+  ownerId: string;
+  questionId: string;
+  version: number;
+  definition: QuestionDefinition;
+}
+export interface ExportAnswerLink extends BaseRecord {
+  purpose: Attempt['purpose'];
+  taskId: string | null;
+  assessmentId: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  attemptId: string | null;
 }
 
 /** Provider-reported counts, never an estimate from answer length. */

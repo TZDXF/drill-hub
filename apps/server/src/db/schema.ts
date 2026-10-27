@@ -270,6 +270,10 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     content: 'text',
     enabled: 'boolean',
   },
+  rateLimits: {
+    count: 'integer',
+    resetAt: 'text',
+  },
 };
 const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
   users: [['username']],
@@ -325,6 +329,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
           'searchProviders',
           'mcpServers',
           'assistantSkills',
+          'rateLimits',
         ].includes(name),
     )) {
       const all = { ...common, ...fields };
@@ -375,6 +380,7 @@ export class InitialSchema1792195200000 implements MigrationInterface {
             'searchProviders',
             'mcpServers',
             'assistantSkills',
+            'rateLimits',
           ].includes(name),
       )
       .reverse())
@@ -678,5 +684,27 @@ export class MigrateAssistantToDurable1793000000002 implements MigrationInterfac
     for (const name of ['apiCalls', 'writeCalls']) {
       if (turns?.findColumnByName(name)) await runner.dropColumn('assistantTurns', name);
     }
+  }
+}
+
+/** 多实例共享的限流桶；id 即桶键。 */
+export class AddRateLimits1793100000000 implements MigrationInterface {
+  name = 'AddRateLimits1793100000000';
+  async up(runner: QueryRunner) {
+    if (await runner.hasTable('rateLimits')) return;
+    await runner.createTable(
+      new Table({
+        name: 'rateLimits',
+        columns: Object.entries({ ...common, ...definitions.rateLimits }).map(([name, field]) => ({
+          name,
+          type: field.replace('?', ''),
+          isPrimary: name === 'id',
+          isNullable: field.endsWith('?'),
+        })),
+      }),
+    );
+  }
+  async down(runner: QueryRunner) {
+    if (await runner.hasTable('rateLimits')) await runner.dropTable('rateLimits');
   }
 }

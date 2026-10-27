@@ -45,6 +45,20 @@ export const ASSISTANT_API_OPERATIONS: ApiOperation[] = [
     description: '修改主题。body: {expectedRevision: integer, title?: string, goalText?: string}',
   },
   {
+    resource: 'topics',
+    method: 'GET',
+    path: '/search',
+    description:
+      '站内搜索本人学习资源。query: q(必填,1-100字),types?(topic,content,plan,question,assessment 逗号分隔),archiveState?(active 默认/archived/all)',
+  },
+  {
+    resource: 'topics',
+    method: 'GET',
+    path: '/topics/{id}/purge-preview',
+    description:
+      '永久删除影响预览：返回主题 revision 与将级联删除的子资源计数。仅展示，不执行删除；助手无永久删除能力',
+  },
+  {
     resource: 'contents',
     method: 'GET',
     path: '/topics/{id}/contents',

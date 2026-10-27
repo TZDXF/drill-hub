@@ -170,6 +170,10 @@ export interface McpServerRecord extends BaseRecord {
 export interface AssistantSkillRecord extends Omit<AssistantSkillView, never> {
   content: string;
 }
+export interface RateLimitRecord extends BaseRecord {
+  count: number;
+  resetAt: string;
+}
 export interface DatabaseTables {
   apiLogs: ApiLogRecord;
   loginLogs: LoginLogRecord;
@@ -202,5 +206,7 @@ export interface DatabaseTables {
   searchProviders: SearchProviderRecord;
   mcpServers: McpServerRecord;
   assistantSkills: AssistantSkillRecord;
+  /** 限流桶；id 即桶键，经原子 SQL 自增，可多实例共享。 */
+  rateLimits: RateLimitRecord;
 }
 export type TableName = keyof DatabaseTables;

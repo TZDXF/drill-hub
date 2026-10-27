@@ -38,6 +38,7 @@ Content-Type: application/json
 | `grading:request`  | 模型重评、重试本人失败评分任务                          |
 | `grade:write`      | external_rubric 逐项评分和修正                          |
 | `archive:write`    | 白名单资源归档/恢复                                     |
+| `topic:purge`      | 永久删除主题及全部子资源；默认不授予                    |
 
 一个路由只检查资源页列出的 scope，不隐含其他写权限；所有资源仍需满足所有权校验。缺少 scope 返回 `403 SCOPE_REQUIRED`。
 

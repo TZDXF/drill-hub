@@ -46,6 +46,7 @@ description: 通过 Drill Hub 的 /api/v1/agent 路由管理学习主题、计�
 | `grading:request`  | 请求 `model_rubric` 重评，重试本人失败的模型评分任务                                      |
 | `grade:write`      | 对 `external_rubric` 作答提交逐得分项等级                                                 |
 | `archive:write`    | 归档或恢复白名单资源                                                                      |
+| `topic:purge`      | 永久删除主题及其全部子资源（需先以 read 获取影响预览并确认）；默认不授予                  |
 
 所有 GET 路由都需要 `read`。缺少 scope 时服务端返回 403 `SCOPE_REQUIRED`；不要通过换用其他接口绕过。
 

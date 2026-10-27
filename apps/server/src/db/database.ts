@@ -16,6 +16,7 @@ import {
   ExpandAssistantConversation1793000000000,
   OrderAssistantQueue1793000000001,
   MigrateAssistantToDurable1793000000002,
+  AddRateLimits1793100000000,
 } from '#server/db/schema.js';
 import type {
   AuditLogView,
@@ -77,6 +78,7 @@ export class Database {
         ExpandAssistantConversation1793000000000,
         OrderAssistantQueue1793000000001,
         MigrateAssistantToDurable1793000000002,
+        AddRateLimits1793100000000,
       ],
       synchronize: false,
       logging: false,
@@ -238,6 +240,18 @@ export class Database {
   async delete<K extends TableName>(table: K, id: string) {
     await this.locked(async () => {
       await this.manager.getRepository(table).delete({ id });
+    });
+  }
+  /** 按条件批量删除，返回受影响行数；用于聚合根级联清理。 */
+  async deleteWhere<K extends TableName>(
+    table: K,
+    where: Record<string, unknown>,
+  ): Promise<number> {
+    return this.locked(async () => {
+      const result = await this.manager
+        .getRepository(table)
+        .delete(where as FindOptionsWhere<DatabaseTables[K]>);
+      return result.affected ?? 0;
     });
   }
   async transaction<T>(fn: (db: Database) => Promise<T>): Promise<T> {

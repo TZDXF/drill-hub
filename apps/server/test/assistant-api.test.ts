@@ -68,7 +68,10 @@ describe('assistant learning API coverage', () => {
         key.includes('/agent/') ||
         key.includes('/public/') ||
         key.includes('/admin/') ||
-        key.includes('/me/')
+        key.includes('/me/') ||
+        // 永久删除只保留在用户 UI（带影响预览与确认）和 topic:purge Agent 令牌中，
+        // 不进入助手工具白名单。
+        key.startsWith('DELETE /api/v1/topics/')
       )
         continue;
       expect(documented.has(key)).toBe(true);
@@ -97,6 +100,7 @@ describe('assistant learning API coverage', () => {
       ['GET', '/api/v1/agent/grading-queue'],
       ['POST', '/api/v1/agent/attempt-items/item-id/grades'],
       ['DELETE', '/api/v1/agent/topics/topic-id'],
+      ['DELETE', '/api/v1/topics/topic-id'],
       ['GET', '/api/v1/agent/topics/topic-id/questions/extra'],
       ['GET', '/api/v1/agent/topics/topic%2fid/questions'],
     ])
