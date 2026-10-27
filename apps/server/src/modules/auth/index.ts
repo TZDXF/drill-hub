@@ -270,7 +270,8 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 10;
   const globalFloodLimit = app.createRateLimit();
   const loginFloodLimit = app.createRateLimit({
-    max: 30,
+    // E2E 的连续登录也必须使用配置后的上限，避免先撞上固定的 IP 限流。
+    max: Math.max(30, loginRateLimitMax),
     timeWindow: '1 minute',
     keyGenerator: (request) => `login-ip:${request.ip}`,
   });

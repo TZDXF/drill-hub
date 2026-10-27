@@ -68,6 +68,20 @@ describe('resource and deployment boundaries', () => {
       expect((await login(app, 'admin', 'invalid')).statusCode).toBe(429);
     },
   );
+  it('honors the E2E login limit in the shared IP flood bucket', async () => {
+    vi.stubEnv('E2E_LOGIN_RATE_LIMIT_MAX', '40');
+    const app = await setup();
+    for (let index = 0; index < 40; index++)
+      expect((await login(app, `unknown_${index}`, 'invalid')).statusCode).toBe(401);
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/mobile/login',
+      payload: { username: 'another_unknown', password: 'invalid' },
+    });
+    expect(denied.statusCode).toBe(429);
+    expect(denied.json().error.code).toBe('RATE_LIMITED');
+    expect(Number(denied.headers['retry-after'])).toBeGreaterThan(0);
+  });
   it('uses client IP only through explicitly trusted proxies and sets Secure behind HTTPS termination', async () => {
     vi.stubEnv('E2E_LOGIN_RATE_LIMIT_MAX', '1');
     const app = await setup({
