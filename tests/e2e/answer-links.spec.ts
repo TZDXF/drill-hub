@@ -1,38 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
-import type {
-  AnswerLinkCreated,
-  ApiResponse,
-  Assessment,
-  LearningPlan,
-  Topic,
-} from '@drill-hub/contracts';
-import { login } from '#e2e/helpers';
-
-async function post<T>(
-  request: APIRequestContext,
-  path: string,
-  data: unknown,
-  headers: Record<string, string>,
-) {
-  const response = await request.post(`/api/v1${path}`, { data, headers });
-  await expect(response).toBeOK();
-  return ((await response.json()) as ApiResponse<T>).data;
-}
+import { expect, test } from '@playwright/test';
+import type { AnswerLinkCreated, Assessment, LearningPlan, Topic } from '@drill-hub/contracts';
+import { login, post, agentHeaders } from '#e2e/helpers';
 
 test('Agent 临时答题链接可在未登录浏览器中直接作答和查看报告', async ({ page, browser }) => {
   await login(page);
-  const csrf = (await (await page.request.get('/api/v1/auth/csrf')).json()).data.csrfToken;
-  const authorization = await post<{ token: string }>(
-    page.request,
-    '/me/agent-tokens',
-    {
-      name: '免登录答题测试',
-      scopes: ['read', 'content:write', 'assessment:write'],
-    },
-    { 'X-CSRF-Token': csrf },
-  );
-  const headers = { Authorization: `Bearer ${authorization.token}` };
+  const headers = await agentHeaders(page.request, '免登录答题测试', [
+    'read',
+    'content:write',
+    'assessment:write',
+  ]);
   const topic = await post<Topic>(
     page.request,
     '/agent/topics',

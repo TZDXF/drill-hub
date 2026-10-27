@@ -1,12 +1,19 @@
 import {
   randomBytes,
   createHash,
-  scryptSync,
+  scrypt,
   timingSafeEqual,
   createCipheriv,
   createDecipheriv,
 } from 'node:crypto';
 import { AppError } from '#server/core/errors.js';
+const scryptAsync = (password: string, salt: string) =>
+  new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (error, key) => {
+      if (error) reject(error);
+      else resolve(key);
+    });
+  });
 export const randomSecret = () => randomBytes(32).toString('base64url');
 export const hashSecret = (value: string) => createHash('sha256').update(value).digest('hex');
 export function sameSecret(value: string, expectedHash: string) {
@@ -15,31 +22,19 @@ export function sameSecret(value: string, expectedHash: string) {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 export function validatePassword(password: unknown): asserts password is string {
-  if (typeof password !== 'string' || password.length < 4)
-    throw new AppError(422, 'INVALID_PASSWORD', '密码长度至少需要 4 个字符');
+  if (typeof password !== 'string' || password.length < 8 || password.length > 1024)
+    throw new AppError(422, 'INVALID_PASSWORD', '密码长度需要为 8 到 1024 个字符');
 }
-export function passwordHash(password: string) {
+export async function passwordHash(password: string) {
   validatePassword(password);
   const salt = randomBytes(16).toString('hex');
-  return (
-    'scrypt$' +
-    salt +
-    '$' +
-    scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString(
-      'hex',
-    )
-  );
+  return 'scrypt$' + salt + '$' + (await scryptAsync(password, salt)).toString('hex');
 }
-export function verifyPassword(password: string, stored: string) {
+export async function verifyPassword(password: string, stored: string) {
   const [algorithm, salt, hex] = stored.split('$');
   if (algorithm !== 'scrypt' || !salt || !hex) return false;
   try {
-    const actual = scryptSync(password, salt, 64, {
-      N: 16384,
-      r: 8,
-      p: 1,
-      maxmem: 64 * 1024 * 1024,
-    });
+    const actual = await scryptAsync(password, salt);
     const expected = Buffer.from(hex, 'hex');
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   } catch {

@@ -185,10 +185,14 @@ export class ApiClient {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let pendingCarriageReturn = false;
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        let chunk = done ? decoder.decode() : decoder.decode(value, { stream: true });
+        if (pendingCarriageReturn) chunk = '\r' + chunk;
+        pendingCarriageReturn = !done && chunk.endsWith('\r');
+        if (pendingCarriageReturn) chunk = chunk.slice(0, -1);
+        buffer += chunk.replace(/\r\n|\r/g, '\n');
         let boundary = buffer.indexOf('\n\n');
         while (boundary !== -1) {
           const frame = buffer.slice(0, boundary);
@@ -196,6 +200,7 @@ export class ApiClient {
           this.emitStreamFrame(frame, options.onEvent);
           boundary = buffer.indexOf('\n\n');
         }
+        if (done) break;
       }
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -206,15 +211,19 @@ export class ApiClient {
   }
   private emitStreamFrame(frame: string, onEvent: (event: StreamEvent) => void): void {
     let event = 'message';
-    let data = '';
+    const data: string[] = [];
     let id: string | undefined;
     for (const line of frame.split('\n')) {
       if (line.startsWith(':')) continue;
-      if (line.startsWith('event: ')) event = line.slice(7).trim();
-      else if (line.startsWith('data: ')) data += (data ? '\n' : '') + line.slice(6);
-      else if (line.startsWith('id: ')) id = line.slice(4).trim();
+      const colon = line.indexOf(':');
+      const field = colon === -1 ? line : line.slice(0, colon);
+      let value = colon === -1 ? '' : line.slice(colon + 1);
+      if (value.startsWith(' ')) value = value.slice(1);
+      if (field === 'event') event = value;
+      else if (field === 'data') data.push(value);
+      else if (field === 'id' && !value.includes('\0')) id = value;
     }
-    if (!data) return;
-    onEvent({ event, data, id });
+    if (!data.length) return;
+    onEvent({ event, data: data.join('\n'), id });
   }
 }

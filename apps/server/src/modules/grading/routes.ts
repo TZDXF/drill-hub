@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type {
   Attempt,
   AttemptItemSnapshot,
@@ -11,6 +11,7 @@ import type {
 import type { Actor, AppContext } from '#server/core/context.js';
 import { AppError, assert } from '#server/core/errors.js';
 import { baseRecord, now } from '#server/core/ids.js';
+import { body, expectedRevision } from '#server/core/validation.js';
 import type { Database } from '#server/db/database.js';
 import type { ModelConnectionRecord } from '#server/db/records.js';
 import { refreshAttempt } from '#server/modules/learning/helpers.js';
@@ -26,18 +27,6 @@ import { tokenUsageReport } from '#server/modules/grading/token-usage.js';
 
 const PREFIX = '/api/v1';
 type JsonObject = Record<string, unknown>;
-
-function body(request: FastifyRequest, allowEmpty = false): JsonObject {
-  const value = request.body;
-  if (allowEmpty && (value === null || value === undefined)) return {};
-  assert(
-    value !== null && typeof value === 'object' && !Array.isArray(value),
-    'INVALID_BODY',
-    '请求体必须是 JSON 对象',
-    400,
-  );
-  return value as JsonObject;
-}
 
 function keys(value: JsonObject, allowed: readonly string[]): void {
   for (const key of Object.keys(value))
@@ -57,15 +46,6 @@ function optionalBoolean(value: unknown, fallback: boolean): boolean {
   if (value === undefined) return fallback;
   assert(typeof value === 'boolean', 'INVALID_FIELD', '布尔字段格式无效');
   return value;
-}
-
-function expectedRevision(value: JsonObject): number {
-  assert(
-    Number.isInteger(value.expectedRevision) && (value.expectedRevision as number) >= 1,
-    'INVALID_REVISION',
-    'expectedRevision 无效',
-  );
-  return value.expectedRevision as number;
 }
 
 function expectedGradeVersion(value: JsonObject, allowZero: boolean): number {

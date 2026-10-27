@@ -96,7 +96,8 @@ async function submit() {
             :type="showNewPassword ? 'text' : 'password'"
             autocomplete="new-password"
             required
-            minlength="4"
+            minlength="8"
+            maxlength="1024"
             aria-describedby="new-password-hint"
           />
           <button

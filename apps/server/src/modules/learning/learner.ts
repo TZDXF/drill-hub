@@ -1,3 +1,4 @@
+import { updateWrongQuestionMastery } from '#server/modules/learning/wrong-question-mastery.js';
 import type { FastifyInstance } from 'fastify';
 import type { Attempt, Dashboard, WrongQuestionListItem } from '@drill-hub/contracts';
 import type { AppContext } from '#server/core/context.js';
@@ -271,35 +272,12 @@ export function registerLearnerRoutes(app: FastifyInstance, ctx: AppContext): vo
 
   app.patch(`${API_PREFIX}/wrong-questions/:questionId/mastery`, async (request) => {
     const actor = await ctx.requireUser(request);
-    const input = body(request);
-    const revision = expectedRevision(input);
-    assert(
-      input.masteryStatus === 'pending' ||
-        input.masteryStatus === 'reviewing' ||
-        input.masteryStatus === 'mastered',
-      'INVALID_MASTERY',
-      '掌握状态无效',
+    const saved = await updateWrongQuestionMastery(
+      ctx,
+      actor,
+      params(request).questionId,
+      body(request),
     );
-    const saved = await ctx.db.transaction(async (tx) => {
-      const wrong = await tx.findOne('wrongQuestions', {
-        ownerId: actor.userId,
-        questionId: params(request).questionId,
-      });
-      assert(wrong, 'NOT_FOUND', '错题不存在', 404);
-      checkRevision(wrong, revision);
-      const updated = await tx.update('wrongQuestions', wrong.id, wrong.revision, {
-        masteryStatus: input.masteryStatus as 'pending' | 'reviewing' | 'mastered',
-      });
-      await ctx.audit(
-        actor,
-        'wrong-question.mastery',
-        'wrongQuestion',
-        wrong.id,
-        { masteryStatus: input.masteryStatus as 'pending' | 'reviewing' | 'mastered' },
-        tx,
-      );
-      return updated;
-    });
     return { data: saved };
   });
 

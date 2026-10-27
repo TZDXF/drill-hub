@@ -14,6 +14,7 @@ export function assert(
   code: string,
   message: string,
   statusCode = 422,
+  fields?: Record<string, string>,
 ): asserts condition {
-  if (!condition) throw new AppError(statusCode, code, message);
+  if (!condition) throw new AppError(statusCode, code, message, fields);
 }

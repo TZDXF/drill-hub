@@ -1,15 +1,17 @@
 # 03 · HTTP API 契约草案
 
-基线：v0.2。基础路径 `/api/v1`，尚未生成 OpenAPI 或实现。
+> **历史设计草案，非当前实现规范。** 部分接口已实现，但本文包含未实现或已变化的设计；实际行为以 contracts、服务端路由及 `skills/drill-hub/references/api.md` 为准。尚未生成 OpenAPI。
+
+基线：v0.2。基础路径 `/api/v1`。
 
 ## 1. 协议约定
 
 - HTTP(S)/JSON，文本只作纯文本；服务端可能部署在用户填写的路径前缀下。
 - 成功 `{ data, meta: { requestId, serverTime } }`；失败 `{ error: { code, message, fields? }, meta }`。
-- cursor/limit 分页，nextCursor；archiveState=active/archived/all，默认 active。
+- **未实现：**通用 cursor/limit 分页和 nextCursor。部分资源支持 archiveState=active/archived/all，默认 active。
 - 分值为最多两位小数的字符串，UTC 时间为 ISO 8601，日历日期为 YYYY-MM-DD。
-- 更新带 expectedRevision，冲突 409；创建/开始/提交/重评支持 Idempotency-Key。
-- 幂等重放仍检查当前权限，同键异内容 409；批量有大小限制且同批原子写入。
+- 更新通常带 expectedRevision，冲突 409；**未实现：**通用 Idempotency-Key，创建/开始/提交/重评不能依赖该机制。
+- **未实现的设计：**幂等重放权限检查和同键异内容 409；批量题目创建有大小限制且同批原子写入。
 - 客户端不提供 ownerId、总分、正确性或提交时间作为事实。
 - 错误：400 格式、401 认证、403 操作权限、404 不存在/非所属、409 冲突、422 内容校验、429 限流。
 

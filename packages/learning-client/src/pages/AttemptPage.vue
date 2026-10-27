@@ -11,6 +11,7 @@ import type {
   PublicAnswerContext,
 } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
+import { useAttemptAnswerValues } from '#learning-client/attemptAnswerValues';
 import { draftAnswerStatus } from '#learning-client/attemptPresentation';
 import { planNavigationQuery, planReturnLocation } from '#learning-client/planNavigation';
 import { captureAnswerLinkToken } from '#learning-client/publicAccess';
@@ -175,36 +176,19 @@ function setSlot(item: AttemptItemView, slotId: string, value: string) {
 function setText(item: AttemptItemView, text: string) {
   markDirty(item, { text });
 }
-function optionSelected(item: AttemptItemView, optionId: string) {
-  const answer = answers.value[item.id];
-  return Boolean(answer && 'optionId' in answer && answer.optionId === optionId);
-}
-function multiSelected(item: AttemptItemView, optionId: string) {
-  const answer = answers.value[item.id];
-  return Boolean(answer && 'optionIds' in answer && answer.optionIds.includes(optionId));
-}
-function boolSelected(item: AttemptItemView, value: boolean) {
-  const answer = answers.value[item.id];
-  return Boolean(answer && 'value' in answer && answer.value === value);
-}
-function radioOptionValue(item: AttemptItemView) {
-  const answer = answers.value[item.id];
-  return answer && 'optionId' in answer ? answer.optionId : '';
-}
-function radioBooleanValue(item: AttemptItemView) {
-  const answer = answers.value[item.id];
-  return answer && 'value' in answer ? String(answer.value) : '';
-}
-function slotValue(item: AttemptItemView, slotId: string) {
-  const answer = answers.value[item.id];
-  return answer && 'slots' in answer ? (answer.slots[slotId] ?? '') : '';
-}
-function textValue(item: AttemptItemView) {
-  const answer = answers.value[item.id];
-  return answer && 'text' in answer ? answer.text : '';
-}
+const {
+  optionSelected,
+  multiSelected,
+  boolSelected,
+  radioOptionValue,
+  radioBooleanValue,
+  slotValue,
+  textValue,
+} = useAttemptAnswerValues(answers);
 
+let loadTicket = 0;
 async function load(forceAnswers = false) {
+  const ticket = ++loadTicket;
   loading.value = true;
   error.value = '';
   try {
@@ -216,6 +200,7 @@ async function load(forceAnswers = false) {
         '/public/answer',
         publicToken.value,
       );
+      if (ticket !== loadTicket) return;
       publicPurpose.value = context.purpose;
       value =
         context.attempt ??
@@ -226,6 +211,7 @@ async function load(forceAnswers = false) {
       );
       value = asAttemptView(result);
     }
+    if (ticket !== loadTicket) return;
     if (value.voidedAt || (!props.publicAccess && value.source === 'answer_link')) {
       attempt.value = value;
       timers.forEach(clearTimeout);
@@ -264,10 +250,11 @@ async function load(forceAnswers = false) {
             },
       );
   } catch (reason) {
+    if (ticket !== loadTicket) return;
     error.value = errorMessage(reason);
     learning.notify.error(t('learning.attempt.notifySessionError'), error.value);
   } finally {
-    loading.value = false;
+    if (ticket === loadTicket) loading.value = false;
   }
 }
 
@@ -647,6 +634,7 @@ watch(
   },
 );
 onBeforeUnmount(() => {
+  loadTicket++;
   motionDisposed = true;
   cardAnimation?.cancel();
   if (clock) clearInterval(clock);

@@ -1,18 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import type { ApiResponse, Topic } from '@drill-hub/contracts';
-import { login } from '#e2e/helpers';
-
-async function post<T>(
-  request: APIRequestContext,
-  path: string,
-  data: unknown,
-  headers: Record<string, string>,
-) {
-  const response = await request.post(`/api/v1${path}`, { data, headers });
-  await expect(response).toBeOK();
-  return ((await response.json()) as ApiResponse<T>).data;
-}
+import { expect, test, type Page } from '@playwright/test';
+import type { Topic } from '@drill-hub/contracts';
+import { login, post, agentHeaders } from '#e2e/helpers';
 
 async function expectLayout(page: Page, columns: number) {
   const tabs = page.getByRole('tablist', { name: '主题内容分类' }).getByRole('tab');
@@ -36,20 +25,11 @@ test('主题分类在手机上完整展示为四个触屏入口，切换内容�
   page,
 }, testInfo) => {
   await login(page);
-  const csrfResponse = await page.request.get('/api/v1/auth/csrf');
-  const {
-    data: { csrfToken },
-  } = await csrfResponse.json();
-  const authorization = await post<{ token: string }>(
-    page.request,
-    '/me/agent-tokens',
-    {
-      name: `topic-categories-${randomUUID()}`,
-      scopes: ['read', 'content:write', 'assessment:write'],
-    },
-    { 'X-CSRF-Token': csrfToken },
-  );
-  const headers = { Authorization: `Bearer ${authorization.token}` };
+  const headers = await agentHeaders(page.request, `topic-categories-${randomUUID()}`, [
+    'read',
+    'content:write',
+    'assessment:write',
+  ]);
   const topic = await post<Topic>(
     page.request,
     '/agent/topics',

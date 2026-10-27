@@ -127,6 +127,71 @@ export class Database {
       return row ?? undefined;
     });
   }
+  /** Only materialize attempts containing a touched question; items are stored as JSON text. */
+  async listAttemptsForQuestions(
+    ownerId: string,
+    questionIds: string[],
+  ): Promise<DatabaseTables['attempts'][]> {
+    if (!questionIds.length) return [];
+    return this.locked(() => {
+      const items =
+        this.dialect === 'postgres'
+          ? `json_array_elements(CAST(attempt.items AS json)) AS item`
+          : `json_each(attempt.items) AS item`;
+      const question =
+        this.dialect === 'postgres'
+          ? `item->>'questionId'`
+          : `json_extract(item.value, '$.questionId')`;
+      return this.manager
+        .getRepository<DatabaseTables['attempts']>('attempts')
+        .createQueryBuilder('attempt')
+        .where('attempt.ownerId = :ownerId', { ownerId })
+        .andWhere(`EXISTS (SELECT 1 FROM ${items} WHERE ${question} IN (:...questionIds))`, {
+          questionIds,
+        })
+        .orderBy('attempt.createdAt', 'DESC')
+        .getMany();
+    });
+  }
+
+  async listActiveGradingJobs(): Promise<DatabaseTables['gradingJobs'][]> {
+    return this.locked(() =>
+      this.manager
+        .getRepository<DatabaseTables['gradingJobs']>('gradingJobs')
+        .createQueryBuilder('job')
+        .where('job.status IN (:...statuses)', {
+          statuses: ['queued', 'running', 'retry_wait', 'blocked_config', 'blocked_budget'],
+        })
+        .getMany(),
+    );
+  }
+
+  async listDueGradingJobs(timestamp: string): Promise<DatabaseTables['gradingJobs'][]> {
+    return this.locked(() =>
+      this.manager
+        .getRepository<DatabaseTables['gradingJobs']>('gradingJobs')
+        .createQueryBuilder('job')
+        .where('job.status IN (:...statuses)', { statuses: ['queued', 'retry_wait'] })
+        .andWhere('job.nextRunAt <= :timestamp', { timestamp })
+        .orderBy('job.nextRunAt', 'ASC')
+        .addOrderBy('job.createdAt', 'ASC')
+        .getMany(),
+    );
+  }
+
+  async countRunningGradingJobs(profileId: string | null): Promise<number> {
+    return this.locked(() => {
+      const query = this.manager
+        .getRepository<DatabaseTables['gradingJobs']>('gradingJobs')
+        .createQueryBuilder('job')
+        .where('job.status = :status', { status: 'running' });
+      return (
+        profileId === null
+          ? query.andWhere('job.profileId IS NULL')
+          : query.andWhere('job.profileId = :profileId', { profileId })
+      ).getCount();
+    });
+  }
   async list<K extends TableName>(
     table: K,
     where: Partial<DatabaseTables[K]> = {},

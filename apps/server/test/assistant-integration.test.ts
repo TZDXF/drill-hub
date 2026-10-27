@@ -230,6 +230,70 @@ async function pollUntil(
 }
 
 describe('built-in assistant', () => {
+  it('serializes simultaneous messages into one active turn and a queue', async () => {
+    const { app, admin } = await setupApp();
+    installProvider({
+      assistant: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return sseResponse(assistantTextRound('完成'));
+      },
+    });
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        app.inject({
+          method: 'POST',
+          url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+          headers: admin,
+          payload: { content: `并发消息 ${index}` },
+        }),
+      ),
+    );
+    expect(responses.map((response) => response.statusCode)).toEqual(Array(8).fill(202));
+    expect(responses.filter((response) => response.json().data.turn)).toHaveLength(1);
+    expect(responses.filter((response) => response.json().data.queuedMessage)).toHaveLength(7);
+  });
+
+  it('preserves persisted streaming text when a recovered turn fails', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const thread = await createThread(app, admin);
+    const { createTurn } = await import('#server/modules/assistant/service.js');
+    const turn = await createTurn(app.ctx, ownerId, thread.id, '测试');
+    const message = await app.ctx.db.get('assistantMessages', turn.assistantMessageId);
+    await app.ctx.db.update('assistantMessages', message!.id, message!.revision, {
+      content: '已保存的回答',
+      reasoning: '已保存的推理',
+    });
+    await app.ctx.db.delete('assistantMessages', turn.userMessageId);
+    await app.ctx.assistant.runTurnNow(turn.turnId);
+    expect(await app.ctx.db.get('assistantMessages', message!.id)).toMatchObject({
+      content: '已保存的回答',
+      reasoning: '已保存的推理',
+      status: 'failed',
+    });
+  });
+
+  it('removes a projected branch when durable forking fails', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const thread = await createThread(app, admin);
+    const { createTurn } = await import('#server/modules/assistant/service.js');
+    const turn = await createTurn(app.ctx, ownerId, thread.id, '测试');
+    const row = await app.ctx.db.get('assistantTurns', turn.turnId);
+    await app.ctx.db.update('assistantTurns', turn.turnId, row!.revision, { status: 'succeeded' });
+    const before = await app.ctx.db.list('assistantThreads', { ownerId });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/fork`,
+      headers: admin,
+      payload: { turnId: turn.turnId, mode: 'through' },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(await app.ctx.db.list('assistantThreads', { ownerId })).toHaveLength(before.length);
+    expect(await app.ctx.db.list('assistantTurns', { ownerId })).toHaveLength(1);
+    expect(await app.ctx.db.list('assistantMessages', { ownerId })).toHaveLength(2);
+  });
+
   it('generates a non-streaming title without reasoning and allows manual renaming', async () => {
     const { app, admin } = await setupApp();
     const provider = installProvider({});
@@ -690,6 +754,21 @@ describe('built-in assistant', () => {
     });
     attemptId = attemptResponse.json().data.id;
 
+    const securityThread = await createThread(app, admin);
+    await app.ctx.db.insert('assistantTurns', {
+      ...baseRecord(),
+      id: 'question-read-test',
+      ownerId,
+      threadId: securityThread.id,
+      userMessageId: 'test-user-message',
+      assistantMessageId: 'test-assistant-message',
+      status: 'running',
+      errorCode: null,
+      promptContext: null,
+      providerModelId: null,
+      apiCalls: 0,
+      writeCalls: 0,
+    });
     const internal = {
       authorization: `Bearer ${signInternalToken({
         secret: 'a'.repeat(64),
@@ -753,6 +832,20 @@ describe('built-in assistant', () => {
     const other = await createUser(app.ctx.db, {
       username: 'other-topic-owner',
       password: PASSWORD,
+    });
+    await app.ctx.db.insert('assistantTurns', {
+      ...baseRecord(),
+      id: 'other-user',
+      ownerId: other.id,
+      threadId: securityThread.id,
+      userMessageId: 'other-user-message',
+      assistantMessageId: 'other-assistant-message',
+      status: 'running',
+      errorCode: null,
+      promptContext: null,
+      providerModelId: null,
+      apiCalls: 0,
+      writeCalls: 0,
     });
     const otherToken = signInternalToken({
       secret: 'a'.repeat(64),
@@ -1231,8 +1324,61 @@ describe('built-in assistant', () => {
     expect(answer!.content).toBe('好的。');
   });
 
+  it('audits web searches without persisting the query text', async () => {
+    const { app, admin } = await setupApp();
+    installProvider({
+      assistant: (index) =>
+        index === 1
+          ? sseResponse(assistantToolCallRound('web_search', { query: 'private search query' }))
+          : sseResponse(assistantTextRound('完成')),
+    });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes('api.tavily.com'))
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      return originalFetch(url, init);
+    });
+    const provider = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/search-providers',
+      headers: admin,
+      payload: { displayName: 'Search', kind: 'tavily', apiKey: 'test-key' },
+    });
+    expect(provider.statusCode).toBe(201);
+    await configureAssistantModel(app, admin);
+    const thread = await createThread(app, admin);
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/me/assistant/threads/${thread.id}/messages`,
+      headers: admin,
+      payload: { content: '搜索资料' },
+    });
+    await pollUntil(app, admin, thread.id, (data) => !data.activeTurn);
+    const audits = (await app.ctx.db.list('auditLogs', {})).filter(
+      (item) => item.action === 'assistant.web_search',
+    );
+    expect(audits).toHaveLength(1);
+    expect(JSON.stringify(audits)).not.toContain('private search query');
+    expect(JSON.stringify(audits)).not.toContain('test-key');
+  });
+
   it('internal tokens authenticate as the invoking user but never as admin', async () => {
     const { app, admin, ownerId } = await setupApp();
+    const thread = await createThread(app, admin);
+    const turn = await app.ctx.db.insert('assistantTurns', {
+      ...baseRecord(),
+      id: 'turn-test',
+      ownerId,
+      threadId: thread.id,
+      userMessageId: 'test-user-message',
+      assistantMessageId: 'test-assistant-message',
+      status: 'running',
+      errorCode: null,
+      promptContext: null,
+      providerModelId: null,
+      apiCalls: 0,
+      writeCalls: 0,
+    });
     const secret = 'a'.repeat(64);
     const token = signInternalToken({
       secret,
@@ -1273,6 +1419,47 @@ describe('built-in assistant', () => {
       headers: { authorization: `Bearer ${expired}` },
     });
     expect(stale.statusCode).toBe(401);
+    const expiredForRunningTurn = signInternalToken({
+      secret,
+      userId: ownerId,
+      turnId: turn.id,
+      role: 'admin',
+      expiresAt: Date.now() - 1,
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/dashboard',
+          headers: {
+            authorization: `Bearer ${expiredForRunningTurn}`,
+          },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const renewed = signInternalToken({
+      secret,
+      userId: ownerId,
+      turnId: turn.id,
+      role: 'admin',
+      expiresAt: Date.now() + 15 * 60000,
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/dashboard',
+          headers: {
+            authorization: `Bearer ${renewed}`,
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await app.ctx.db.update('assistantTurns', turn.id, turn.revision, { status: 'succeeded' });
+    expect((await app.inject({ url: '/api/v1/dashboard', headers: asInternal })).statusCode).toBe(
+      401,
+    );
+    expect(
+      (await app.inject({ url: '/api/v1/agent/topics', headers: asInternal })).statusCode,
+    ).toBe(401);
     void admin;
   });
 
@@ -1535,6 +1722,46 @@ describe('assistant admin routes', () => {
     });
     expect(stdioMcp.statusCode).toBe(201);
     expect(stdioMcp.json().data.enabled).toBe(false);
+    for (const url of ['http://2130706433/mcp', 'http://2852039166/mcp']) {
+      const denied = await app.inject({
+        method: 'POST',
+        url: '/api/v1/admin/mcp-servers',
+        headers: admin,
+        payload: { name: 'numeric', transport: 'http', url },
+      });
+      expect(denied.statusCode).toBe(403);
+    }
+    const mcpId = stdioMcp.json().data.id;
+    const revision = stdioMcp.json().data.revision;
+    for (const patch of [
+      { command: 'bad command' },
+      { args: Array(33).fill('x') },
+      { env: { BAD: 1 } },
+      { headers: { 'bad key': 'x' } },
+    ]) {
+      const rejected = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/mcp-servers/${mcpId}`,
+        headers: admin,
+        payload: { expectedRevision: revision, ...patch },
+      });
+      expect(rejected.statusCode).toBe(422);
+    }
+    const http = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/mcp-servers',
+      headers: admin,
+      payload: { name: 'remote', transport: 'http', url: 'https://example.com/mcp' },
+    });
+    for (const url of ['not-a-url', 'file:///etc/passwd', 'http://2130706433/mcp']) {
+      const rejected = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/mcp-servers/${http.json().data.id}`,
+        headers: admin,
+        payload: { expectedRevision: http.json().data.revision, url },
+      });
+      expect(rejected.statusCode).toBe(url.startsWith('http:') ? 403 : 422);
+    }
 
     // 全局助手设置已移除：默认模型与上限/超时不再可配置，端点应返回 404。
     const removedSettings = await app.inject({

@@ -1,5 +1,5 @@
 import type {
-  AgentTokenView,
+  AgentTokenCreated,
   Answer,
   AttemptItemView,
   AttemptView,
@@ -17,23 +17,7 @@ export interface CsrfResult {
   csrfToken: string;
 }
 
-export interface SessionView {
-  id: string;
-  kind?: 'web' | 'android';
-  channel?: 'web' | 'mobile';
-  createdAt: string;
-  lastUsedAt?: string | null;
-  expiresAt?: string | null;
-  userAgent?: string | null;
-  current?: boolean;
-}
-
-export interface AgentTokenCreated {
-  secret?: string;
-  token?: string | AgentTokenView;
-  accessToken?: string;
-  agentToken?: AgentTokenView;
-}
+export type { AgentTokenCreated };
 
 export interface WrongQuestionHistoryItem {
   id?: string;

@@ -124,7 +124,7 @@ describe('accounts, sessions and scope boundaries', () => {
     const csrf = await app.inject({ url: '/api/v1/auth/csrf', headers: session.headers });
     expect(csrf.json().data.csrfToken).toBe(session.value.csrfToken);
   });
-  it('requires only four password characters and has no upper length limit', async () => {
+  it('enforces password length limits', async () => {
     const admin = await login();
     const tooShort = await app.inject({
       method: 'POST',
@@ -140,17 +140,31 @@ describe('accounts, sessions and scope boundaries', () => {
       headers: admin.headers,
       payload: { username: 'four_char_password', password: '1234' },
     });
-    expect(shortPassword.statusCode).toBe(200);
-    expect((await login('four_char_password', '1234')).response.statusCode).toBe(200);
-    const longPassword = 'x'.repeat(513);
+    expect(shortPassword.statusCode).toBe(422);
+    const longPassword = 'x'.repeat(1025);
     const longPasswordUser = await app.inject({
       method: 'POST',
       url: '/api/v1/admin/users',
       headers: admin.headers,
       payload: { username: 'long_password', password: longPassword },
     });
-    expect(longPasswordUser.statusCode).toBe(200);
-    expect((await login('long_password', longPassword)).response.statusCode).toBe(200);
+    expect(longPasswordUser.statusCode).toBe(422);
+  });
+  it('limits login floods across different usernames on the same IP', async () => {
+    for (let index = 0; index < 30; index++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/web/login',
+        payload: { username: `unknown_${index}`, password: 'invalid-password' },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/mobile/login',
+      payload: { username: 'another_unknown', password: 'invalid-password' },
+    });
+    expect(denied.statusCode).toBe(429);
   });
   it('allows new accounts to sign in without changing their password', async () => {
     const admin = await login();
@@ -235,7 +249,36 @@ describe('accounts, sessions and scope boundaries', () => {
       payload: { name: 'Read-only test token', scopes: ['read'] },
     });
     expect(response.statusCode).toBe(200);
+    const sessions = await app.inject({ url: '/api/v1/me/sessions', headers: admin.headers });
+    expect(sessions.json().data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          channel: 'web',
+          createdAt: expect.any(String),
+          expiresAt: expect.any(String),
+          current: true,
+        }),
+      ]),
+    );
+    expect(
+      Object.keys(
+        sessions.json().data.find((session: { current: boolean }) => session.current),
+      ).sort(),
+    ).toEqual(['channel', 'createdAt', 'current', 'expiresAt', 'id']);
     const token = response.json().data;
+    expect(Object.keys(token).sort()).toEqual([
+      'createdAt',
+      'expiresAt',
+      'id',
+      'lastUsedAt',
+      'name',
+      'prefix',
+      'revision',
+      'scopes',
+      'token',
+      'updatedAt',
+    ]);
     expect(token.token).toMatch(/^dhk\./);
     expect(token.secretHash).toBeUndefined();
     expect(token.encryptedSecret).toBeUndefined();

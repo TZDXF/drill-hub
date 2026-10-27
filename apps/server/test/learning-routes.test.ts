@@ -90,6 +90,13 @@ async function createQuestion(
     payload: { items: [{ clientRef: 'q1', ...(definition as Record<string, unknown>) }] },
   });
   expect(response.statusCode).toBe(201);
+  expect(response.json().data[0]).toEqual({
+    clientRef: 'q1',
+    questionId: expect.any(String),
+    questionRevisionId: expect.any(String),
+    revision: expect.any(Number),
+    webUrl: `/topics/${topicId}`,
+  });
   return response.json().data[0];
 }
 
@@ -766,6 +773,20 @@ describe('learning HTTP closed loop', () => {
       method: 'GET',
       url: '/api/v1/agent/capabilities',
       headers: agent,
+    });
+    expect(capabilities.json().data).toEqual({
+      apiVersion: 1,
+      scopes: expect.any(Array),
+      questionTypes: expect.any(Array),
+      gradingModes: expect.any(Array),
+      limitations: expect.any(Array),
+    });
+    const summary = await app.inject({ url: '/api/v1/agent/learning-summary', headers: agent });
+    expect(summary.json().data).toEqual({
+      topics: expect.any(Array),
+      plans: expect.any(Array),
+      recentAttempts: expect.any(Array),
+      wrongQuestions: expect.any(Array),
     });
     expect(capabilities.json().data.limitations).not.toContain('纯文本内容');
     const contentResponse = await app.inject({

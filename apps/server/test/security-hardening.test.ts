@@ -58,6 +58,16 @@ describe('resource and deployment boundaries', () => {
     );
     expect((await login(app, 'learner')).statusCode).toBe(200);
   });
+  it.each(['NaN', '0', '-1', '1.5'])(
+    'uses a safe login limit for invalid configuration %s',
+    async (value) => {
+      vi.stubEnv('E2E_LOGIN_RATE_LIMIT_MAX', value);
+      const app = await setup();
+      for (let index = 0; index < 10; index++)
+        expect((await login(app, 'admin', 'invalid')).statusCode).toBe(401);
+      expect((await login(app, 'admin', 'invalid')).statusCode).toBe(429);
+    },
+  );
   it('uses client IP only through explicitly trusted proxies and sets Secure behind HTTPS termination', async () => {
     vi.stubEnv('E2E_LOGIN_RATE_LIMIT_MAX', '1');
     const app = await setup({

@@ -1,3 +1,4 @@
+import { updateWrongQuestionMastery } from '#server/modules/learning/wrong-question-mastery.js';
 import { voidAttempt } from '#server/modules/learning/attempts.js';
 import { isLearningAttempt } from '#server/modules/learning/attempt-policy.js';
 import type { FastifyInstance } from 'fastify';
@@ -616,35 +617,12 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
 
   app.patch(`${API_PREFIX}/agent/wrong-questions/:questionId/mastery`, async (request) => {
     const actor = await ctx.requireAgent(request, 'content:write');
-    const input = body(request);
-    const revision = expectedRevision(input);
-    assert(
-      input.masteryStatus === 'pending' ||
-        input.masteryStatus === 'reviewing' ||
-        input.masteryStatus === 'mastered',
-      'INVALID_MASTERY',
-      '掌握状态无效',
+    const saved = await updateWrongQuestionMastery(
+      ctx,
+      actor,
+      params(request).questionId,
+      body(request),
     );
-    const saved = await ctx.db.transaction(async (tx) => {
-      const wrong = await tx.findOne('wrongQuestions', {
-        ownerId: actor.userId,
-        questionId: params(request).questionId,
-      });
-      assert(wrong, 'NOT_FOUND', '错题不存在', 404);
-      checkRevision(wrong, revision);
-      const updated = await tx.update('wrongQuestions', wrong.id, wrong.revision, {
-        masteryStatus: input.masteryStatus as 'pending' | 'reviewing' | 'mastered',
-      });
-      await ctx.audit(
-        actor,
-        'wrong-question.mastery',
-        'wrongQuestion',
-        wrong.id,
-        { masteryStatus: input.masteryStatus as 'pending' | 'reviewing' | 'mastered' },
-        tx,
-      );
-      return updated;
-    });
     return { data: saved };
   });
 

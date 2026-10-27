@@ -107,6 +107,7 @@ const actionLabelKeys: Record<string, string> = {
   'wrong-question-practice.start': 'management.audit.action.wrongQuestionPracticeStart',
   'wrong-question.mastery': 'management.audit.action.wrongQuestionMastery',
   'assistant.thread.delete': 'management.audit.action.assistantThreadDelete',
+  'assistant.web_search': 'management.audit.action.assistantWebSearch',
   'search-provider.create': 'management.audit.action.searchProviderCreate',
   'search-provider.update': 'management.audit.action.searchProviderUpdate',
   'search-provider.delete': 'management.audit.action.searchProviderDelete',

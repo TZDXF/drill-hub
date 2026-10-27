@@ -1,21 +1,15 @@
 import type { FastifyRequest } from 'fastify';
 import type { Attempt, BaseRecord } from '@drill-hub/contracts';
-import { AppError } from '#server/core/errors.js';
+import { AppError, assert } from '#server/core/errors.js';
+import { expectedRevision } from '#server/core/validation.js';
+export { assert } from '#server/core/errors.js';
+export { body, expectedRevision, isRecord } from '#server/core/validation.js';
 import type { Database } from '#server/db/database.js';
 import type { DatabaseTables } from '#server/db/records.js';
 
 export const API_PREFIX = '/api/v1';
 export type JsonObject = Record<string, unknown>;
 
-export function assert(
-  condition: unknown,
-  code: string,
-  message: string,
-  statusCode = 422,
-  fields?: Record<string, string>,
-): asserts condition {
-  if (!condition) throw new AppError(statusCode, code, message, fields);
-}
 export type OwnedTableName = {
   [K in keyof DatabaseTables]: DatabaseTables[K] extends { ownerId: string } ? K : never;
 }[keyof DatabaseTables];
@@ -26,17 +20,6 @@ export function params(request: FastifyRequest): Record<string, string> {
 
 export function query(request: FastifyRequest): Record<string, unknown> {
   return (request.query ?? {}) as Record<string, unknown>;
-}
-
-export function body(request: FastifyRequest, allowEmpty = false): JsonObject {
-  const value = request.body;
-  if (allowEmpty && (value === undefined || value === null)) return {};
-  assert(isRecord(value), 'INVALID_BODY', '请求体必须是 JSON 对象', 400);
-  return value;
-}
-
-export function isRecord(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function requiredString(value: JsonObject, key: string, maxLength = 500): string {
@@ -78,20 +61,6 @@ export function optionalString(
     [key]: `最多 ${maxLength} 个字符`,
   });
   return text;
-}
-
-export function expectedRevision(value: JsonObject): number {
-  const revision = value.expectedRevision;
-  assert(
-    Number.isInteger(revision) && (revision as number) >= 1,
-    'INVALID_REVISION',
-    'expectedRevision 无效',
-    422,
-    {
-      expectedRevision: '必须是大于等于 1 的整数',
-    },
-  );
-  return revision as number;
 }
 
 export function optionalRevision(value: JsonObject): number | undefined {

@@ -32,6 +32,7 @@ import {
 import { Type } from '@earendil-works/pi-ai';
 import * as openAICompletions from '@earendil-works/pi-ai/api/openai-completions';
 import { workspaceRoot } from '#server/core/paths.js';
+import { assertProviderHost, publicProviderDispatcher } from '#server/core/provider-network.js';
 import { AppError } from '#server/core/errors.js';
 import type { AppContext } from '#server/core/context.js';
 import type { AssistantThreadRecord, McpServerRecord } from '#server/db/records.js';
@@ -232,6 +233,17 @@ export class DurableAssistantRuntime {
     }
     return new StreamableHttpTransport({
       url: server.url ?? '',
+      fetch: async (input, init) => {
+        const url = new URL(input);
+        assertProviderHost(url, this.ctx.config.allowPrivateSearchUrls);
+        const options: RequestInit = { ...init, redirect: 'manual' };
+        if (!this.ctx.config.allowPrivateSearchUrls)
+          Object.assign(options, { dispatcher: publicProviderDispatcher });
+        const response = await fetch(url, options);
+        if (response.status >= 300 && response.status < 400)
+          throw new Error('MCP redirects are forbidden');
+        return response;
+      },
       headers: server.encryptedHeaders
         ? (this.ctx.vault.decryptJson(server.encryptedHeaders) as Record<string, string>)
         : undefined,

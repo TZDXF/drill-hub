@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type {
   ApiResponse,
   AttemptReport,
@@ -7,35 +7,17 @@ import type {
   Topic,
   Assessment,
 } from '@drill-hub/contracts';
-import { closeQuestionNav, login, openQuestionNav } from '#e2e/helpers';
-
-async function post<T>(
-  request: APIRequestContext,
-  path: string,
-  data: unknown,
-  headers: Record<string, string>,
-) {
-  const response = await request.post(`/api/v1${path}`, { data, headers });
-  await expect(response).toBeOK();
-  return ((await response.json()) as ApiResponse<T>).data;
-}
+import { closeQuestionNav, login, openQuestionNav, post, agentHeaders } from '#e2e/helpers';
 
 test('Agent 创建五种题型，用户考试交卷，逐项评分同步报告和错题', async ({ page }, testInfo) => {
   await login(page);
-  const csrfResponse = await page.request.get('/api/v1/auth/csrf');
-  const {
-    data: { csrfToken },
-  } = await csrfResponse.json();
-  const authorization = await post<{ token: string }>(
-    page.request,
-    '/me/agent-tokens',
-    {
-      name: `e2e-${randomUUID()}`,
-      scopes: ['read', 'content:write', 'assessment:write', 'grade:write', 'archive:write'],
-    },
-    { 'X-CSRF-Token': csrfToken },
-  );
-  const headers = { Authorization: `Bearer ${authorization.token}` };
+  const headers = await agentHeaders(page.request, `e2e-${randomUUID()}`, [
+    'read',
+    'content:write',
+    'assessment:write',
+    'grade:write',
+    'archive:write',
+  ]);
   const topic = await post<Topic>(
     page.request,
     '/agent/topics',

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
 import type { Attempt, AttemptItemSnapshot, GradeResult } from '@drill-hub/contracts';
 import { Database } from '#server/db/database.js';
 import { baseRecord } from '#server/core/ids.js';
@@ -101,7 +103,101 @@ describe('updateAttemptStatus', () => {
   });
 });
 
+describe('PostgreSQL question lookup', () => {
+  // Supply an explicitly dedicated test database; each run owns and removes only its random schema.
+  it.skipIf(!process.env.TEST_POSTGRES_URL)(
+    'filters JSON item arrays and owner without losing attempts',
+    async () => {
+      const url = process.env.TEST_POSTGRES_URL!;
+      const schema = `drill_test_${randomUUID().replaceAll('-', '')}`;
+      const pool = new pg.Pool({ connectionString: url });
+      let db: Database | undefined;
+      let created = false;
+      try {
+        await pool.query(`CREATE SCHEMA "${schema}"`);
+        created = true;
+        const scoped = new URL(url);
+        scoped.searchParams.set('options', `-c search_path=${schema}`);
+        db = await Database.open({ driver: 'postgres', url: scoped.toString() });
+        const a = attempt('a', 'u1', item('i1', "q'1", grade('0.00'), '2026-10-17T12:00:00.000Z'));
+        const b = attempt('b', 'u1', item('i2', 'q2', grade('0.00'), '2026-10-17T12:00:00.000Z'));
+        const c = attempt('c', 'u2', item('i3', "q'1", grade('0.00'), '2026-10-17T12:00:00.000Z'));
+        for (const value of [a, b, c]) await db.insert('attempts', value);
+        expect((await db.listAttemptsForQuestions('u1', ["q'1"])).map((value) => value.id)).toEqual(
+          ['a'],
+        );
+        await syncWrongQuestions(db, a);
+        expect(await db.list('wrongQuestions')).toMatchObject([
+          { ownerId: 'u1', questionId: "q'1", wrongCount: 1 },
+        ]);
+        expect(await db.list('attempts')).toHaveLength(3);
+      } finally {
+        await db?.close();
+        if (created) await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+        await pool.end();
+      }
+    },
+  );
+});
+
 describe('syncWrongQuestions', () => {
+  it('selects active and due jobs without dropping terminal history', async () => {
+    const db = await openDatabase();
+    const common = {
+      ownerId: 'u1',
+      attemptId: 'a',
+      itemId: 'i',
+      generation: 1,
+      profileId: null,
+      attemptCount: 0,
+      leaseExpiresAt: null,
+      lastErrorCode: null,
+    };
+    for (const [id, status, nextRunAt] of [
+      ['due', 'queued', '2026-10-17T12:00:00.000Z'],
+      ['future', 'retry_wait', '2026-10-19T12:00:00.000Z'],
+      ['running', 'running', '2026-10-17T12:00:00.000Z'],
+      ['done', 'succeeded', '2026-10-17T12:00:00.000Z'],
+    ] as const) {
+      await db.insert('gradingJobs', {
+        ...baseRecord(),
+        ...common,
+        id,
+        itemId: id,
+        status,
+        nextRunAt,
+      });
+    }
+    expect((await db.listDueGradingJobs('2026-10-18T00:00:00.000Z')).map((job) => job.id)).toEqual([
+      'due',
+    ]);
+    expect((await db.listActiveGradingJobs()).map((job) => job.id).sort()).toEqual([
+      'due',
+      'future',
+      'running',
+    ]);
+    expect(await db.countRunningGradingJobs(null)).toBe(1);
+    expect(await db.countRunningGradingJobs('other')).toBe(0);
+    expect(await db.get('gradingJobs', 'done')).toBeDefined();
+  });
+
+  it('selects only matching owner and question attempts without changing historical facts', async () => {
+    const db = await openDatabase();
+    const a = attempt('a', 'u1', item('i1', 'q1', grade('0.00'), '2026-10-17T12:00:00.000Z'));
+    const b = attempt('b', 'u1', item('i2', 'q2', grade('0.00'), '2026-10-17T12:00:00.000Z'));
+    const c = attempt('c', 'u2', item('i3', 'q1', grade('0.00'), '2026-10-17T12:00:00.000Z'));
+    for (const value of [a, b, c]) await db.insert('attempts', value);
+    expect((await db.listAttemptsForQuestions('u1', ['q1'])).map((value) => value.id)).toEqual([
+      'a',
+    ]);
+    expect(await db.listAttemptsForQuestions('u1', [])).toEqual([]);
+    await syncWrongQuestions(db, a);
+    expect(await db.list('wrongQuestions')).toMatchObject([
+      { ownerId: 'u1', questionId: 'q1', wrongCount: 1 },
+    ]);
+    expect(await db.list('attempts')).toHaveLength(3);
+  });
+
   it.each(['0.00', '10.00'])(
     'includes owner-attributed link grades (%s) when rebuilding learning projections',
     async (score) => {

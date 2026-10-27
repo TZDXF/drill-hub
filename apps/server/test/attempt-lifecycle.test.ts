@@ -501,6 +501,56 @@ describe('attempt HTTP lifecycle', () => {
     },
   );
 
+  it('enforces ownership, revision and audit for both mastery routes', async () => {
+    const f = await setup();
+    const session = await f.start();
+    await f.save(session, { value: false });
+    await f.submit(session);
+    const wrong = (await f.app.ctx.db.list('wrongQuestions', { ownerId: f.user.id }))[0];
+    const path = `/wrong-questions/${f.questions[0].id}/mastery`;
+    for (const [prefix, headers] of [
+      ['', f.learner],
+      ['/agent', f.agent],
+    ] as const) {
+      const request = (payload: Record<string, unknown>, auth = headers) =>
+        f.app.inject({
+          method: 'PATCH',
+          url: `/api/v1${prefix}${path}`,
+          headers: auth,
+          payload,
+        });
+      const current = (await f.app.ctx.db.get('wrongQuestions', wrong.id))!;
+      const invalid = await request({
+        expectedRevision: current.revision,
+        masteryStatus: 'invalid',
+      });
+      expect(invalid.statusCode).toBe(422);
+      expect(invalid.json().error.code).toBe('INVALID_MASTERY');
+      const success = await request({
+        expectedRevision: current.revision,
+        masteryStatus: 'mastered',
+      });
+      expect(success.statusCode).toBe(200);
+      expect(success.json().data).toMatchObject({
+        masteryStatus: 'mastered',
+        revision: current.revision + 1,
+      });
+      const stale = await request({ expectedRevision: current.revision, masteryStatus: 'pending' });
+      expect(stale.statusCode).toBe(409);
+    }
+    const forbidden = await f.app.inject({
+      method: 'PATCH',
+      url: `/api/v1${path}`,
+      headers: f.otherLearner,
+      payload: { expectedRevision: wrong.revision, masteryStatus: 'pending' },
+    });
+    expect(forbidden.statusCode).toBe(404);
+    const audits = (await f.app.ctx.db.list('auditLogs')).filter(
+      (log) => log.action === 'wrong-question.mastery' && log.resourceId === wrong.id,
+    );
+    expect(audits).toHaveLength(2);
+  });
+
   it('attributes anonymous learning, mistakes and only the explicit task to the link owner', async () => {
     const f = await setup();
     const session = await f.start({ taskId: f.tasks[0].id }, 'answer_link');

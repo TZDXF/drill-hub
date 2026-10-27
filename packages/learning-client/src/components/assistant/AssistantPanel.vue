@@ -78,7 +78,7 @@ const {
   add: addStoredQuote,
   update: updateStoredQuote,
   remove: removeStoredQuote,
-  clear: clearStoredQuotes,
+  removeSent: removeSentQuotes,
 } = useAssistantQuotes(selectionScope);
 const composer = ref<InstanceType<typeof AssistantComposer> | null>(null);
 const sending = ref(false);
@@ -189,13 +189,14 @@ async function submit(mode: AssistantQueueMode) {
   sending.value = true;
   try {
     await assistant.send(buildPromptWithQuotes(text, selectedQuotes), { images, mode });
-    composer.value?.clear();
-    draft.value = '';
-    clearStoredQuotes(selectedScope);
-    scroll.scrollToBottom();
+    removeSentQuotes(selectedScope, selectedQuotes);
+    if (selectionScope.value === selectedScope) {
+      composer.value?.clear();
+      if (draft.value === text) draft.value = '';
+      scroll.scrollToBottom();
+    }
   } catch {
-    draft.value = text;
-    quotes.value = selectedQuotes;
+    // Keep the existing draft and quotes, including edits made while sending.
   } finally {
     sending.value = false;
   }
@@ -343,7 +344,7 @@ async function locateQuote(id: string): Promise<void> {
     viewport?.querySelector<HTMLElement>(`[data-selection-anchor="${CSS.escape(id)}"]`);
   const existingBadge = badge();
   if (existingBadge) {
-    existingBadge.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    existingBadge.scrollIntoView({ block: 'center', behavior: 'instant' });
     flash();
     return;
   }
@@ -375,7 +376,7 @@ async function locateQuote(id: string): Promise<void> {
   recomputeAnchors();
   await nextTick();
   const locatedBadge = badge();
-  if (locatedBadge) locatedBadge.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (locatedBadge) locatedBadge.scrollIntoView({ block: 'center', behavior: 'instant' });
   else
     viewport.scrollTo({
       top:
@@ -479,7 +480,7 @@ watch(
   () => quotes.value.length,
   (count) => {
     if (count > 0 && !anchorsWatcher) {
-      anchorsWatcher = watch([quotes, history], syncSelectionAnchors, {
+      anchorsWatcher = watch(quotes, syncSelectionAnchors, {
         deep: true,
         immediate: true,
       });
@@ -504,19 +505,34 @@ watch(
         recomputeAnchors();
       });
     });
+    const closePopup = () => {
+      selectionPopup.value = null;
+    };
+    viewport.addEventListener('scroll', closePopup, { passive: true });
     observer.observe(viewport, { childList: true, subtree: true, characterData: true });
     void nextTick(recomputeAnchors);
     onCleanup(() => {
       observer.disconnect();
+      viewport.removeEventListener('scroll', closePopup);
       if (frame !== undefined) cancelAnimationFrame(frame);
     });
   },
   { flush: 'post', immediate: true },
 );
-onMounted(() => window.addEventListener('resize', recomputeAnchors));
+function handleResize() {
+  selectionPopup.value = null;
+  recomputeAnchors();
+}
+onMounted(() => {
+  window.addEventListener('resize', handleResize);
+  window.visualViewport?.addEventListener('resize', handleResize);
+  window.visualViewport?.addEventListener('scroll', handleResize);
+});
 onBeforeUnmount(() => {
   anchorsWatcher?.();
-  window.removeEventListener('resize', recomputeAnchors);
+  window.removeEventListener('resize', handleResize);
+  window.visualViewport?.removeEventListener('resize', handleResize);
+  window.visualViewport?.removeEventListener('scroll', handleResize);
   if (clock) clearInterval(clock);
   clearSelectionFlash?.();
 });

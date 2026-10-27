@@ -55,7 +55,7 @@ GET /api/v1/agent/attempts/{attemptId}
 1. 若 `item.gradingStatus` 仍为 `pending`/`running`，保持待定；`retry_wait` 是评分任务状态，不是作答项状态。
 2. 若完成，读取 `item.grade` 的 `score`、`maxScore`、`feedback`、`criterionResults` 和 `modelId`。
 3. 若 `failed`，可读取任务 `lastErrorCode`。仅当任务是本人且状态为 `failed` 时，可使用重试路由。
-4. `blocked_config`/`blocked_budget` 不能由普通 Agent 重试；需要管理员处理配置/预算。
+4. `blocked_config`/`blocked_budget` 不能由普通 Agent 重试；需要管理员处理配置/预算。默认配置缺失或已绑定配置的模型、供应商等可验证的配置问题解决后，worker 会自动恢复相应的 `blocked_config` 任务；密钥和网络地址类问题仍需管理员显式重试。已绑定的任务不会自动改绑到新的默认配置。
 5. 若为 `cancelled` 且 `lastErrorCode: "ATTEMPT_VOIDED"`，表示关联作答已作废；保留记录，不重试，也不将其当作仍待完成的评分。
 
 重试失败任务：

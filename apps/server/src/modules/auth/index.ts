@@ -56,12 +56,15 @@ export function createAuthFunctions(
    * 助手内部令牌（dhi. 前缀）：服务端在同进程内为 drill_hub_api 工具签发，
    * 以发起用户身份执行端点。校验 HMAC 签名与有效期，并绑定单一 turn。
    */
-  function internalActor(request: FastifyRequest): { actor: Actor } | null {
+  async function internalActor(request: FastifyRequest): Promise<{ actor: Actor } | null> {
     const header = request.headers.authorization;
     const bearer = header?.startsWith('Bearer ') ? header.slice(7) : '';
     if (!bearer.startsWith(INTERNAL_TOKEN_PREFIX)) return null;
     const verified = verifyInternalToken(bearer, config.encryptionKey);
     if (!verified) throw new AppError(401, 'INVALID_SESSION', '内部凭证无效或已过期');
+    const turn = await db.get('assistantTurns', verified.turnId);
+    if (!turn || turn.ownerId !== verified.userId || turn.status !== 'running')
+      throw new AppError(401, 'INVALID_SESSION', '内部凭证无效或已过期');
     return {
       actor: {
         id: `assistant:${verified.turnId}`,
@@ -75,7 +78,7 @@ export function createAuthFunctions(
   }
 
   async function requireUser(request: FastifyRequest): Promise<Actor> {
-    const internal = internalActor(request);
+    const internal = await internalActor(request);
     if (internal) {
       const user = await activeUser(db, internal.actor.userId);
       request.auditActor = internal.actor;
@@ -123,7 +126,7 @@ export function createAuthFunctions(
     return actor;
   }
   async function requireAgent(request: FastifyRequest, scope: Scope = 'read'): Promise<Actor> {
-    const internal = internalActor(request);
+    const internal = await internalActor(request);
     if (internal) {
       const user = await activeUser(db, internal.actor.userId);
       const actor: Actor = {
@@ -184,6 +187,7 @@ export async function createUser(
   if (!/^[\p{L}\p{N}_.-]+$/u.test(username))
     throw new AppError(422, 'INVALID_USERNAME', '用户名只能包含文字、数字、下划线、点和连字符');
   validatePassword(input.password);
+  const hashedPassword = await passwordHash(input.password);
   return db.transaction(async (tx) => {
     if (await tx.findOne('users', { username }))
       throw new AppError(409, 'USERNAME_TAKEN', '用户名已存在');
@@ -191,7 +195,7 @@ export async function createUser(
       ...baseRecord(),
       username,
       displayName: input.displayName?.trim() || username,
-      passwordHash: passwordHash(input.password),
+      passwordHash: hashedPassword,
       role: input.role ?? 'user',
       status: 'active',
       mustChangePassword: input.mustChangePassword ?? false,
@@ -220,10 +224,11 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
   async function login(request: FastifyRequest, reply: FastifyReply, channel: 'web' | 'mobile') {
     const body = object(request.body);
     const username = text(body.username, '用户名', 64, 3);
-    const password = typeof body.password === 'string' ? body.password : '';
+    const password =
+      typeof body.password === 'string' && body.password.length <= 1024 ? body.password : '';
     const user = await db.findOne('users', { username });
     request.loginAccount = user ? { userId: user.id, username: user.username } : null;
-    const valid = verifyPassword(password, user?.passwordHash ?? dummyPassword);
+    const valid = await verifyPassword(password, user?.passwordHash ?? (await dummyPassword));
     if (!valid || !user || user.status !== 'active')
       throw new AppError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
     const sessionId = id();
@@ -260,13 +265,22 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     return { data: { user: userView(user), accessToken: raw, refreshToken } };
   }
-  const loginRateLimitMax = Number(process.env.E2E_LOGIN_RATE_LIMIT_MAX ?? 10);
-  const loginFloodLimit = app.createRateLimit();
+  const configuredLimit = Number(process.env.E2E_LOGIN_RATE_LIMIT_MAX ?? 10);
+  const loginRateLimitMax =
+    Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 10;
+  const globalFloodLimit = app.createRateLimit();
+  const loginFloodLimit = app.createRateLimit({
+    max: 30,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => `login-ip:${request.ip}`,
+  });
   const limitLoginFlood = async (request: FastifyRequest, reply: FastifyReply) => {
-    const result = await loginFloodLimit(request);
-    if (!result.isAllowed && result.isExceeded) {
-      reply.header('Retry-After', result.ttlInSeconds);
-      throw new AppError(429, 'RATE_LIMITED', '请求过于频繁，请稍后重试');
+    for (const limit of [globalFloodLimit, loginFloodLimit]) {
+      const result = await limit(request);
+      if (!result.isAllowed && result.isExceeded) {
+        reply.header('Retry-After', result.ttlInSeconds);
+        throw new AppError(429, 'RATE_LIMITED', '请求过于频繁，请稍后重试');
+      }
     }
   };
   const loginRateLimit = {
@@ -368,12 +382,13 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     const current = typeof body.currentPassword === 'string' ? body.currentPassword : '';
     const newPassword = body.newPassword;
     validatePassword(newPassword);
+    const user = await activeUser(db, actor.userId);
+    if (current.length > 1024 || !(await verifyPassword(current, user.passwordHash)))
+      throw new AppError(401, 'INVALID_PASSWORD', '当前密码不正确');
+    const hashedPassword = await passwordHash(newPassword);
     await db.transaction(async (tx) => {
-      const user = await activeUser(tx, actor.userId);
-      if (!verifyPassword(current, user.passwordHash))
-        throw new AppError(401, 'INVALID_PASSWORD', '当前密码不正确');
       await tx.update('users', user.id, user.revision, {
-        passwordHash: passwordHash(newPassword),
+        passwordHash: hashedPassword,
         mustChangePassword: false,
       });
       await revokeUserCredentials(tx, user.id);
@@ -542,11 +557,12 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
       const body = object(request.body ?? {});
       const temporaryPassword = body.password === undefined ? 'T!' + randomSecret() : body.password;
       validatePassword(temporaryPassword);
+      const hashedPassword = await passwordHash(temporaryPassword);
       const user = await db.transaction(async (tx) => {
         const current = await tx.get('users', request.params.id);
         if (!current) throw new AppError(404, 'NOT_FOUND', '账号不存在');
         const updated = await tx.update('users', current.id, current.revision, {
-          passwordHash: passwordHash(temporaryPassword),
+          passwordHash: hashedPassword,
           mustChangePassword: false,
         });
         await revokeUserCredentials(tx, current.id);

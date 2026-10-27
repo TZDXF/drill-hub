@@ -1,3 +1,5 @@
+import { deleteAssistantQuotes } from '#learning-client/assistant/quoteStore';
+import { t } from '#learning-client/i18n';
 import { reactive } from 'vue';
 import type { Router } from 'vue-router';
 import type {
@@ -242,7 +244,7 @@ async function newThread(): Promise<AssistantThread> {
 }
 async function renameThread(threadId: string, title: string): Promise<void> {
   const thread = state.threads.find((item) => item.id === threadId);
-  if (!thread) throw new Error('对话不存在');
+  if (!thread) throw new Error(t('components.assistant.threadNotFound'));
   const updated = await learning().patch<AssistantThread>(`/me/assistant/threads/${threadId}`, {
     title: title.trim(),
     expectedRevision: thread.revision,
@@ -252,6 +254,7 @@ async function renameThread(threadId: string, title: string): Promise<void> {
 
 async function deleteThread(threadId: string): Promise<void> {
   await learning().del(`/me/assistant/threads/${threadId}`);
+  deleteAssistantQuotes(threadId);
   await loadThreads();
   if (state.currentThreadId === threadId) {
     stopStream();
@@ -295,13 +298,14 @@ async function revealTurn(turnId: string): Promise<string | null> {
   return timeline.userMessageId;
 }
 async function forkThread(turnId: string, mode: 'before' | 'through'): Promise<AssistantThread> {
-  if (!state.currentThreadId) throw new Error('没有当前对话');
+  if (!state.currentThreadId) throw new Error(t('components.assistant.noCurrentThread'));
+  const sourceThreadId = state.currentThreadId;
   const thread = await learning().post<AssistantThread>(
-    `/me/assistant/threads/${state.currentThreadId}/fork`,
+    `/me/assistant/threads/${sourceThreadId}/fork`,
     { turnId, mode },
   );
   await loadThreads();
-  await selectThread(thread.id);
+  if (state.currentThreadId === sourceThreadId) await selectThread(thread.id);
   return thread;
 }
 
@@ -379,6 +383,7 @@ async function send(
     connectStream();
     return 'started';
   } catch (reason) {
+    if (state.currentThreadId !== threadId) throw reason;
     state.error = errorMessage(reason);
     if (!active) {
       const index = state.messages.findIndex(
@@ -488,7 +493,10 @@ function handleStreamEvent(payload: { event?: string; data: string; id?: string 
     const event = parsed as AssistantEventView;
     if (!event?.type || !pushEvent({ ...event, type: type as AssistantEventView['type'] })) return;
     if (event.type === 'error')
-      void completeTurn(event.turnId, String(event.payload?.message ?? '本轮对话未能完成'));
+      void completeTurn(
+        event.turnId,
+        String(event.payload?.message ?? t('components.assistant.turnFailed')),
+      );
     if (event.type === 'status' && event.payload?.phase === 'turn_completed')
       void completeTurn(event.turnId);
     if (event.type === 'ui_action') {
@@ -553,7 +561,7 @@ function scheduleReconnect(): void {
   if (!state.currentThreadId || !state.activeTurnId || reconnectTimer) return;
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   state.connection = 'connecting';
-  state.error = '事件流连接中断，正在重新连接…';
+  state.error = t('components.assistant.reconnecting');
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectStream();

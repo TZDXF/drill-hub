@@ -42,27 +42,29 @@ function byNewestLockedAt(left: PracticeFact, right: PracticeFact): number {
  * the only mistaken attempt removes the projection while preserving the attempt.
  */
 export async function syncWrongQuestions(db: Database, attempt: Attempt): Promise<void> {
-  const persisted = await db.list('attempts', { ownerId: attempt.ownerId });
+  const questionIds = [...new Set(attempt.items.map((item) => item.questionId))];
+  const persisted = await db.listAttemptsForQuestions(attempt.ownerId, questionIds);
   const attempts = [
     ...persisted.filter((candidate) => candidate.id !== attempt.id && isLearningAttempt(candidate)),
     ...(isLearningAttempt(attempt) ? [attempt] : []),
   ];
-  const questionIds = [...new Set(attempt.items.map((item) => item.questionId))];
 
-  for (const questionId of questionIds) {
-    const facts: PracticeFact[] = [];
-    for (const candidate of attempts) {
-      for (const item of candidate.items) {
-        if (
-          item.questionId === questionId &&
-          item.lockedAt !== null &&
-          item.grade !== null &&
-          answerStatus(item.definition, item.answer) !== 'unanswered'
-        ) {
-          facts.push({ attempt: candidate, item });
-        }
+  const factsByQuestion = new Map(questionIds.map((id) => [id, [] as PracticeFact[]]));
+  for (const candidate of attempts) {
+    for (const item of candidate.items) {
+      const facts = factsByQuestion.get(item.questionId);
+      if (
+        facts &&
+        item.lockedAt !== null &&
+        item.grade !== null &&
+        answerStatus(item.definition, item.answer) !== 'unanswered'
+      ) {
+        facts.push({ attempt: candidate, item });
       }
     }
+  }
+  for (const questionId of questionIds) {
+    const facts = factsByQuestion.get(questionId)!;
     facts.sort(byNewestLockedAt);
     const existing = await db.findOne('wrongQuestions', { ownerId: attempt.ownerId, questionId });
     const wrongFacts = facts.filter(({ item }) => {

@@ -226,7 +226,23 @@ export function registerAssistantRoutes(
     assert(mode, 'INVALID_FORK_MODE', '分叉位置无效', 422);
     try {
       const thread = await forkAssistantThread(ctx, actor, source, turnId, mode);
-      await assistant.forkThread(source, thread, turnId, mode);
+      try {
+        await assistant.forkThread(source, thread, turnId, mode);
+      } catch (error) {
+        await ctx.db.transaction(async (tx) => {
+          for (const table of ['assistantEvents', 'assistantMessages', 'assistantTurns'] as const) {
+            for (const record of await tx.list(table, { threadId: thread.id }))
+              await tx.delete(table, record.id);
+          }
+          await tx.delete('assistantThreads', thread.id);
+        });
+        throw error;
+      }
+      await ctx.audit(actor, 'assistant.thread.fork', 'assistantThread', thread.id, {
+        sourceThreadId: source.id,
+        sourceTurnId: turnId,
+        mode,
+      });
       reply.code(201);
       return { data: thread };
     } catch (error) {
@@ -305,9 +321,29 @@ export function registerAssistantRoutes(
           422,
         );
       }
-      const active = await findActiveTurn(ctx, thread.id);
-      const pending = await ctx.db.list('assistantQueuedMessages', { threadId: thread.id });
-      if (active || pending.length) {
+      const handle = await ctx.db.transaction(async (tx) => {
+        const active = (await tx.list('assistantTurns', { threadId: thread.id })).some(
+          (turn) => turn.status === 'queued' || turn.status === 'running',
+        );
+        const pending = await tx.list('assistantQueuedMessages', { threadId: thread.id });
+        if (active || pending.length) return null;
+        const currentThread = await tx.get('assistantThreads', thread.id);
+        if (!currentThread) throw new AppError(404, 'NOT_FOUND', '资源不存在');
+        const created = await createTurn(
+          { ...ctx, db: tx },
+          actor.userId,
+          thread.id,
+          content,
+          promptContext,
+          providerModelId,
+          images,
+        );
+        await tx.update('assistantThreads', thread.id, currentThread.revision, {
+          lastMessageAt: now(),
+        });
+        return created;
+      });
+      if (!handle) {
         const mode: AssistantQueueMode = input.mode === 'steer' ? 'steer' : 'followUp';
         const queuedMessage = await assistant.queueMessage({
           ownerId: actor.userId,
@@ -321,18 +357,6 @@ export function registerAssistantRoutes(
         reply.code(202);
         return { data: { turn: null, userMessage: null, queuedMessage } };
       }
-      const handle = await createTurn(
-        ctx,
-        actor.userId,
-        thread.id,
-        content,
-        promptContext,
-        providerModelId,
-        images,
-      );
-      await ctx.db.update('assistantThreads', thread.id, thread.revision, {
-        lastMessageAt: now(),
-      });
       if (thread.title === '新对话') {
         void assistant.generateThreadTitle(thread.id, content, providerModelId).catch(() => {});
       }
@@ -376,26 +400,29 @@ export function registerAssistantRoutes(
     const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
     const input = body(request);
     const ids = input.ids;
-    const pending = await ctx.db.list('assistantQueuedMessages', { threadId: thread.id });
-    assert(
-      Array.isArray(ids) &&
-        ids.length === pending.length &&
-        ids.every((id) => typeof id === 'string') &&
-        new Set(ids).size === pending.length &&
-        pending.every((item) => item.ownerId === actor.userId && ids.includes(item.id)),
-      'INVALID_QUEUE_ORDER',
-      '待发送消息顺序无效，请刷新后重试',
-      422,
-    );
-    const ordered: AssistantQueuedMessage[] = [];
-    for (const [index, id] of (ids as string[]).entries()) {
-      const queued = pending.find((item) => item.id === id)!;
-      const updated = await ctx.db.update('assistantQueuedMessages', queued.id, queued.revision, {
-        position: index + 1,
-      });
-      const { ownerId: _ownerId, promptContext: _promptContext, ...view } = updated;
-      ordered.push(view);
-    }
+    const ordered = await ctx.db.transaction(async (tx) => {
+      const pending = await tx.list('assistantQueuedMessages', { threadId: thread.id });
+      assert(
+        Array.isArray(ids) &&
+          ids.length === pending.length &&
+          ids.every((id) => typeof id === 'string') &&
+          new Set(ids).size === pending.length &&
+          pending.every((item) => item.ownerId === actor.userId && ids.includes(item.id)),
+        'INVALID_QUEUE_ORDER',
+        '待发送消息顺序无效，请刷新后重试',
+        422,
+      );
+      const ordered: AssistantQueuedMessage[] = [];
+      for (const [index, id] of (ids as string[]).entries()) {
+        const queued = pending.find((item) => item.id === id)!;
+        const updated = await tx.update('assistantQueuedMessages', queued.id, queued.revision, {
+          position: index + 1,
+        });
+        const { ownerId: _ownerId, promptContext: _promptContext, ...view } = updated;
+        ordered.push(view);
+      }
+      return ordered;
+    });
     await assistant.notifyQueue(thread.id);
     return { data: ordered };
   });
@@ -724,7 +751,15 @@ export function registerAssistantRoutes(
       }
     }
     const command = raw.command === undefined || raw.command === null ? null : String(raw.command);
-    const args = Array.isArray(raw.args) ? raw.args.map(String) : [];
+    assert(
+      raw.args === undefined ||
+        (Array.isArray(raw.args) && raw.args.every((arg) => typeof arg === 'string')),
+      'INVALID_ARGS',
+      'args 必须是字符串数组',
+      422,
+    );
+    const args = Array.isArray(raw.args) ? (raw.args as string[]) : [];
+    assert(args.length <= 32, 'INVALID_ARGS', '参数过多', 422);
     const url = raw.url === undefined || raw.url === null ? null : String(raw.url);
     if (transport === 'stdio') {
       assert(
@@ -820,26 +855,33 @@ export function registerAssistantRoutes(
     const saved = await ctx.db.get('mcpServers', params(request).id);
     assert(saved, 'NOT_FOUND', 'MCP 服务器不存在', 404);
     checkRevision(saved, revision);
-    const updates: Partial<McpServerRecord> = {};
-    if (input.enabled !== undefined) updates.enabled = input.enabled === true;
-    if (input.timeoutSeconds !== undefined)
-      updates.timeoutSeconds = positiveInteger(input.timeoutSeconds, 'timeoutSeconds', 600);
-    if (input.exposure !== undefined)
-      updates.exposure = input.exposure === 'deferred' ? 'deferred' : 'direct';
-    if (input.args !== undefined && Array.isArray(input.args))
-      updates.args = input.args.map(String).slice(0, 32);
-    if (input.command !== undefined)
-      updates.command = input.command === null ? null : String(input.command);
-    if (input.url !== undefined) {
-      updates.url = input.url === null ? null : String(input.url);
-      if (updates.url) assertProviderHost(new URL(updates.url), ctx.config.allowPrivateSearchUrls);
-    }
-    if (typeof input.env === 'object' && input.env !== null)
-      updates.encryptedEnv = ctx.vault.encryptJson(input.env);
-    if (input.env === null) updates.encryptedEnv = null;
-    if (typeof input.headers === 'object' && input.headers !== null)
-      updates.encryptedHeaders = ctx.vault.encryptJson(input.headers);
-    if (input.headers === null) updates.encryptedHeaders = null;
+    const validated = validateMcpServerInput({
+      name: saved.name,
+      transport: saved.transport,
+      command: input.command === undefined ? saved.command : input.command,
+      args: input.args === undefined ? saved.args : input.args,
+      url: input.url === undefined ? saved.url : input.url,
+      env: input.env === undefined ? null : input.env,
+      headers: input.headers === undefined ? null : input.headers,
+      timeoutSeconds:
+        input.timeoutSeconds === undefined ? saved.timeoutSeconds : input.timeoutSeconds,
+      exposure: input.exposure === undefined ? saved.exposure : input.exposure,
+      enabled: input.enabled === undefined ? saved.enabled : input.enabled,
+    });
+    const updates: Partial<McpServerRecord> = {
+      command: validated.command,
+      args: validated.args,
+      url: validated.url,
+      timeoutSeconds: validated.timeoutSeconds,
+      exposure: validated.exposure,
+      enabled: validated.enabled,
+    };
+    if (input.env !== undefined)
+      updates.encryptedEnv = validated.env ? ctx.vault.encryptJson(validated.env) : null;
+    if (input.headers !== undefined)
+      updates.encryptedHeaders = validated.headers
+        ? ctx.vault.encryptJson(validated.headers)
+        : null;
     const updated = await ctx.db.update('mcpServers', saved.id, revision, updates);
     assistant.invalidateRuntime();
     await ctx.audit(actor, 'mcp-server.update', 'mcpServer', saved.id, {

@@ -179,14 +179,6 @@ export async function forkAssistantThread(
         turnId: turnIds.get(event.turnId)!,
       });
     }
-    await ctx.audit(
-      actor,
-      'assistant.thread.fork',
-      'assistantThread',
-      branch.id,
-      { sourceThreadId: source.id, sourceTurnId: turnId, mode },
-      tx,
-    );
   });
   return branch;
 }

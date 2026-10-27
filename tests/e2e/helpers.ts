@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import type { ApiResponse, Scope } from '@drill-hub/contracts';
 
 export interface TestCredentials {
   username: string;
@@ -38,4 +39,37 @@ export async function closeQuestionNav(page: Page) {
     await close.click();
     await expect(page.getByRole('dialog', { name: '选择题号' })).not.toBeVisible();
   }
+}
+
+export async function post<T>(
+  request: APIRequestContext,
+  path: string,
+  data: unknown,
+  headers: Record<string, string>,
+): Promise<T> {
+  const response = await request.post(`/api/v1${path}`, { data, headers });
+  await expect(response).toBeOK();
+  return ((await response.json()) as ApiResponse<T>).data;
+}
+
+export async function csrfHeaders(request: APIRequestContext): Promise<Record<string, string>> {
+  const response = await request.get('/api/v1/auth/csrf');
+  await expect(response).toBeOK();
+  const { data } = (await response.json()) as ApiResponse<{ csrfToken: string }>;
+  expect(data.csrfToken).toBeTruthy();
+  return { 'X-CSRF-Token': data.csrfToken };
+}
+
+export async function agentHeaders(
+  request: APIRequestContext,
+  name: string,
+  scopes: Scope[],
+): Promise<Record<string, string>> {
+  const { token } = await post<{ token: string }>(
+    request,
+    '/me/agent-tokens',
+    { name, scopes },
+    await csrfHeaders(request),
+  );
+  return { Authorization: `Bearer ${token}` };
 }

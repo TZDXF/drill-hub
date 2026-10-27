@@ -25,7 +25,7 @@ import type {
 import { DurableAssistantRuntime } from '#server/modules/assistant/durable-runtime.js';
 
 const TEXT_FLUSH_INTERVAL_MS = 1000;
-const INTERNAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const INTERNAL_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 export interface AssistantStreamFrame {
   kind: 'event' | 'text_delta' | 'reasoning_delta' | 'snapshot' | 'queue' | 'title' | 'heartbeat';
@@ -97,7 +97,6 @@ export function createAssistantService(
   ctx: AppContext,
   app: FastifyInstance,
 ): AssistantServiceImpl {
-  const seqCounters = new Map<string, number>();
   const listeners = new Map<string, Set<StreamListener>>();
   const activeTurns = new Map<string, string>();
   const cancelled = new Set<string>();
@@ -107,16 +106,6 @@ export function createAssistantService(
   const flushTimers = new Map<string, ReturnType<typeof setInterval>>();
   const draining = new Set<string>();
 
-  async function nextSeq(threadId: string): Promise<number> {
-    let last = seqCounters.get(threadId);
-    if (last === undefined) {
-      const events = await ctx.db.list('assistantEvents', { threadId });
-      last = events.reduce((max, event) => Math.max(max, event.seq), 0);
-    }
-    last += 1;
-    seqCounters.set(threadId, last);
-    return last;
-  }
   function toView(record: AssistantEventRecord): AssistantEventView {
     const { ownerId: _ownerId, ...view } = record;
     return view;
@@ -128,16 +117,20 @@ export function createAssistantService(
     type: AssistantEventView['type'],
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const record: AssistantEventRecord = {
-      ...baseRecord(),
-      ownerId,
-      threadId,
-      turnId,
-      seq: await nextSeq(threadId),
-      type,
-      payload,
-    };
-    await ctx.db.insert('assistantEvents', record);
+    const record = await ctx.db.transaction(async (tx) => {
+      const events = await tx.list('assistantEvents', { threadId });
+      const record: AssistantEventRecord = {
+        ...baseRecord(),
+        ownerId,
+        threadId,
+        turnId,
+        seq: events.reduce((max, event) => Math.max(max, event.seq), 0) + 1,
+        type,
+        payload,
+      };
+      await tx.insert('assistantEvents', record);
+      return record;
+    });
     broadcast(threadId, { kind: 'event', event: toView(record) });
   }
   function broadcast(threadId: string, frame: AssistantStreamFrame): void {
@@ -187,9 +180,11 @@ export function createAssistantService(
         left.id.localeCompare(right.id),
     );
   }
-  function ensureFlush(turn: AssistantTurnRecord): void {
+  async function ensureFlush(turn: AssistantTurnRecord): Promise<void> {
     if (flushTimers.has(turn.id)) return;
-    accumulated.set(turn.id, { text: '', reasoning: '' });
+    const message = await ctx.db.get('assistantMessages', turn.assistantMessageId);
+    if (flushTimers.has(turn.id)) return;
+    accumulated.set(turn.id, { text: message?.content ?? '', reasoning: message?.reasoning ?? '' });
     flushTimers.set(
       turn.id,
       setInterval(() => {
@@ -221,7 +216,11 @@ export function createAssistantService(
   async function failTurn(turnId: string, code: string, message: string) {
     const turn = await ctx.db.get('assistantTurns', turnId);
     if (!turn || !['queued', 'running'].includes(turn.status)) return;
-    const value = accumulated.get(turnId) ?? { text: '', reasoning: '' };
+    const saved = await ctx.db.get('assistantMessages', turn.assistantMessageId);
+    const value = accumulated.get(turnId) ?? {
+      text: saved?.content ?? '',
+      reasoning: saved?.reasoning ?? '',
+    };
     await finishMessage(turn.assistantMessageId, value.text, 'failed', code, value.reasoning);
     await finishTurn(turnId, cancelled.has(turnId) ? 'cancelled' : 'failed', code);
     await recordUsage(turn, false, null);
@@ -271,7 +270,12 @@ export function createAssistantService(
     turnModels.delete(turnId);
     cancelled.delete(turnId);
     if (activeTurns.get(threadId) === turnId) activeTurns.delete(threadId);
-    void drainThread(threadId).catch(() => {});
+    void drainThread(threadId).catch((error: unknown) => {
+      app.log.error(
+        { errorName: error instanceof Error ? error.name : 'UnknownError', threadId },
+        '助手队列处理失败',
+      );
+    });
   }
 
   async function onBatch(
@@ -292,7 +296,7 @@ export function createAssistantService(
       if (!turn || !['queued', 'running'].includes(turn.status)) continue;
       if (submission.status === 'placed') {
         activeTurns.set(thread.id, turn.id);
-        ensureFlush(turn);
+        await ensureFlush(turn);
         if (turn.status === 'queued') await finishTurn(turn.id, 'running', null);
       }
     }
@@ -305,7 +309,7 @@ export function createAssistantService(
         const turn = turnId ? await ctx.db.get('assistantTurns', turnId) : null;
         if (turn) {
           activeTurns.set(thread.id, turn.id);
-          ensureFlush(turn);
+          await ensureFlush(turn);
           if (turn.status === 'queued') await finishTurn(turn.id, 'running', null);
           await emit(turn.ownerId, thread.id, turn.id, 'status', { phase: 'model_call' });
         }
@@ -373,7 +377,11 @@ export function createAssistantService(
     const entries = transcripts.get(thread.id) ?? new Map();
     if (submission.type === 'input' && submission.status === 'done') {
       const final = messageText(entryMessage(entries.get(submission.answer)));
-      const partial = accumulated.get(turn.id) ?? { text: '', reasoning: '' };
+      const saved = await ctx.db.get('assistantMessages', turn.assistantMessageId);
+      const partial = accumulated.get(turn.id) ?? {
+        text: saved?.content ?? '',
+        reasoning: saved?.reasoning ?? '',
+      };
       let usage: ModelTokenUsage | null = null;
       let inTurn = false;
       for (const entry of entries.values()) {
@@ -462,7 +470,7 @@ export function createAssistantService(
       await failTurn(turnId, 'ASSISTANT_USER_UNAVAILABLE', '助手用户或会话不可用');
       return;
     }
-    ensureFlush(turn);
+    await ensureFlush(turn);
     try {
       await runtime.submit(thread, {
         id: turn.id,
@@ -484,24 +492,33 @@ export function createAssistantService(
     if (draining.has(threadId)) return;
     draining.add(threadId);
     try {
-      const running = (await ctx.db.list('assistantTurns', { threadId })).some((turn) =>
-        ['queued', 'running'].includes(turn.status),
-      );
-      if (running) return;
-      const next = (await queuedMessages(threadId))[0];
-      if (!next) return;
-      const handle = await createTurn(
-        ctx,
-        next.ownerId,
-        threadId,
-        next.content,
-        next.promptContext,
-        next.providerModelId,
-        next.images,
-      );
-      await ctx.db.delete('assistantQueuedMessages', next.id);
-      await notifyQueue(threadId);
+      const handle = await ctx.db.transaction(async (tx) => {
+        const running = (await tx.list('assistantTurns', { threadId })).some((turn) =>
+          ['queued', 'running'].includes(turn.status),
+        );
+        if (running) return null;
+        const next = (await tx.list('assistantQueuedMessages', { threadId })).sort(
+          (left, right) =>
+            left.position - right.position ||
+            left.createdAt.localeCompare(right.createdAt) ||
+            left.id.localeCompare(right.id),
+        )[0];
+        if (!next) return null;
+        const handle = await createTurn(
+          { ...ctx, db: tx },
+          next.ownerId,
+          threadId,
+          next.content,
+          next.promptContext,
+          next.providerModelId,
+          next.images,
+        );
+        await tx.delete('assistantQueuedMessages', next.id);
+        return handle;
+      });
+      if (!handle) return;
       enqueueTurn(handle.turnId);
+      await notifyQueue(threadId);
     } finally {
       draining.delete(threadId);
       await notifyQueue(threadId);
@@ -545,13 +562,16 @@ export function createAssistantService(
       });
     },
     queueMessage: async (input) => {
-      const pending = await queuedMessages(input.threadId);
-      const row: AssistantQueuedMessageRecord = {
-        ...baseRecord(),
-        ...input,
-        position: Math.max(0, ...pending.map((item) => item.position)) + 1,
-      };
-      await ctx.db.insert('assistantQueuedMessages', row);
+      const row = await ctx.db.transaction(async (tx) => {
+        const pending = await tx.list('assistantQueuedMessages', { threadId: input.threadId });
+        const row: AssistantQueuedMessageRecord = {
+          ...baseRecord(),
+          ...input,
+          position: Math.max(0, ...pending.map((item) => item.position)) + 1,
+        };
+        await tx.insert('assistantQueuedMessages', row);
+        return row;
+      });
       await notifyQueue(input.threadId);
       if (input.mode === 'steer') {
         const current = (await ctx.db.list('assistantTurns', { threadId: input.threadId })).find(
@@ -563,7 +583,15 @@ export function createAssistantService(
           if (thread) await runtime.cancel(thread);
         }
       }
-      void drainThread(input.threadId).catch(() => {});
+      void drainThread(input.threadId).catch((error: unknown) => {
+        app.log.error(
+          {
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+            threadId: input.threadId,
+          },
+          '助手队列处理失败',
+        );
+      });
       return queuedView(row);
     },
     sendQueuedMessage: async (queued) => {
@@ -581,7 +609,15 @@ export function createAssistantService(
         const thread = await ctx.db.get('assistantThreads', queued.threadId);
         if (thread) await runtime.cancel(thread);
       }
-      void drainThread(queued.threadId).catch(() => {});
+      void drainThread(queued.threadId).catch((error: unknown) => {
+        app.log.error(
+          {
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+            threadId: queued.threadId,
+          },
+          '助手队列处理失败',
+        );
+      });
       return queuedView(updated);
     },
     notifyQueue,
@@ -599,7 +635,15 @@ export function createAssistantService(
       const threads = await ctx.db.list('assistantThreads', {});
       await runtime.start(threads, await ctx.db.list('assistantTurns', {}));
       for (const queued of await ctx.db.list('assistantQueuedMessages', {}))
-        void drainThread(queued.threadId).catch(() => {});
+        void drainThread(queued.threadId).catch((error: unknown) => {
+          app.log.error(
+            {
+              errorName: error instanceof Error ? error.name : 'UnknownError',
+              threadId: queued.threadId,
+            },
+            '助手队列处理失败',
+          );
+        });
     },
     stop: () => runtime.close(),
     subscribe,

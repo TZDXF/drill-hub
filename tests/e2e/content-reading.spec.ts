@@ -1,30 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import type { ApiResponse, Content, Topic } from '@drill-hub/contracts';
-import { login } from '#e2e/helpers';
-
-async function post<T>(
-  request: APIRequestContext,
-  path: string,
-  data: unknown,
-  headers: Record<string, string>,
-) {
-  const response = await request.post(`/api/v1${path}`, { data, headers });
-  await expect(response).toBeOK();
-  return ((await response.json()) as ApiResponse<T>).data;
-}
+import { expect, test, type Page } from '@playwright/test';
+import type { Content, Topic } from '@drill-hub/contracts';
+import { login, post, csrfHeaders } from '#e2e/helpers';
 
 async function createReading(page: Page, bodyText: string) {
   await login(page);
-  const csrfResponse = await page.request.get('/api/v1/auth/csrf');
-  const {
-    data: { csrfToken },
-  } = await csrfResponse.json();
+  const csrf = await csrfHeaders(page.request);
   const authorization = await post<{ token: string }>(
     page.request,
     '/me/agent-tokens',
     { name: `reading-${randomUUID()}`, scopes: ['read', 'content:write'] },
-    { 'X-CSRF-Token': csrfToken },
+    csrf,
   );
   const headers = { Authorization: `Bearer ${authorization.token}` };
   const topic = await post<Topic>(

@@ -49,6 +49,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('server error translations', () => {
+  it('covers uppercase underscore literals emitted by the server in both locales', () => {
+    const serverRoot = resolve(workspaceRoot, 'apps/server/src');
+    function sources(directory: string): string[] {
+      return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory() ? sources(path) : /\.ts$/.test(entry.name) ? [path] : [];
+      });
+    }
+    const codes = new Set<string>();
+    for (const file of sources(serverRoot)) {
+      for (const match of readFileSync(file, 'utf8').matchAll(
+        /['"]([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)['"]/g,
+      )) {
+        codes.add(match[1]);
+      }
+    }
+    for (const locale of ['zh-CN', 'en'] as const) {
+      const entries = flatten(messages[locale]);
+      expect([...codes].filter((code) => !(`core.errors.${code}` in entries)).sort()).toEqual([]);
+    }
+  });
+});
+
 describe('language preferences', () => {
   it('defaults to Chinese regardless of browser language', () => {
     vi.stubGlobal('navigator', { language: 'en-US' });

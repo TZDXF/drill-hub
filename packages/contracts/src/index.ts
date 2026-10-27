@@ -60,12 +60,44 @@ export interface LoginResult {
   accessToken?: string;
   refreshToken?: string;
 }
+/** GET /me/sessions 返回的当前有效会话。 */
+export interface SessionView {
+  id: string;
+  channel: 'web' | 'mobile';
+  createdAt: string;
+  expiresAt: string;
+  current: boolean;
+}
 export interface AgentTokenView extends BaseRecord {
   name: string;
   prefix: string;
   scopes: Scope[];
   expiresAt: string | null;
   lastUsedAt: string | null;
+}
+/** 创建时返回完整令牌；应按敏感信息处理。 */
+export interface AgentTokenCreated extends AgentTokenView {
+  token: string;
+}
+export interface AgentCapabilities {
+  apiVersion: number;
+  scopes: Scope[];
+  questionTypes: QuestionType[];
+  gradingModes: GradingMode[];
+  limitations: string[];
+}
+export interface AgentQuestionBatchItem {
+  clientRef: string | null;
+  questionId: string;
+  questionRevisionId: string;
+  revision: number;
+  webUrl: string;
+}
+export interface AgentLearningSummary {
+  topics: Topic[];
+  plans: LearningPlan[];
+  recentAttempts: Attempt[];
+  wrongQuestions: WrongQuestion[];
 }
 export interface AgentTokenScopesUpdate {
   expectedRevision: number;

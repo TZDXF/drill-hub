@@ -45,6 +45,7 @@ export interface GradingServiceOptions {
   retryBaseDelayMs?: number;
   leaseMs?: number;
   maxJobsPerRun?: number;
+  onError?: (event: 'worker' | 'usage') => void;
 }
 
 interface ClaimedJob {
@@ -176,9 +177,9 @@ export class GradingServiceImpl implements GradingService {
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.runOnce().catch(() => undefined);
+    void this.runOnce().catch(() => this.options.onError?.('worker'));
     this.timer = setInterval(() => {
-      void this.runOnce().catch(() => undefined);
+      void this.runOnce().catch(() => this.options.onError?.('worker'));
     }, this.pollIntervalMs);
     this.timer.unref();
   }
@@ -252,7 +253,7 @@ export class GradingServiceImpl implements GradingService {
   }
 
   private async recoverExpiredLeases(): Promise<void> {
-    const active = (await this.ctx.db.list('gradingJobs')).filter(activeJob);
+    const active = await this.ctx.db.listActiveGradingJobs();
     for (const candidate of active) {
       await this.ctx.db.transaction(async (tx) => {
         const job = await tx.get('gradingJobs', candidate.id);
@@ -260,6 +261,45 @@ export class GradingServiceImpl implements GradingService {
         const attempt = await tx.get('attempts', job.attemptId);
         // Do not refresh a voided attempt: that would rebuild personal projections.
         if (await this.cancelVoidedJob(tx, job, attempt)) return;
+        if (job.status === 'blocked_config') {
+          // Only retry errors whose resolution can be verified without making a model call.
+          // Network and secret errors require an explicit retry to avoid a polling loop.
+          const recoverable = new Set([
+            'DEFAULT_PROFILE_NOT_CONFIGURED',
+            'GRADING_PROFILE_NOT_FOUND',
+            'PROVIDER_MODEL_NOT_FOUND',
+            'MODEL_CONNECTION_NOT_FOUND',
+            'CONNECTION_VERSION_NOT_FOUND',
+            'PROVIDER_DISABLED',
+            'MODEL_DISABLED',
+          ]);
+          if (!job.lastErrorCode || !recoverable.has(job.lastErrorCode)) return;
+          const item = attempt?.items.find((entry) => entry.id === job.itemId);
+          if (
+            !attempt ||
+            !item ||
+            item.generation !== job.generation ||
+            item.lockedAt === null ||
+            item.definition.gradingMode !== 'model_rubric'
+          )
+            return;
+          const profileId =
+            job.profileId ?? (await tx.get('settings', 'global'))?.defaultGradingProfileId ?? null;
+          try {
+            await this.resolveConfig(profileId, tx);
+          } catch (error) {
+            if (error instanceof ProviderError && CONFIG_ERROR_CODES.has(error.code)) return;
+            throw error;
+          }
+          await tx.update('gradingJobs', job.id, job.revision, {
+            profileId,
+            status: 'queued',
+            nextRunAt: now(),
+            leaseExpiresAt: null,
+            lastErrorCode: null,
+          });
+          return;
+        }
         if (
           job.status !== 'running' ||
           !job.leaseExpiresAt ||
@@ -288,19 +328,7 @@ export class GradingServiceImpl implements GradingService {
 
   private async claimNextJob(): Promise<ClaimedJob | null> {
     return this.ctx.db.transaction(async (tx) => {
-      const jobs = await tx.list('gradingJobs');
-      const timestamp = Date.now();
-      const candidates = jobs
-        .filter(
-          (job) =>
-            (job.status === 'queued' || job.status === 'retry_wait') &&
-            Date.parse(job.nextRunAt) <= timestamp,
-        )
-        .sort(
-          (left, right) =>
-            left.nextRunAt.localeCompare(right.nextRunAt) ||
-            left.createdAt.localeCompare(right.createdAt),
-        );
+      const candidates = await tx.listDueGradingJobs(now());
       for (const candidate of candidates) {
         const attempt = await tx.get('attempts', candidate.attemptId);
         if (await this.cancelVoidedJob(tx, candidate, attempt)) continue;
@@ -323,9 +351,7 @@ export class GradingServiceImpl implements GradingService {
           ? await tx.get('gradingProfiles', candidate.profileId)
           : undefined;
         // Claims are serialized in the DB transaction; no model call holds the lock.
-        const runningCount = jobs.filter(
-          (job) => job.status === 'running' && job.profileId === candidate.profileId,
-        ).length;
+        const runningCount = await tx.countRunningGradingJobs(candidate.profileId);
         if (runningCount >= (profile?.concurrency ?? 2)) continue;
         const leaseDuration = Math.max(this.leaseMs, (profile?.timeoutMs ?? 0) + 10_000);
         const claimedJob = await tx.update('gradingJobs', candidate.id, candidate.revision, {
@@ -349,15 +375,18 @@ export class GradingServiceImpl implements GradingService {
     });
   }
 
-  private async resolveConfig(profileId: string | null): Promise<ResolvedConfig> {
+  private async resolveConfig(
+    profileId: string | null,
+    db: Database = this.ctx.db,
+  ): Promise<ResolvedConfig> {
     if (!profileId) configError('DEFAULT_PROFILE_NOT_CONFIGURED');
-    const profile = await this.ctx.db.get('gradingProfiles', profileId);
+    const profile = await db.get('gradingProfiles', profileId);
     if (!profile) configError('GRADING_PROFILE_NOT_FOUND');
-    const providerModel = await this.ctx.db.get('providerModels', profile.providerModelId);
+    const providerModel = await db.get('providerModels', profile.providerModelId);
     if (!providerModel) configError('PROVIDER_MODEL_NOT_FOUND');
-    const version = await this.ctx.db.get('modelConnectionVersions', profile.connectionVersionId);
+    const version = await db.get('modelConnectionVersions', profile.connectionVersionId);
     if (!version) configError('CONNECTION_VERSION_NOT_FOUND');
-    const connection = await this.ctx.db.get('modelConnections', version.connectionId);
+    const connection = await db.get('modelConnections', version.connectionId);
     if (!connection) configError('MODEL_CONNECTION_NOT_FOUND');
     if (providerModel.connectionId !== connection.id || version.connectionId !== connection.id)
       configError('CONNECTION_VERSION_NOT_FOUND');
@@ -387,13 +416,18 @@ export class GradingServiceImpl implements GradingService {
       return grade;
     } finally {
       // Append once per actual call, including retries, refusals and invalid grades.
-      await this.ctx.db.insert('modelUsage', {
-        ...record,
-        ...metadata,
-        modelKey: input.modelKey,
-        status,
-        usage,
-      });
+      try {
+        await this.ctx.db.insert('modelUsage', {
+          ...record,
+          ...metadata,
+          modelKey: input.modelKey,
+          status,
+          usage,
+        });
+      } catch {
+        // Usage accounting must not replace a model result or its original error.
+        this.options.onError?.('usage');
+      }
     }
   }
 

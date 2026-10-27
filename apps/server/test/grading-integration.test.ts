@@ -811,6 +811,120 @@ describe('grading administration and persistent model workflow', () => {
     },
   );
 
+  it('automatically recovers an unbound configuration-blocked job when a default appears', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const provider = installProvider(() =>
+      responseWithCriteria([
+        {
+          criterionId: 'atomicity',
+          levelId: 'met',
+          evidence: ['事务全部成功或全部回滚'],
+          explanation: '正确',
+        },
+        { criterionId: 'example', levelId: 'met', evidence: ['转账一起完成'], explanation: '正确' },
+      ]),
+    );
+    const attempt = await lockedAttempt(app, ownerId, modelDefinition(), {
+      text: '事务全部成功或全部回滚；转账一起完成。',
+    });
+    const before = (await app.ctx.db.list('gradingJobs', { attemptId: attempt.id }))[0];
+    expect(before).toMatchObject({
+      status: 'blocked_config',
+      profileId: null,
+      lastErrorCode: 'DEFAULT_PROFILE_NOT_CONFIGURED',
+    });
+    await app.ctx.grading.runOnce();
+    expect((await app.ctx.db.get('gradingJobs', before.id))?.revision).toBe(before.revision);
+    const configured = await configureModel(app, admin);
+    const calls = provider.chatRequests.length;
+    await app.ctx.grading.runOnce();
+    expect(await app.ctx.db.get('gradingJobs', before.id)).toMatchObject({
+      status: 'succeeded',
+      profileId: configured.profile.id,
+      attemptCount: 1,
+    });
+    expect(provider.chatRequests).toHaveLength(calls + 1);
+    expect((await currentAttempt(app, attempt.id)).items[0].grade?.score).toBe('10.00');
+  });
+
+  it('recovers a bound disabled-model job only after its original model is enabled', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    installProvider(() =>
+      responseWithCriteria([
+        {
+          criterionId: 'atomicity',
+          levelId: 'met',
+          evidence: ['事务全部成功或全部回滚'],
+          explanation: '正确',
+        },
+        { criterionId: 'example', levelId: 'met', evidence: ['转账一起完成'], explanation: '正确' },
+      ]),
+    );
+    const configured = await configureModel(app, admin);
+    const model = (await app.ctx.db.get('providerModels', configured.model.id))!;
+    await app.ctx.db.update('providerModels', model.id, model.revision, { enabled: false });
+    const attempt = await lockedAttempt(app, ownerId, modelDefinition(), {
+      text: '事务全部成功或全部回滚；转账一起完成。',
+    });
+    await app.ctx.grading.runOnce();
+    let job = (await app.ctx.db.list('gradingJobs', { attemptId: attempt.id }))[0];
+    expect(job).toMatchObject({
+      status: 'blocked_config',
+      profileId: configured.profile.id,
+      lastErrorCode: 'MODEL_DISABLED',
+      attemptCount: 1,
+    });
+    await app.ctx.grading.runOnce();
+    expect((await app.ctx.db.get('gradingJobs', job.id))?.revision).toBe(job.revision);
+    const disabled = (await app.ctx.db.get('providerModels', model.id))!;
+    await app.ctx.db.update('providerModels', disabled.id, disabled.revision, { enabled: true });
+    await app.ctx.grading.runOnce();
+    job = (await app.ctx.db.get('gradingJobs', job.id))!;
+    expect(job).toMatchObject({
+      status: 'succeeded',
+      profileId: configured.profile.id,
+      attemptCount: 2,
+    });
+  });
+
+  it('keeps a successful grade when usage persistence fails', async () => {
+    const { app, admin, ownerId } = await setupApp();
+    const provider = installProvider(() =>
+      responseWithCriteria([
+        {
+          criterionId: 'atomicity',
+          levelId: 'met',
+          evidence: ['事务全部成功或全部回滚'],
+          explanation: '正确',
+        },
+        { criterionId: 'example', levelId: 'met', evidence: ['转账一起完成'], explanation: '正确' },
+      ]),
+    );
+    await configureModel(app, admin);
+    const attempt = await lockedAttempt(app, ownerId, modelDefinition(), {
+      text: '事务全部成功或全部回滚；转账一起完成。',
+    });
+    const original = app.ctx.db.insert.bind(app.ctx.db);
+    const spy = vi.spyOn(app.ctx.db, 'insert').mockImplementation(((
+      table: string,
+      record: never,
+    ) => {
+      if (table === 'modelUsage') throw new Error('usage unavailable');
+      return original(table as never, record);
+    }) as typeof app.ctx.db.insert);
+    const before = provider.chatRequests.length;
+    try {
+      await app.ctx.grading.runOnce();
+      expect((await app.ctx.db.list('gradingJobs', { attemptId: attempt.id }))[0].status).toBe(
+        'succeeded',
+      );
+      expect((await currentAttempt(app, attempt.id)).items[0].grade?.score).toBe('10.00');
+      expect(provider.chatRequests.length).toBe(before + 1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('records each billed retry and successful grading without storing answers or keys', async () => {
     const { app, admin, ownerId } = await setupApp();
     let count = 0;

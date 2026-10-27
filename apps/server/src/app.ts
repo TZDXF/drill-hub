@@ -86,7 +86,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     },
   };
-  ctx.grading = createGradingService(ctx);
+  ctx.grading = createGradingService(ctx, {
+    onError: (event) => app.log.error(event === 'worker' ? '评分任务执行失败' : '模型用量记录失败'),
+  });
   const assistant = createAssistantService(ctx, app);
   ctx.assistant = assistant;
   app.decorate('ctx', ctx);

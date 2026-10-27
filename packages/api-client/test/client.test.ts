@@ -88,3 +88,29 @@ describe('server connection and request isolation', () => {
     await expect(pending).rejects.toMatchObject({ code: 'REQUEST_CANCELLED' });
   });
 });
+
+describe('event streams', () => {
+  it('parses CRLF split across chunks and SSE fields without spaces', async () => {
+    const encoder = new TextEncoder();
+    const chunks = ['event:update\r', '\nid: 42\r\ndata:first\r', '\ndata: second\r\n\r', '\n'];
+    const client = new ApiClient({
+      baseUrl: 'https://study.example.org',
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+              controller.close();
+            },
+          }),
+        ),
+    });
+    const onEvent = vi.fn<(event: import('#api-client/index.js').StreamEvent) => void>();
+    await client.streamRequest('/events', { onEvent });
+    expect(onEvent).toHaveBeenCalledExactlyOnceWith({
+      event: 'update',
+      id: '42',
+      data: 'first\nsecond',
+    });
+  });
+});

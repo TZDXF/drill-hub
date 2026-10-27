@@ -2,11 +2,10 @@
 import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import type { UserView } from '@drill-hub/contracts';
+import type { SessionView, UserView } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
 import { useLocale } from '#learning-client/i18n';
 import { cycleThemePreference, themePreference } from '#learning-client/theme';
-import type { SessionView } from '#learning-client/types';
 import { errorMessage, formatDate } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppFormField from '#learning-client/components/AppFormField.vue';
@@ -88,8 +87,7 @@ async function saveProfile() {
   }
 }
 function sessionLabel(session: SessionView) {
-  const channel = session.kind ?? session.channel;
-  return channel === 'web' ? t('components.settings.sessionWeb') : 'Android';
+  return session.channel === 'web' ? t('components.settings.sessionWeb') : 'Android';
 }
 async function revokeSession() {
   if (!selectedSession.value) return;
@@ -382,8 +380,8 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
                 }}</span>
               </strong>
               <span>{{
-                t('components.settings.sessionLastUsed', {
-                  date: formatDate(session.lastUsedAt ?? session.createdAt),
+                t('components.settings.sessionCreated', {
+                  date: formatDate(session.createdAt),
                 })
               }}</span>
             </div>

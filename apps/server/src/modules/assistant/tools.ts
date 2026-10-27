@@ -8,6 +8,7 @@ import { Type } from '@earendil-works/pi-ai';
 import { defineTool } from '@earendil-works/pi-durable';
 import type { ToolExecutionApi } from '@earendil-works/pi-durable';
 import { AppError } from '#server/core/errors.js';
+import { hashSecret } from '#server/core/security.js';
 import type { Actor, AppContext } from '#server/core/context.js';
 import type { AssistantTurnRecord } from '#server/db/records.js';
 import type { SearchProviderRecord } from '#server/db/records.js';
@@ -193,13 +194,19 @@ export function createAssistantTools(deps: AssistantToolDeps) {
       query: Type.String({ minLength: 1, maxLength: 400 }),
       maxResults: Type.Optional(Type.Integer({ minimum: 1 })),
     }),
-    async execute(params) {
+    async execute(params, api) {
+      const { actor, turn } = await deps.resolve(api);
       const providers = await deps.ctx.db.list('searchProviders', { enabled: true });
       if (!providers.length) return textResult('管理员尚未配置可用的搜索服务', true);
       const provider = providers[0] as SearchProviderRecord;
       const apiKey = provider.encryptedApiKey
         ? deps.ctx.vault.decrypt(provider.encryptedApiKey)
         : null;
+      await deps.ctx.audit(actor, 'assistant.web_search', 'assistantTurn', turn.id, {
+        providerId: provider.id,
+        queryHash: hashSecret(params.query),
+        queryLength: params.query.length,
+      });
       try {
         const results = await runSearch({
           provider,

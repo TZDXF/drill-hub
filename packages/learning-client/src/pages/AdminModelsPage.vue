@@ -11,6 +11,7 @@ import type {
   ProviderModel,
   ProviderModelImportResult,
 } from '@drill-hub/contracts';
+import { useModelDiscoverySelection } from '#learning-client/modelDiscoverySelection';
 import { useLearning } from '#learning-client/injection';
 import type { ModelAdapter } from '#learning-client/types';
 import { errorMessage, formatDate } from '#learning-client/utils';
@@ -74,9 +75,6 @@ watch([modelKey, modelOpen], () => {
 });
 const discoverOpen = ref(false);
 const discovering = ref(false);
-const discoveredModels = ref<DiscoveredProviderModel[]>([]);
-const selectedDiscoveredKeys = ref<string[]>([]);
-const discoveryFilter = ref('');
 const profileOpen = ref(false);
 const providerModelId = ref('');
 const editingProfile = ref<GradingProfile | null>(null);
@@ -93,6 +91,16 @@ const usableModels = computed(() =>
   models.value.filter((item) => selected.value?.enabled && item.enabled),
 );
 const existingModelKeys = computed(() => new Set(models.value.map((item) => item.modelKey)));
+const {
+  discoveredModels,
+  selectedDiscoveredKeys,
+  discoveryFilter,
+  filteredDiscoveredModels,
+  selectableDiscoveredModels,
+  allFilteredDiscoveredSelected,
+  toggleDiscovered,
+  toggleAllDiscovered,
+} = useModelDiscoverySelection(existingModelKeys);
 const protocolOptions = computed(() =>
   adapters.value.map((adapter) => ({
     value: adapter.protocol,
@@ -124,25 +132,6 @@ const profileFormValid = computed(
     maxRetries.value >= 0 &&
     maxRetries.value <= 5,
 );
-const filteredDiscoveredModels = computed(() => {
-  const query = discoveryFilter.value.trim().toLowerCase();
-  if (!query) return discoveredModels.value;
-  return discoveredModels.value.filter(
-    (item) =>
-      item.modelKey.toLowerCase().includes(query) ||
-      (item.displayName ?? '').toLowerCase().includes(query),
-  );
-});
-const selectableDiscoveredModels = computed(() =>
-  filteredDiscoveredModels.value.filter((item) => !existingModelKeys.value.has(item.modelKey)),
-);
-const allFilteredDiscoveredSelected = computed(
-  () =>
-    selectableDiscoveredModels.value.length > 0 &&
-    selectableDiscoveredModels.value.every((item) =>
-      selectedDiscoveredKeys.value.includes(item.modelKey),
-    ),
-);
 const discoveryConfirmLabel = computed(() =>
   selectedDiscoveredKeys.value.length
     ? t('management.models.importLabel', { count: selectedDiscoveredKeys.value.length })
@@ -173,22 +162,27 @@ async function load(initial = false) {
     loading.value = false;
   }
 }
+let modelLoadTicket = 0;
 async function loadModels() {
+  const ticket = ++modelLoadTicket;
   modelLoadError.value = '';
   if (!selectedId.value) {
     models.value = [];
+    loadingModels.value = false;
     return;
   }
   loadingModels.value = true;
   try {
-    models.value = await learning.get<ProviderModel[]>(
+    const result = await learning.get<ProviderModel[]>(
       `/admin/model-connections/${selectedId.value}/models`,
     );
+    if (ticket === modelLoadTicket) models.value = result;
   } catch (reason) {
+    if (ticket !== modelLoadTicket) return;
     modelLoadError.value = errorMessage(reason);
     learning.notify.error(t('management.models.modelListError'), modelLoadError.value);
   } finally {
-    loadingModels.value = false;
+    if (ticket === modelLoadTicket) loadingModels.value = false;
   }
 }
 async function selectConnection(id: string) {
@@ -312,20 +306,6 @@ async function discoverModels() {
     learning.notify.error(t('management.models.discoverFailed'), errorMessage(reason));
   } finally {
     discovering.value = false;
-  }
-}
-function toggleDiscovered(key: string) {
-  selectedDiscoveredKeys.value = selectedDiscoveredKeys.value.includes(key)
-    ? selectedDiscoveredKeys.value.filter((item) => item !== key)
-    : [...selectedDiscoveredKeys.value, key];
-}
-function toggleAllDiscovered() {
-  const keys = selectableDiscoveredModels.value.map((item) => item.modelKey);
-  if (allFilteredDiscoveredSelected.value) {
-    const remove = new Set(keys);
-    selectedDiscoveredKeys.value = selectedDiscoveredKeys.value.filter((key) => !remove.has(key));
-  } else {
-    selectedDiscoveredKeys.value = [...new Set([...selectedDiscoveredKeys.value, ...keys])];
   }
 }
 async function importDiscoveredModels() {

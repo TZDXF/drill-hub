@@ -157,18 +157,21 @@ test('复制、划词引用和编辑分叉均连接真实交互', async ({ page 
     selection?.addRange(range);
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
-  await page.getByRole('button', { name: '添加批注', exact: true }).click();
+  await page.getByRole('button', { name: '引用到输入框', exact: true }).click();
   await page.locator('.assistant-selection-comment textarea').fill('请按考试方式解释');
   await page
     .locator('.assistant-selection-comment')
     .getByRole('button', { name: '保存批注' })
     .click();
-  await expect(page.locator('.assistant-composer-quotes')).toContainText('这是第');
-  await expect(page.locator('.assistant-composer-quotes')).toContainText('考试方式');
+  const summary = page.locator('.assistant-selection-summary-trigger');
+  await summary.hover();
+  await expect(page.locator('.assistant-selection-summary')).toContainText('这是第');
+  await expect(page.locator('.assistant-selection-summary')).toContainText('考试方式');
   await page
     .getByTestId('assistant-messages')
     .evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
-  await page.getByRole('button', { name: '定位引用原文' }).click();
+  await summary.hover();
+  await page.locator('.assistant-selection-summary__text').click();
   await expect(page.locator('.assistant-selection-highlight').first()).toBeVisible();
   await expect
     .poll(() =>
@@ -186,10 +189,12 @@ test('复制、划词引用和编辑分叉均连接真实交互', async ({ page 
         }),
     )
     .toBe(true);
+  await summary.hover();
   await page.getByRole('button', { name: '编辑引用批注' }).click();
-  await page.locator('.assistant-quote-comment').fill('请结合例题解释');
+  await page.locator('.assistant-selection-comment textarea').fill('请结合例题解释');
   await page.getByRole('button', { name: '保存批注' }).click();
-  await expect(page.locator('.assistant-composer-quotes')).toContainText('结合例题');
+  await summary.hover();
+  await expect(page.locator('.assistant-selection-summary')).toContainText('结合例题');
   await page.getByRole('button', { name: '编辑并重发' }).click();
   await expect.poll(() => forkMode).toBe('before');
   await expect(page.getByTestId('assistant-input')).toHaveValue('第 12 个学习问题');

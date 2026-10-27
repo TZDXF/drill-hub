@@ -241,7 +241,8 @@ onMounted(load);
             class="input"
             type="password"
             autocomplete="new-password"
-            minlength="4"
+            minlength="8"
+            maxlength="1024"
             required
           />
         </AppFormField></div

@@ -1,32 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
-import type { ApiResponse, Assessment, AttemptView, Topic } from '@drill-hub/contracts';
-import { login } from '#e2e/helpers';
-
-async function post<T>(
-  request: APIRequestContext,
-  path: string,
-  data: unknown,
-  headers: Record<string, string>,
-) {
-  const response = await request.post(`/api/v1${path}`, { data, headers });
-  await expect(response).toBeOK();
-  return ((await response.json()) as ApiResponse<T>).data;
-}
+import { expect, test } from '@playwright/test';
+import type { Assessment, AttemptView, Topic } from '@drill-hub/contracts';
+import { login, post, agentHeaders } from '#e2e/helpers';
 
 test('练习题保存答案后需手动交卷，页面不再提供自动提交选项', async ({ page }) => {
   await login(page);
-  const csrf = (await (await page.request.get('/api/v1/auth/csrf')).json()).data.csrfToken;
-  const authorization = await post<{ token: string }>(
-    page.request,
-    '/me/agent-tokens',
-    {
-      name: '手动交卷测试',
-      scopes: ['read', 'content:write', 'assessment:write'],
-    },
-    { 'X-CSRF-Token': csrf },
-  );
-  const headers = { Authorization: `Bearer ${authorization.token}` };
+  const headers = await agentHeaders(page.request, '手动交卷测试', [
+    'read',
+    'content:write',
+    'assessment:write',
+  ]);
   const topic = await post<Topic>(
     page.request,
     '/agent/topics',
