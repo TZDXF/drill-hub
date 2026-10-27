@@ -81,7 +81,46 @@
     "fullScore": "Full score {score}",
     "emptyExamsTitle": "No exam yet",
     "emptyPracticesTitle": "No practice yet",
-    "emptyAssessmentsDescription": "Let the Agent create questions with explicit grading rules and assemble them into a paper; an empty library never shows fake scores."
+    "emptyAssessmentsDescription": "Let the Agent create questions with explicit grading rules and assemble them into a paper; an empty library never shows fake scores.",
+    "purge": {
+      "title": "Permanently delete",
+      "description": "Physically deletes the topic and all of its children; archived items are deleted too. Export your data first if you need a copy.",
+      "action": "Delete permanently…",
+      "dialogTitle": "Permanently delete “{title}”?",
+      "impact": "The following records will be deleted:",
+      "total": "{count} records in total",
+      "nothing": "This topic has no children; only the topic itself will be deleted.",
+      "confirm": "Delete permanently",
+      "deleted": "Topic permanently deleted",
+      "failed": "Delete failed",
+      "counts": {
+        "contents": "Contents",
+        "plans": "Plans",
+        "questions": "Questions",
+        "questionVersions": "Question versions",
+        "assessments": "Assessments",
+        "attempts": "Attempts",
+        "wrongQuestions": "Wrong questions",
+        "answerLinks": "Answer links",
+        "gradingJobs": "Grading jobs"
+      }
+    },
+    "answerLinks": {
+      "title": "Answer links",
+      "description": "Temporary public answer links published for this topic",
+      "empty": "No answer links yet; they appear here after an Agent publishes one.",
+      "expiresAt": "Expires {date}",
+      "statusActive": "Active",
+      "statusExpired": "Expired",
+      "statusRevoked": "Revoked",
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke answer link",
+      "revokeDescription": "The link stops working immediately; attempts in progress are not affected.",
+      "revokeConfirm": "Revoke",
+      "revoked": "Link revoked",
+      "revokeFailed": "Revoke failed",
+      "loadFailed": "Failed to load answer links"
+    }
   },
   "plan": {
     "loading": "Loading the plan",

@@ -2,7 +2,7 @@
 import { useI18n } from 'vue-i18n';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import type { SessionView, UserView } from '@drill-hub/contracts';
+import type { ExportBundle, SessionView, UserView } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
 import { useLocale } from '#learning-client/i18n';
 import { cycleThemePreference, themePreference } from '#learning-client/theme';
@@ -31,6 +31,7 @@ const selectedSession = ref<SessionView | null>(null);
 const revoking = ref(false);
 const switchOpen = ref(false);
 const switching = ref(false);
+const exporting = ref(false);
 const mobileQuery = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 780px)');
 const isMobile = ref(learning.platform.kind === 'android' || (mobileQuery?.matches ?? false));
 let sessionsRequested = false;
@@ -110,6 +111,24 @@ async function logout() {
     learning.notify.error(t('components.shell.logoutFailed'), errorMessage(reason));
   } finally {
     await router.replace({ name: 'login' });
+  }
+}
+async function exportData() {
+  exporting.value = true;
+  try {
+    const bundle = await learning.get<ExportBundle>('/me/export');
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `drill-hub-export-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    learning.notify.success(t('components.settings.exportDone'));
+  } catch (reason) {
+    learning.notify.error(t('components.settings.exportFailed'), errorMessage(reason));
+  } finally {
+    exporting.value = false;
   }
 }
 async function switchServer() {
@@ -305,6 +324,11 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <span>{{ t('components.settings.changePassword') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
+          <RouterLink class="mobile-setting-link" :to="{ name: 'search' }">
+            <AppIcon name="search" :size="18" />
+            <span>{{ t('components.shell.titles.search') }}</span>
+            <AppIcon name="chevron" :size="17" />
+          </RouterLink>
           <RouterLink class="mobile-setting-link" :to="{ name: 'agent-tokens' }">
             <AppIcon name="token" :size="18" />
             <span>{{ t('components.shell.titles.agentTokens') }}</span>
@@ -344,6 +368,26 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           @click="logout"
         >
           <AppIcon name="logout" :size="17" />{{ t('components.shell.menuLogout') }}
+        </button>
+      </section>
+
+      <section class="card settings-card" aria-labelledby="export-title">
+        <div class="settings-card__heading">
+          <span class="list-card__icon"><AppIcon name="download" /></span>
+          <h2 id="export-title">{{ t('components.settings.exportTitle') }}</h2>
+        </div>
+        <p class="muted small">
+          {{ t('components.settings.exportDescription') }}
+        </p>
+        <button
+          class="button"
+          type="button"
+          data-testid="settings-export"
+          :disabled="exporting"
+          @click="exportData"
+        >
+          <span v-if="exporting" class="spinner" /><AppIcon v-else name="download" :size="16" />
+          {{ exporting ? t('components.settings.exporting') : t('components.settings.exportData') }}
         </button>
       </section>
 

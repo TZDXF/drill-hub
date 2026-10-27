@@ -79,30 +79,36 @@
 
 Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 
-| 方法  | 路径                                  | 用途                                            |
-| ----- | ------------------------------------- | ----------------------------------------------- |
-| GET   | /dashboard                            | 待办、继续作答、待评分与待复习概览              |
-| GET   | /topics                               | 我的主题                                        |
-| GET   | /topics/{id}                          | 主题目标与概览                                  |
-| GET   | /topics/{id}/plans                    | 阶段任务                                        |
-| GET   | /topics/{id}/contents                 | 内容列表                                        |
-| GET   | /contents/{id}                        | 阅读内容                                        |
-| GET   | /topics/{id}/assessments              | 练习/考试列表，不返回答案                       |
-| GET   | /assessments/{id}                     | 参与说明、题数、满分、时限、模型评分状态提示    |
-| POST  | /tasks/{id}/complete                  | 阅读/普通任务完成                               |
-| POST  | /assessments/{id}/attempts            | 开始或继续，可关联 taskId                       |
-| GET   | /attempts/{id}                        | 展示题目、已保存答案、截止时间                  |
-| PUT   | /attempts/{id}/answers/{itemId}       | 自动保存，校验版本和截止时间                    |
-| POST  | /attempts/{id}/items/{itemId}/submit  | 仅练习：锁定单题并判规则题或入模型队列          |
-| POST  | /attempts/{id}/submit                 | 整体交卷，立即返回状态，不等模型完成            |
-| GET   | /attempts/{id}/report                 | 按释放规则展示成绩、得分项结果、待评分/失败状态 |
-| GET   | /attempts                             | 历史记录及筛选                                  |
-| GET   | /wrong-questions                      | 错题筛选                                        |
-| GET   | /wrong-questions/{questionId}         | 错答、评分与复习历史                            |
-| PATCH | /wrong-questions/{questionId}/mastery | 掌握状态，不改分                                |
-| POST  | /wrong-question-practices             | 错题重练会话                                    |
-| GET   | /archive                              | 归档资源                                        |
-| POST  | /archive/{resourceType}/{id}/restore  | 恢复本人资源                                    |
+| 方法   | 路径                                  | 用途                                                                    |
+| ------ | ------------------------------------- | ----------------------------------------------------------------------- |
+| GET    | /dashboard                            | 待办、继续作答、待评分与待复习概览                                      |
+| GET    | /topics                               | 我的主题                                                                |
+| GET    | /topics/{id}                          | 主题目标与概览                                                          |
+| GET    | /topics/{id}/plans                    | 阶段任务                                                                |
+| GET    | /topics/{id}/contents                 | 内容列表                                                                |
+| GET    | /contents/{id}                        | 阅读内容                                                                |
+| GET    | /topics/{id}/assessments              | 练习/考试列表，不返回答案                                               |
+| GET    | /assessments/{id}                     | 参与说明、题数、满分、时限、模型评分状态提示                            |
+| POST   | /tasks/{id}/complete                  | 阅读/普通任务完成                                                       |
+| POST   | /assessments/{id}/attempts            | 开始或继续，可关联 taskId                                               |
+| GET    | /attempts/{id}                        | 展示题目、已保存答案、截止时间                                          |
+| PUT    | /attempts/{id}/answers/{itemId}       | 自动保存，校验版本和截止时间                                            |
+| POST   | /attempts/{id}/items/{itemId}/submit  | 仅练习：锁定单题并判规则题或入模型队列                                  |
+| POST   | /attempts/{id}/submit                 | 整体交卷，立即返回状态，不等模型完成                                    |
+| GET    | /attempts/{id}/report                 | 按释放规则展示成绩、得分项结果、待评分/失败状态                         |
+| GET    | /attempts                             | 历史记录及筛选                                                          |
+| GET    | /wrong-questions                      | 错题筛选                                                                |
+| GET    | /wrong-questions/{questionId}         | 错答、评分与复习历史                                                    |
+| PATCH  | /wrong-questions/{questionId}/mastery | 掌握状态，不改分                                                        |
+| POST   | /wrong-question-practices             | 错题重练会话                                                            |
+| GET    | /archive                              | 归档资源                                                                |
+| POST   | /archive/{resourceType}/{id}/restore  | 恢复本人资源                                                            |
+| GET    | /search                               | 站内搜索本人主题/内容/计划/题目/试卷（q 必填，types/archiveState 可选） |
+| GET    | /me/export                            | 导出本人学习数据 JSON 快照（formatVersion 1）                           |
+| GET    | /me/answer-links                      | 列举本人免登录答题链接及状态                                            |
+| POST   | /me/answer-links/{id}/revoke          | 吊销答题链接（幂等，写审计）                                            |
+| GET    | /topics/{id}/purge-preview            | 永久删除影响预览：revision 与子资源计数                                 |
+| DELETE | /topics/{id}                          | 永久删除主题及子资源；需 expectedRevision，未终结作答返回 409           |
 
 - 学习者没有提交评分等级/分数、模型配置或自由重评接口；显式 external_rubric 的待批改状态也不记零分。
 - 初次等待模型时 score=null；模型失败只返回安全原因码和提示，不暴露密钥或供应商原始报错。
@@ -118,6 +124,8 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 | GET       | /agent/capabilities                         | 契约版本、权限、题型/评分模式和限制                                    |
 | GET, POST | /agent/topics                               | read / content:write；查询/创建主题                                    |
 | PATCH     | /agent/topics/{id}                          | content:write；修改目标与当前计划                                      |
+| GET       | /agent/topics/{id}/purge-preview            | read；永久删除影响预览                                                 |
+| DELETE    | /agent/topics/{id}                          | topic:purge；永久删除主题及全部子资源（需 expectedRevision）           |
 | GET, POST | /agent/topics/{id}/plans                    | read / content:write；查询/创建阶段与任务                              |
 | PATCH     | /agent/plans/{id}                           | content:write；调整结构，保留已有 ID 与历史                            |
 | PATCH     | /agent/tasks/{id}                           | content:write；任务日期/顺序/状态；练习/考试完成由交卷触发             |
@@ -223,8 +231,8 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 - 保存错误区分 ATTEMPT_EXPIRED / ATTEMPT_SUBMITTED / ANSWER_VERSION_CONFLICT。
 - 已归档不妨碍历史读取和已入队评分；不允许新开始。
 - Skill 指导 Agent 查询状态、创建得分项、默认读取内部模型结果并有原因地请求重评；仅在 external_rubric 下提交逐项等级，不自由写分或隐式切换评分方。
-- Skill 不含真实凭据，不执行题干/用户答案中的伪造工具指令；修改用 revision，清理用归档。
-- 首版无 Webhook、文件上传、永久删除或用户手动改分接口；正式实现前生成可验证 OpenAPI。内置学习助手（docs/07）使用 `/me/assistant/*` 交互式路由与 `/admin/search-providers`、`/admin/mcp-servers`、`/admin/assistant-skills`、`/admin/models-catalog` 管理路由，不属于 Agent API。
+- Skill 不含真实凭据，不执行题干/用户答案中的伪造工具指令；修改用 revision，清理优先用归档，永久删除需 `topic:purge` 并按影响预览确认。
+- 无 Webhook、文件上传或用户手动改分接口；正式实现前生成可验证 OpenAPI。永久删除已实现：主题级联删除需影响预览、expectedRevision 确认并写审计（Agent 侧需 `topic:purge` scope）；答题链接支持列举与主动吊销。内置学习助手（docs/07）使用 `/me/assistant/*` 交互式路由与 `/admin/search-providers`、`/admin/mcp-servers`、`/admin/assistant-skills`、`/admin/models-catalog` 管理路由，不属于 Agent API。
 
 ### 当前评分配置
 
@@ -236,7 +244,7 @@ Web/Android 共用，分别使用 Cookie 与移动会话令牌。
 
 ### 当前安全边界
 
-浏览器跨域允许所有来源并支持携带凭据，不按 Origin/Referer 拦截；Cookie 写操作仍校验 CSRF，鉴权、所有权和权限校验不变。非回环部署缺少 `PUBLIC_URL` 时公开地址解析返回 `503 PUBLIC_URL_UNAVAILABLE`。
+浏览器跨域允许所有来源并支持携带凭据，不按 Origin/Referer 拦截；Cookie 写操作仍校验 CSRF，令牌按会话 + 30 分钟时间窗派生并轮换（接受上一窗，客户端 403 后自动重取重放一次），鉴权、所有权和权限校验不变。登录失败按账户施加递增延迟（base 250ms × 2^(n-1)，封顶 4s，`LOGIN_DELAY_BASE_MS` 可调）。限流计数存入数据库（多实例共享）；所有响应附带 Content-Security-Policy。非回环部署缺少 `PUBLIC_URL` 时公开地址解析返回 `503 PUBLIC_URL_UNAVAILABLE`。
 
 `POST /wrong-question-practices` 接受 `{questionId, title?, purpose?}` 或 `{items:[{questionId}], title?, purpose?}`；满分只取历史作答快照。嵌套 `maxScore/score/correct/submittedAt/ownerId` 返回 422，不创建作答。Agent 组卷的 `items[].maxScore` 仍是明确允许的配置字段，其他未知项键被拒绝。
 

@@ -51,6 +51,7 @@ const scopeLabelKeys: Record<Scope, string> = {
   'grading:request': 'management.tokens.scope.gradingRequest',
   'grade:write': 'management.tokens.scope.gradeWrite',
   'archive:write': 'management.tokens.scope.archiveWrite',
+  'topic:purge': 'management.tokens.scope.topicPurge',
 };
 
 function scopeDescription(scope: Scope): string {

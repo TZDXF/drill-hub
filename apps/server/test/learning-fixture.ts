@@ -87,20 +87,28 @@ export async function seedTopicBundle(
   overrides: { topicTitle?: string; contentBody?: string; examTitle?: string } = {},
 ): Promise<SeededTopic> {
   const { app, agent } = fixture;
-  const inject = async (method: 'POST', url: string, payload: unknown) => {
+  const inject = async <T>(
+    method: 'POST',
+    url: string,
+    payload: Record<string, unknown>,
+  ): Promise<T> => {
     const response = await app.inject({ method, url, headers: agent, payload });
     expect(response.statusCode).toBe(201);
-    return response.json().data;
+    return response.json().data as T;
   };
-  const topic = await inject('POST', '/api/v1/agent/topics', {
+  const topic = await inject<{ id: string }>('POST', '/api/v1/agent/topics', {
     title: overrides.topicTitle ?? '数据库原理',
     goalText: '理解事务与索引',
   });
-  const content = await inject('POST', `/api/v1/agent/topics/${topic.id}/contents`, {
-    title: '事务隔离级别',
-    bodyText: overrides.contentBody ?? 'MVCC 通过版本链实现快照读，避免读写互相阻塞。',
-  });
-  const plan = await inject('POST', `/api/v1/agent/topics/${topic.id}/plans`, {
+  const content = await inject<{ id: string }>(
+    'POST',
+    `/api/v1/agent/topics/${topic.id}/contents`,
+    {
+      title: '事务隔离级别',
+      bodyText: overrides.contentBody ?? 'MVCC 通过版本链实现快照读，避免读写互相阻塞。',
+    },
+  );
+  const plan = await inject<{ id: string }>('POST', `/api/v1/agent/topics/${topic.id}/plans`, {
     title: '两周冲刺',
     phases: [
       {
@@ -109,32 +117,40 @@ export async function seedTopicBundle(
       },
     ],
   });
-  const questionBatch = await inject('POST', `/api/v1/agent/topics/${topic.id}/questions/batch`, {
-    items: [
-      {
-        clientRef: 'q1',
-        type: 'true_false',
-        stem: '事务具有原子性',
-        gradingMode: 'rule',
-        gradingKey: { value: true },
-        referenceAnswer: '正确',
-        explanation: '事务作为整体提交或回滚',
-        tags: ['transaction'],
-      },
-    ],
-  });
-  const assessment = await inject('POST', `/api/v1/agent/topics/${topic.id}/assessments`, {
-    kind: 'exam',
-    title: overrides.examTitle ?? '数据库期末考试',
-    durationSeconds: 3600,
-    items: [
-      {
-        questionId: questionBatch[0].questionId,
-        questionVersion: 1,
-        maxScore: '10.00',
-      },
-    ],
-  });
+  const questionBatch = await inject<{ questionId: string }[]>(
+    'POST',
+    `/api/v1/agent/topics/${topic.id}/questions/batch`,
+    {
+      items: [
+        {
+          clientRef: 'q1',
+          type: 'true_false',
+          stem: '事务具有原子性',
+          gradingMode: 'rule',
+          gradingKey: { value: true },
+          referenceAnswer: '正确',
+          explanation: '事务作为整体提交或回滚',
+          tags: ['transaction'],
+        },
+      ],
+    },
+  );
+  const assessment = await inject<{ id: string }>(
+    'POST',
+    `/api/v1/agent/topics/${topic.id}/assessments`,
+    {
+      kind: 'exam',
+      title: overrides.examTitle ?? '数据库期末考试',
+      durationSeconds: 3600,
+      items: [
+        {
+          questionId: questionBatch[0].questionId,
+          questionVersion: 1,
+          maxScore: '10.00',
+        },
+      ],
+    },
+  );
   return {
     topicId: topic.id,
     contentId: content.id,

@@ -81,7 +81,46 @@
     "fullScore": "满分 {score}",
     "emptyExamsTitle": "还没有考试",
     "emptyPracticesTitle": "还没有练习",
-    "emptyAssessmentsDescription": "让 Agent 创建带明确评分规则的题目与组卷；空库不会显示假成绩。"
+    "emptyAssessmentsDescription": "让 Agent 创建带明确评分规则的题目与组卷；空库不会显示假成绩。",
+    "purge": {
+      "title": "永久删除",
+      "description": "物理删除主题及其全部子资源,不可恢复;归档资源同样会被删除。需要重新输入时请先导出数据。",
+      "action": "永久删除…",
+      "dialogTitle": "确认永久删除「{title}」?",
+      "impact": "将被永久删除:",
+      "total": "合计 {count} 条记录",
+      "nothing": "该主题暂无子资源,仅删除主题本身。",
+      "confirm": "永久删除",
+      "deleted": "主题已永久删除",
+      "failed": "删除失败",
+      "counts": {
+        "contents": "内容",
+        "plans": "计划",
+        "questions": "题目",
+        "questionVersions": "题目历史版本",
+        "assessments": "试卷",
+        "attempts": "作答记录",
+        "wrongQuestions": "错题记录",
+        "answerLinks": "答题链接",
+        "gradingJobs": "评分任务"
+      }
+    },
+    "answerLinks": {
+      "title": "答题链接",
+      "description": "发布到本主题试卷的免登录答题链接",
+      "empty": "暂无答题链接;在 Agent 发布试卷链接后在这里管理。",
+      "expiresAt": "到期 {date}",
+      "statusActive": "有效",
+      "statusExpired": "已过期",
+      "statusRevoked": "已吊销",
+      "revoke": "吊销",
+      "revokeTitle": "吊销答题链接",
+      "revokeDescription": "吊销后链接立即失效,已开始的作答不受影响。",
+      "revokeConfirm": "确认吊销",
+      "revoked": "链接已吊销",
+      "revokeFailed": "吊销失败",
+      "loadFailed": "答题链接加载失败"
+    }
   },
   "plan": {
     "loading": "正在读取计划",

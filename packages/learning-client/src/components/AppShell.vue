@@ -80,6 +80,7 @@ const primaryNav = computed(() => [
   { name: 'history', label: t('components.shell.titles.history'), icon: 'history' },
 ]);
 const secondaryNav = computed(() => [
+  { name: 'search', label: t('components.shell.titles.search'), icon: 'search' },
   { name: 'token-usage', label: t('components.shell.titles.tokenUsage'), icon: 'usage' },
   { name: 'archive', label: t('components.shell.nav.archive'), icon: 'archive' },
   { name: 'settings', label: t('components.shell.titles.settings'), icon: 'settings' },

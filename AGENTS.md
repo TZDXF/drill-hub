@@ -136,7 +136,8 @@ pnpm test
 
 - Android SDK/NDK、Java、Android Rust target、签名和 APK/真机验收尚未完成。
 - Android 重启后需要重新登录，没有安全持久会话。
-- 通用创建请求幂等、cursor 分页、持久费用预算、Webhook 和模型质量基准尚未实现。
-- 内置助手已实现但无逐条写确认、无跨设备实时推送、无历史会话向量检索；详见 `docs/07-built-in-assistant.md`。
+- 通用创建请求幂等、cursor 分页、持久费用预算、Webhook 和模型质量基准尚未实现。永久删除已实现（主题级联，需影响预览/确认/审计；Agent 需 `topic:purge` scope）——它是业务不变量的显式例外，其余任何路径不得物理删除学习数据。
+- 内置助手已实现但无逐条写确认、无跨设备实时推送、无历史会话向量检索，且会话状态在进程内存（多实例需粘性会话）；详见 `docs/07-built-in-assistant.md`。
+- 限流计数与登录失败延迟基于数据库共享，可多实例部署；助手状态除外（见上）。
 - 评分适配器当前只支持 `chat_completions` 和 `rubric-v1`，不要假定任意“OpenAI 兼容”供应商都可用。
 - 生产部署可使用 HTTP 或 HTTPS；建议 HTTPS，并需要显式主密钥和安全的数据库/密钥备份。

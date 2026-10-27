@@ -21,7 +21,8 @@
       "report": "Learning report",
       "archive": "Archive",
       "assistant": "Assistant",
-      "adminAssistant": "Assistant Settings"
+      "adminAssistant": "Assistant Settings",
+      "search": "Search"
     },
     "nav": {
       "topics": "Learning topics",
@@ -131,7 +132,13 @@
     "notifySessionRevoked": "Sign-in session revoked",
     "notifySessionRevokeFailed": "Could not revoke the sign-in session",
     "notifyLogoutFailed": "Could not sign out",
-    "sessionWeb": "Web browser"
+    "sessionWeb": "Web browser",
+    "exportTitle": "Data export",
+    "exportDescription": "Download a JSON snapshot of all learning data as a local backup. Assistant conversations and logs are not included.",
+    "exportData": "Export my data",
+    "exporting": "Exporting…",
+    "exportDone": "Export complete",
+    "exportFailed": "Export failed"
   },
   "agentSetup": {
     "notifyClipboardFailed": "Clipboard is unavailable",
@@ -264,7 +271,7 @@
     "layoutChat": "Focused chat layout",
     "processSummary": "Ran {seconds}s · {count} actions",
     "processCount": "{count} actions",
-    "turnFailed": "This turn did not finish",
+    "turnFailed": "This turn could not be completed",
     "actions": {
       "running": "Working on {action}…",
       "search": "Search the web: {query}",
@@ -316,7 +323,6 @@
     "retry": "Try again",
     "threadNotFound": "Conversation not found",
     "noCurrentThread": "No current conversation",
-    "turnFailed": "This turn could not be completed",
     "reconnecting": "Connection interrupted, reconnecting…",
     "fork": "Fork from here",
     "backToBottom": "Back to latest",

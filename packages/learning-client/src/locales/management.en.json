@@ -263,7 +263,8 @@
       "attemptWrite": "Void answer records (a reason is required)",
       "gradingRequest": "Request grading retries and reasoned re-grades",
       "gradeWrite": "Submit rubric levels for externally graded questions",
-      "archiveWrite": "Archive and restore resources"
+      "archiveWrite": "Archive and restore resources",
+      "topicPurge": "Permanently delete a topic and all children (not granted by default)"
     }
   },
   "usage": {
@@ -612,7 +613,9 @@
       "assistantSkillCreate": "Create assistant skill",
       "assistantSkillUpdate": "Update assistant skill",
       "assistantSkillDelete": "Delete assistant skill",
-      "assistantThreadFork": "Fork assistant conversation"
+      "assistantThreadFork": "Fork assistant conversation",
+      "answerLinkRevoked": "Answer link revoked",
+      "topicPurged": "Topic permanently deleted"
     }
   },
   "assistant": {
@@ -662,5 +665,29 @@
     "skillNameImmutable": "Immutable after creation",
     "skillDescription": "Description (when to use)",
     "skillContent": "Instructions"
+  },
+  "search": {
+    "title": "Search",
+    "description": "Find topics, contents, plans, questions and assessments",
+    "queryLabel": "Query",
+    "queryPlaceholder": "Keyword, e.g. transaction, MVCC",
+    "typeLabel": "Type",
+    "submit": "Search",
+    "loading": "Searching…",
+    "failed": "Search failed",
+    "emptyTitle": "No matching results",
+    "emptyDescription": "Try another keyword or widen the type filter",
+    "initialTitle": "Type a keyword to start",
+    "initialDescription": "Searches titles, goals and bodies of topics, contents, plans, questions and assessments",
+    "resultCount": "{count} results",
+    "archived": "Archived",
+    "type": {
+      "all": "All",
+      "topic": "Topic",
+      "content": "Content",
+      "plan": "Plan",
+      "question": "Question",
+      "assessment": "Assessment"
+    }
   }
 }

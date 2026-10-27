@@ -17,7 +17,7 @@
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | server_settings           | instance_id（持久保留）、API 兼容版本、default_grading_profile_version_id；默认评分配置可为空                                          |
 | users                     | username 唯一、password_hash、role、status、timezone；不强制首次登录改密                                                               |
-| auth_sessions             | user_id、channel、凭据摘要、轮换关联、过期与撤销、设备信息                                                                             |
+| auth_sessions             | user_id、channel、凭据摘要、轮换关联、过期与撤销、设备信息（CSRF 令牌按时间窗派生，不落库）                                            |
 | agent_tokens              | owner_id、token_hash、prefix、name、scopes、expires_at、last_used_at                                                                   |
 | model_connections         | 管理域；供应商显示名、current_version_id、status、revision                                                                             |
 | model_connection_versions | 不可变连接版本；connection_id、version_no、受支持的协议标识、base_url、密钥版本引用、created_at                                        |

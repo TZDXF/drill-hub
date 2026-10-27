@@ -24,4 +24,14 @@
 
 ## 后续建议与验证边界
 
-本次不是生产安全认证。报告建议的 CSRF 短周期轮换、递增登录延迟、免登录链接列举/主动吊销接口、多实例数据库并发约束、CSP 深化、网关封禁、容量告警、管理权限细分及二次确认，仍需单独设计与验收。当前限流仍为单实例内存实现；Android APK/真机、真实模型质量与生产压力测试不在本次验证范围。
+本次不是生产安全认证。Android APK/真机、真实模型质量与生产压力测试不在本次验证范围。
+
+2026-10-28 已单独设计并实现报告建议中的应用层项（回归覆盖见括号）：
+
+- CSRF 短周期轮换：令牌按会话 + 30 分钟时间窗派生，接受当前窗与上一窗，不再落库；客户端 403 `CSRF_REQUIRED` 后自动重取并重放一次（`auth.test.ts`、`client.test.ts`）。
+- 递增登录延迟：按账户统计 loginLogs 近 15 分钟失败次数，延迟 250ms×2^(n-1) 封顶 4s，`LOGIN_DELAY_BASE_MS` 可调；未知用户名按首次失败处理以保持响应时间对齐（`auth.test.ts`）。
+- 免登录链接列举/主动吊销：`GET /me/answer-links` 与 `POST /me/answer-links/{id}/revoke`，吊销幂等并写审计（`answer-links.test.ts`）。
+- 多实例数据库并发约束：限流计数迁入 `rateLimits` 表（原子 upsert，多实例共享）；PostgreSQL 评分任务认领改 `FOR UPDATE SKIP LOCKED` 并在并发计数前锁 profile 行（`security-hardening.test.ts`）。注意：内置助手的会话/turn 状态仍在进程内存，多实例部署助手流量需粘性会话；SQLite 部署保持单实例。
+- CSP 深化：所有响应附带 `Content-Security-Policy`（default-src 'self' 等，img/font 允许 data:）（`security-hardening.test.ts`）。
+
+仍未实现，需单独设计与验收：网关封禁与容量告警（属部署基础设施层）、管理权限细分及危险管理操作二次确认。

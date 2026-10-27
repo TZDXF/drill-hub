@@ -100,6 +100,8 @@ const actionLabelKeys: Record<string, string> = {
   'task.update': 'management.audit.action.taskUpdate',
   'task.complete': 'management.audit.action.taskComplete',
   'answer-link.create': 'management.audit.action.answerLinkCreate',
+  'answer-link.revoked': 'management.audit.action.answerLinkRevoked',
+  'topic.purged': 'management.audit.action.topicPurged',
   'attempt.start': 'management.audit.action.attemptStart',
   'attempt-item.submit': 'management.audit.action.attemptItemSubmit',
   'attempt.submit': 'management.audit.action.attemptSubmit',

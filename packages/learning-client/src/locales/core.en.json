@@ -29,7 +29,8 @@
     "attempt:write": "Void attempt records (a reason is required)",
     "grading:request": "Request grading retries and reasoned regrades",
     "grade:write": "Submit criterion levels for external rubric grading",
-    "archive:write": "Archive and restore resources"
+    "archive:write": "Archive and restore resources",
+    "topic:purge": "Permanently delete a topic and all of its children"
   },
   "resourceType": {
     "topic": "Topic",
@@ -323,6 +324,9 @@
     "UNSUPPORTED_MODEL_PROTOCOL": "Only the implemented chat_completions protocol is supported",
     "USERNAME_TAKEN": "The username already exists",
     "VERSION_CONFLICT": "The data changed, please refresh and retry",
-    "WORKER_LEASE_EXPIRED": "The grading task lease expired"
+    "WORKER_LEASE_EXPIRED": "The grading task lease expired",
+    "INVALID_SEARCH_QUERY": "Invalid search query",
+    "INVALID_SEARCH_TYPE": "Invalid search types",
+    "TOPIC_ATTEMPTS_ACTIVE": "This topic still has unfinished attempts; submit or void them first"
   }
 }

@@ -16,6 +16,7 @@ import WrongQuestionsPage from '#learning-client/pages/WrongQuestionsPage.vue';
 import WrongQuestionDetailPage from '#learning-client/pages/WrongQuestionDetailPage.vue';
 import HistoryPage from '#learning-client/pages/HistoryPage.vue';
 import ArchivePage from '#learning-client/pages/ArchivePage.vue';
+import SearchPage from '#learning-client/pages/SearchPage.vue';
 import SettingsPage from '#learning-client/pages/SettingsPage.vue';
 import TokenUsagePage from '#learning-client/pages/TokenUsagePage.vue';
 import AgentTokensPage from '#learning-client/pages/AgentTokensPage.vue';
@@ -124,6 +125,7 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
             meta: { assistantPanel: true },
           },
           { path: 'archive', name: 'archive', component: ArchivePage },
+          { path: 'search', name: 'search', component: SearchPage, meta: { assistantPanel: true } },
           { path: 'settings', name: 'settings', component: SettingsPage },
           { path: 'token-usage', name: 'token-usage', component: TokenUsagePage },
           { path: 'settings/agent-tokens', name: 'agent-tokens', component: AgentTokensPage },

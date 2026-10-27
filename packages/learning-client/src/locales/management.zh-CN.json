@@ -263,7 +263,8 @@
       "attemptWrite": "作废作答记录（需填写原因）",
       "gradingRequest": "请求评分重试与有原因的重评",
       "gradeWrite": "提交外部评分模式的得分项等级",
-      "archiveWrite": "归档与恢复资源"
+      "archiveWrite": "归档与恢复资源",
+      "topicPurge": "永久删除主题及全部子资源（默认不授予）"
     }
   },
   "usage": {
@@ -612,7 +613,9 @@
       "assistantSkillCreate": "创建助手 Skill",
       "assistantSkillUpdate": "修改助手 Skill",
       "assistantSkillDelete": "删除助手 Skill",
-      "assistantThreadFork": "分叉助手对话"
+      "assistantThreadFork": "分叉助手对话",
+      "answerLinkRevoked": "吊销答题链接",
+      "topicPurged": "永久删除主题"
     }
   },
   "assistant": {
@@ -662,5 +665,29 @@
     "skillNameImmutable": "创建后不可修改",
     "skillDescription": "描述（何时使用）",
     "skillContent": "指令内容"
+  },
+  "search": {
+    "title": "站内搜索",
+    "description": "检索你的主题、内容、计划、题目与试卷",
+    "queryLabel": "搜索词",
+    "queryPlaceholder": "输入关键词,如:事务、MVCC",
+    "typeLabel": "类型",
+    "submit": "搜索",
+    "loading": "搜索中…",
+    "failed": "搜索失败",
+    "emptyTitle": "没有匹配的结果",
+    "emptyDescription": "换个关键词,或放宽类型过滤试试",
+    "initialTitle": "输入关键词开始搜索",
+    "initialDescription": "可搜索主题、内容、计划、题目和试卷的标题、目标与正文",
+    "resultCount": "共 {count} 条结果",
+    "archived": "已归档",
+    "type": {
+      "all": "全部",
+      "topic": "主题",
+      "content": "内容",
+      "plan": "计划",
+      "question": "题目",
+      "assessment": "试卷"
+    }
   }
 }

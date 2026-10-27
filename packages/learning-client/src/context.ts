@@ -141,7 +141,7 @@ export function createLearningContext(platform: ClientPlatform) {
       if (method === 'get') return target.get<T>(path, { signal });
       if (method === 'post') return target.post<T>(path, body, { signal });
       if (method === 'patch') return target.patch<T>(path, body, { signal });
-      if (method === 'delete') return target.request<T>(path, { method: 'DELETE', signal });
+      if (method === 'delete') return target.delete<T>(path, body, { signal });
       return target.put<T>(path, body, { signal });
     }, ticket);
   }
@@ -441,7 +441,7 @@ export function createLearningContext(platform: ClientPlatform) {
   const post = <T>(path: string, body?: unknown) => request<T>('post', path, body);
   const patch = <T>(path: string, body?: unknown) => request<T>('patch', path, body);
   const put = <T>(path: string, body?: unknown) => request<T>('put', path, body);
-  const del = (path: string) => request<void>('delete', path);
+  const del = (path: string, body?: unknown) => request<void>('delete', path, body);
   const publicGet = <T>(path: string, token: string) => publicRequest<T>('get', path, token);
   const publicPost = <T>(path: string, token: string, body?: unknown) =>
     publicRequest<T>('post', path, token, body);

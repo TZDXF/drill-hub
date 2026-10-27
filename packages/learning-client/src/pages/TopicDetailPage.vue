@@ -1,18 +1,27 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
-import type { Assessment, Content, LearningPlan, Topic } from '@drill-hub/contracts';
+import type {
+  AnswerLinkListItem,
+  Assessment,
+  Content,
+  LearningPlan,
+  PurgePreview,
+  Topic,
+} from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
 import { errorMessage, formatDate, formatDuration, formatScore } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import EmptyState from '#learning-client/components/EmptyState.vue';
+import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();
 const route = useRoute();
+const router = useRouter();
 const topic = ref<Topic | null>(null);
 const plans = ref<LearningPlan[]>([]);
 const contents = ref<Content[]>([]);
@@ -22,6 +31,13 @@ const error = ref('');
 const topicId = computed(() => String(route.params.topicId));
 const practices = computed(() => assessments.value.filter((item) => item.kind === 'practice'));
 const exams = computed(() => assessments.value.filter((item) => item.kind === 'exam'));
+const answerLinks = ref<AnswerLinkListItem[]>([]);
+const purgePreview = ref<PurgePreview | null>(null);
+const purgeOpen = ref(false);
+const purgeBusy = ref(false);
+const purgeLoading = ref(false);
+const revokeTarget = ref<AnswerLinkListItem | null>(null);
+const revokeBusy = ref(false);
 const compactLayoutQuery =
   typeof window === 'undefined'
     ? null
@@ -78,6 +94,7 @@ async function load() {
     plans.value = planResult;
     contents.value = contentResult;
     assessments.value = assessmentResult;
+    void loadAnswerLinks();
   } catch (reason) {
     error.value = errorMessage(reason);
     learning.notify.error(t('learning.topicDetail.loadFailed'), error.value);
@@ -87,6 +104,64 @@ async function load() {
 }
 function totalScore(assessment: Assessment) {
   return assessment.items.reduce((sum, item) => sum + Number(item.maxScore), 0).toString();
+}
+async function loadAnswerLinks() {
+  try {
+    const all = await learning.get<AnswerLinkListItem[]>('/me/answer-links');
+    answerLinks.value = all.filter((link) => link.topicId === topicId.value);
+  } catch {
+    // 链接管理是辅助信息，加载失败不打断主题页。
+    answerLinks.value = [];
+  }
+}
+function linkStatusClass(link: AnswerLinkListItem) {
+  return link.status === 'active' ? 'badge--green' : 'badge';
+}
+function linkStatusLabel(link: AnswerLinkListItem) {
+  const key =
+    link.status === 'active' ? 'Active' : link.status === 'expired' ? 'Expired' : 'Revoked';
+  return t(`learning.topicDetail.answerLinks.status${key}`);
+}
+async function openPurge() {
+  purgeLoading.value = true;
+  try {
+    purgePreview.value = await learning.get<PurgePreview>(`/topics/${topicId.value}/purge-preview`);
+    purgeOpen.value = true;
+  } catch (reason) {
+    learning.notify.error(t('learning.topicDetail.purge.failed'), errorMessage(reason));
+  } finally {
+    purgeLoading.value = false;
+  }
+}
+async function purge() {
+  if (!purgePreview.value) return;
+  purgeBusy.value = true;
+  try {
+    await learning.del(`/topics/${topicId.value}`, {
+      expectedRevision: purgePreview.value.topic.revision,
+    });
+    learning.notify.success(t('learning.topicDetail.purge.deleted'));
+    purgeOpen.value = false;
+    await router.replace({ name: 'topics' });
+  } catch (reason) {
+    learning.notify.error(t('learning.topicDetail.purge.failed'), errorMessage(reason));
+  } finally {
+    purgeBusy.value = false;
+  }
+}
+async function revokeLink() {
+  if (!revokeTarget.value) return;
+  revokeBusy.value = true;
+  try {
+    await learning.post(`/me/answer-links/${revokeTarget.value.id}/revoke`, {});
+    learning.notify.success(t('learning.topicDetail.answerLinks.revoked'));
+    revokeTarget.value = null;
+    await loadAnswerLinks();
+  } catch (reason) {
+    learning.notify.error(t('learning.topicDetail.answerLinks.revokeFailed'), errorMessage(reason));
+  } finally {
+    revokeBusy.value = false;
+  }
 }
 onMounted(() => {
   syncCompactCategories();
@@ -255,11 +330,117 @@ watch(topicId, load);
           />
         </TabsContent>
       </TabsRoot>
+      <section v-if="answerLinks.length" class="card topic-links" aria-labelledby="links-title">
+        <div class="settings-card__heading">
+          <span class="list-card__icon"><AppIcon name="link" /></span>
+          <h2 id="links-title">{{ t('learning.topicDetail.answerLinks.title') }}</h2>
+        </div>
+        <p class="muted small">{{ t('learning.topicDetail.answerLinks.description') }}</p>
+        <div class="list-stack">
+          <article v-for="link in answerLinks" :key="link.id" class="task-row">
+            <div class="task-row__body">
+              <strong>
+                {{ link.assessmentTitle }}
+                <span class="badge" :class="linkStatusClass(link)">{{
+                  linkStatusLabel(link)
+                }}</span>
+              </strong>
+              <span>{{
+                t('learning.topicDetail.answerLinks.expiresAt', {
+                  date: formatDate(link.expiresAt),
+                })
+              }}</span>
+            </div>
+            <button
+              v-if="link.status === 'active'"
+              class="button button--small button--danger"
+              type="button"
+              @click="revokeTarget = link"
+            >
+              {{ t('learning.topicDetail.answerLinks.revoke') }}
+            </button>
+          </article>
+        </div>
+      </section>
+      <section class="card topic-danger-zone" aria-labelledby="purge-title">
+        <div class="settings-card__heading">
+          <span class="list-card__icon"><AppIcon name="trash" /></span>
+          <h2 id="purge-title">{{ t('learning.topicDetail.purge.title') }}</h2>
+        </div>
+        <p class="muted small">{{ t('learning.topicDetail.purge.description') }}</p>
+        <button
+          class="button button--danger"
+          type="button"
+          data-testid="topic-purge"
+          :disabled="purgeLoading"
+          @click="openPurge"
+        >
+          <span v-if="purgeLoading" class="spinner" />
+          {{ t('learning.topicDetail.purge.action') }}
+        </button>
+      </section>
     </template>
+    <ConfirmDialog
+      :open="purgeOpen"
+      :title="
+        purgePreview
+          ? t('learning.topicDetail.purge.dialogTitle', { title: purgePreview.topic.title })
+          : ''
+      "
+      :confirm-label="t('learning.topicDetail.purge.confirm')"
+      danger
+      :busy="purgeBusy"
+      @update:open="!$event && (purgeOpen = false)"
+      @confirm="purge"
+    >
+      <p class="muted small">{{ t('learning.topicDetail.purge.impact') }}</p>
+      <ul v-if="purgePreview" class="purge-counts">
+        <li v-for="(value, key) in purgePreview.counts" :key="key">
+          <span>{{ t(`learning.topicDetail.purge.counts.${key}`) }}</span>
+          <strong>{{ n(value) }}</strong>
+        </li>
+      </ul>
+      <p v-if="purgePreview && purgePreview.total === 0" class="muted small">
+        {{ t('learning.topicDetail.purge.nothing') }}
+      </p>
+    </ConfirmDialog>
+    <ConfirmDialog
+      :open="Boolean(revokeTarget)"
+      :title="t('learning.topicDetail.answerLinks.revokeTitle')"
+      :description="t('learning.topicDetail.answerLinks.revokeDescription')"
+      :confirm-label="t('learning.topicDetail.answerLinks.revokeConfirm')"
+      danger
+      :busy="revokeBusy"
+      @update:open="!$event && (revokeTarget = null)"
+      @confirm="revokeLink"
+    />
   </div>
 </template>
 
 <style scoped>
+.topic-links,
+.topic-danger-zone {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+.topic-danger-zone .button--danger {
+  justify-self: start;
+}
+.purge-counts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.purge-counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 6px;
+}
 .topic-category__icon {
   display: inline-flex;
   align-items: center;

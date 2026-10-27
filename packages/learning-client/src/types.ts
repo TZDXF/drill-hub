@@ -86,6 +86,7 @@ export const scopeLabels: Record<Scope, string> = localizedRecord<Scope>({
   'grading:request': 'core.scope.grading:request',
   'grade:write': 'core.scope.grade:write',
   'archive:write': 'core.scope.archive:write',
+  'topic:purge': 'core.scope.topic:purge',
 });
 
 export const resourceTypeLabels: Record<ArchiveResourceType, string> =

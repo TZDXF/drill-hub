@@ -29,7 +29,8 @@
     "attempt:write": "作废作答记录（需填写原因）",
     "grading:request": "请求评分重试与有原因的重评",
     "grade:write": "提交外部评分模式的得分项等级",
-    "archive:write": "归档与恢复资源"
+    "archive:write": "归档与恢复资源",
+    "topic:purge": "永久删除主题及其全部子资源"
   },
   "resourceType": {
     "topic": "主题",
@@ -323,6 +324,9 @@
     "UNSUPPORTED_MODEL_PROTOCOL": "仅支持已实现的 chat_completions 协议",
     "USERNAME_TAKEN": "用户名已存在",
     "VERSION_CONFLICT": "数据已发生变化，请刷新后重试",
-    "WORKER_LEASE_EXPIRED": "评分任务租约已过期"
+    "WORKER_LEASE_EXPIRED": "评分任务租约已过期",
+    "INVALID_SEARCH_QUERY": "搜索词无效",
+    "INVALID_SEARCH_TYPE": "搜索类型无效",
+    "TOPIC_ATTEMPTS_ACTIVE": "主题存在未终结的作答，请先提交或作废后再删除"
   }
 }

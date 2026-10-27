@@ -43,6 +43,8 @@ import square from '@iconify-icons/lucide/square';
 import trash from '@iconify-icons/lucide/trash-2';
 import messageSquare from '@iconify-icons/lucide/message-square';
 import search from '@iconify-icons/lucide/search';
+import download from '@iconify-icons/lucide/download';
+import link from '@iconify-icons/lucide/link';
 import copy from '@iconify-icons/lucide/copy';
 import pencil from '@iconify-icons/lucide/pencil';
 import quote from '@iconify-icons/lucide/text-quote';
@@ -101,6 +103,8 @@ const icons: Record<string, IconifyIcon> = {
   trash,
   message: messageSquare,
   search,
+  download,
+  link,
   copy,
   edit: pencil,
   quote,

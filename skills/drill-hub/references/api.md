@@ -115,6 +115,7 @@ Content-Type: application/json
 - 没有通用 `Idempotency-Key` 语义；`clientRef` 也不是跨请求幂等键。
 - 没有 `cursor`、`limit`、`nextCursor` 或客户端分页游标；列表返回全部匹配记录。
 - 没有 Webhook、推送或后台通知；只能按需 GET。
+- 永久删除主题需 `topic:purge` scope（默认不授予），删除前必须先读取影响预览并确认；常规清理仍优先使用归档。
 - 应用内另有面向登录用户的内置学习助手（交互式功能），不属于本 skill 的 Agent API；外部 Agent 不能通过本 API 访问或模拟它。
 - 没有永久删除、批量删除、任意资源表名、自由总分或客户端正确性字段。
 - 没有 `grade:write` 覆盖 `model_rubric`/`rule` 的接口，也没有更换评分模式的接口。

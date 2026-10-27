@@ -30,7 +30,8 @@
       "adminGrading": "评分运维",
       "adminAudit": "审计日志",
       "assistant": "学习助手",
-      "adminAssistant": "助手设置"
+      "adminAssistant": "助手设置",
+      "search": "站内搜索"
     },
     "nav": {
       "home": "今日学习",
@@ -139,7 +140,13 @@
     "notifySessionRevokeFailed": "撤销登录会话失败",
     "notifySwitchServerFailed": "切换服务器失败",
     "notifyLogoutFailed": "退出登录未完成",
-    "sessionWeb": "Web 浏览器"
+    "sessionWeb": "Web 浏览器",
+    "exportTitle": "数据导出",
+    "exportDescription": "下载全部学习数据的 JSON 快照,作为本地备份。不含助手会话与日志。",
+    "exportData": "导出我的数据",
+    "exporting": "导出中…",
+    "exportDone": "导出成功",
+    "exportFailed": "导出失败"
   },
   "agentSetup": {
     "heading": "Agent 接入",
@@ -264,7 +271,7 @@
     "layoutChat": "专注对话布局",
     "processSummary": "执行了 {seconds} 秒 · {count} 项操作",
     "processCount": "{count} 项操作",
-    "turnFailed": "本轮未能完成",
+    "turnFailed": "本轮对话未能完成",
     "actions": {
       "running": "正在{action}…",
       "search": "搜索资料：{query}",
@@ -316,7 +323,6 @@
     "retry": "重新回答",
     "threadNotFound": "对话不存在",
     "noCurrentThread": "没有当前对话",
-    "turnFailed": "本轮对话未能完成",
     "reconnecting": "事件流连接中断，正在重新连接…",
     "fork": "从此处分叉",
     "backToBottom": "回到最新",
