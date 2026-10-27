@@ -160,6 +160,25 @@ describe('accounts, sessions and scope boundaries', () => {
     });
     expect(mobileWrite.statusCode).toBe(200);
   });
+  it('applies increasing delay after repeated login failures for a known account', async () => {
+    const thresholds = [200, 450, 900];
+    for (const [index, minimum] of thresholds.entries()) {
+      const at = Date.now();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/web/login',
+        payload: { username: ADMIN, password: 'definitely-wrong-password' },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(Date.now() - at).toBeGreaterThanOrEqual(minimum);
+      expect(index).toBeLessThan(thresholds.length);
+    }
+    // 成功登录不叠加延迟。
+    const at = Date.now();
+    const success = await login();
+    expect(success.response.statusCode).toBe(200);
+    expect(Date.now() - at).toBeLessThan(400);
+  });
   it('enforces password length limits', async () => {
     const admin = await login();
     const tooShort = await app.inject({

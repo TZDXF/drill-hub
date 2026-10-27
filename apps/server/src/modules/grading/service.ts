@@ -328,7 +328,7 @@ export class GradingServiceImpl implements GradingService {
 
   private async claimNextJob(): Promise<ClaimedJob | null> {
     return this.ctx.db.transaction(async (tx) => {
-      const candidates = await tx.listDueGradingJobs(now());
+      const candidates = await tx.listDueGradingJobs(now(), { skipLocked: true });
       for (const candidate of candidates) {
         const attempt = await tx.get('attempts', candidate.attemptId);
         if (await this.cancelVoidedJob(tx, candidate, attempt)) continue;
@@ -350,6 +350,9 @@ export class GradingServiceImpl implements GradingService {
         const profile = candidate.profileId
           ? await tx.get('gradingProfiles', candidate.profileId)
           : undefined;
+        // PostgreSQL 多实例：认领用 SKIP LOCKED 行锁，计数前锁 profile 行，
+        // 保证同一 profile 的并发上限不被多个实例同时越过。
+        if (candidate.profileId) await tx.lockRowForUpdate('gradingProfiles', candidate.profileId);
         // Claims are serialized in the DB transaction; no model call holds the lock.
         const runningCount = await tx.countRunningGradingJobs(candidate.profileId);
         if (runningCount >= (profile?.concurrency ?? 2)) continue;

@@ -26,6 +26,8 @@ export interface ServerConfig {
   allowPrivateModelUrls: boolean;
   allowPrivateSearchUrls: boolean;
   accessLogRetentionDays: number;
+  /** 登录失败递增延迟的基数（毫秒），第 n 次连续失败延迟 base×2^(n-1)，封顶 4 秒。 */
+  loginDelayBaseMs: number;
 }
 export interface GradingService {
   gradeLockedItem(db: Database, attempt: Attempt, item: AttemptItemSnapshot): Promise<void>;

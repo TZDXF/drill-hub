@@ -11,6 +11,7 @@ import { loadConfig } from '#server/core/config.js';
 import { SecretVault } from '#server/core/security.js';
 import { AppError } from '#server/core/errors.js';
 import { normalizePublicBaseUrl, resolvePublicUrl } from '#server/core/public-url.js';
+import { createDatabaseRateLimitStore } from '#server/core/rate-limit-store.js';
 import { baseRecord, id, now } from '#server/core/ids.js';
 import type { AppContext, ServerConfig } from '#server/core/context.js';
 import { createAuthFunctions, createUser, registerAuthRoutes } from '#server/modules/auth/index.js';
@@ -50,7 +51,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     genReqId: id,
   });
   await app.register(cookie);
-  await app.register(rateLimit, { max: 1200, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    max: 1200,
+    timeWindow: '1 minute',
+    // 计数落库，多实例共享；速率键仍按 IP/用户名区分。
+    store: createDatabaseRateLimitStore(db) as never,
+  });
   await app.register(cors, {
     credentials: true,
     origin: true,
@@ -143,6 +149,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     reply.header('Referrer-Policy', 'same-origin');
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Cache-Control', 'no-store');
+    // 静态资源全部本地打包；img data: 用于助手图片附件，style 内联用于 Vue 过渡类。
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    );
     return payload;
   });
   app.get('/api/v1/health', async () => ({ data: { status: 'ok', version: APP_VERSION } }));

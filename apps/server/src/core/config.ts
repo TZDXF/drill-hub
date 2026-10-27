@@ -68,6 +68,10 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
     accessLogRetentionDays > 365
   )
     throw new Error('Invalid ACCESS_LOG_RETENTION_DAYS');
+  const loginDelayBaseMs =
+    overrides.loginDelayBaseMs ?? Number(process.env.LOGIN_DELAY_BASE_MS ?? 250);
+  if (!Number.isSafeInteger(loginDelayBaseMs) || loginDelayBaseMs < 0 || loginDelayBaseMs > 10_000)
+    throw new Error('Invalid LOGIN_DELAY_BASE_MS');
   return {
     trustedProxies,
     databaseDriver,
@@ -76,6 +80,7 @@ export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise
     allowPrivateModelUrls: overrides.allowPrivateModelUrls ?? privateUrls === 'true',
     allowPrivateSearchUrls: overrides.allowPrivateSearchUrls ?? privateSearchUrls === 'true',
     accessLogRetentionDays,
+    loginDelayBaseMs,
     host: overrides.host ?? process.env.HOST ?? (production ? '127.0.0.1' : '0.0.0.0'),
     port,
     encryptionKey,

@@ -235,6 +235,29 @@ function cookie(reply: FastifyReply, request: FastifyRequest, raw: string, confi
     maxAge: 12 * 60 * 60,
   });
 }
+const LOGIN_DELAY_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_DELAY_MAX_MS = 4000;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 登录失败递增延迟：按已知账户统计近 15 分钟失败次数，延迟 base×2^(n-1) 封顶 4 秒；
+ * 未知用户名按第 1 次失败处理，保持与真实账户首次失败相同的响应时间，避免计时枚举。
+ */
+async function applyLoginDelay(
+  db: Database,
+  config: ServerConfig,
+  username: string | null,
+): Promise<void> {
+  if (config.loginDelayBaseMs <= 0) return;
+  let failures = 0;
+  if (username)
+    failures = await db.countRecentLoginFailures(
+      username,
+      new Date(Date.now() - LOGIN_DELAY_WINDOW_MS).toISOString(),
+    );
+  await sleep(Math.min(config.loginDelayBaseMs * 2 ** failures, LOGIN_DELAY_MAX_MS));
+}
+
 export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, config } = ctx;
   async function login(request: FastifyRequest, reply: FastifyReply, channel: 'web' | 'mobile') {
@@ -245,8 +268,10 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext) 
     const user = await db.findOne('users', { username });
     request.loginAccount = user ? { userId: user.id, username: user.username } : null;
     const valid = await verifyPassword(password, user?.passwordHash ?? (await dummyPassword));
-    if (!valid || !user || user.status !== 'active')
+    if (!valid || !user || user.status !== 'active') {
+      await applyLoginDelay(db, config, user ? user.username : username);
       throw new AppError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
+    }
     const sessionId = id();
     const raw = (channel === 'web' ? 'web.' : 'mob.') + sessionId + '.' + randomSecret();
     const refreshToken = channel === 'mobile' ? 'ref.' + sessionId + '.' + randomSecret() : null;

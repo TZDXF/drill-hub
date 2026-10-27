@@ -15,6 +15,8 @@ async function setup(options: CreateAppOptions = {}) {
     encryptionKey: 'a'.repeat(64),
     startWorkers: false,
     bootstrapAdmin: { username: 'admin', password },
+    // 本文件测的是限流与边界，递增登录延迟由 auth.test.ts 单独覆盖。
+    loginDelayBaseMs: 0,
     ...options,
   });
   apps.push(app);
@@ -144,5 +146,18 @@ describe('resource and deployment boundaries', () => {
     expect(await app.ctx.db.list('apiLogs')).toHaveLength(1);
     expect(await app.ctx.db.list('loginLogs')).toHaveLength(1);
     expect(await app.ctx.db.list('auditLogs')).toHaveLength(1);
+  });
+  it('sends CSP and hardening headers on every response', async () => {
+    const app = await setup();
+    const response = await app.inject('/api/v1/health');
+    expect(response.statusCode).toBe(200);
+    const policy = String(response.headers['content-security-policy']);
+    expect(policy).toContain("default-src 'self'");
+    expect(policy).toContain("script-src 'self'");
+    expect(policy).toContain("frame-ancestors 'none'");
+    expect(policy).not.toContain('unsafe-eval');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['referrer-policy']).toBe('same-origin');
   });
 });

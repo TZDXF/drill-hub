@@ -106,6 +106,7 @@ export class Database {
   }
   async pruneAccessLogs(retentionDays: number): Promise<void> {
     const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    const expiredBuckets = new Date(Date.now() - 3600000).toISOString();
     await this.locked(async () => {
       for (const table of ['apiLogs', 'loginLogs']) {
         await this.manager
@@ -115,6 +116,12 @@ export class Database {
           .where('createdAt < :cutoff', { cutoff })
           .execute();
       }
+      await this.manager
+        .getRepository('rateLimits')
+        .createQueryBuilder()
+        .delete()
+        .where('resetAt < :expiredBuckets', { expiredBuckets })
+        .execute();
     });
   }
   async get<K extends TableName>(table: K, id: string): Promise<DatabaseTables[K] | undefined> {
@@ -170,16 +177,30 @@ export class Database {
     );
   }
 
-  async listDueGradingJobs(timestamp: string): Promise<DatabaseTables['gradingJobs'][]> {
-    return this.locked(() =>
-      this.manager
+  async listDueGradingJobs(
+    timestamp: string,
+    options: { skipLocked?: boolean } = {},
+  ): Promise<DatabaseTables['gradingJobs'][]> {
+    return this.locked(() => {
+      const query = this.manager
         .getRepository<DatabaseTables['gradingJobs']>('gradingJobs')
         .createQueryBuilder('job')
         .where('job.status IN (:...statuses)', { statuses: ['queued', 'retry_wait'] })
         .andWhere('job.nextRunAt <= :timestamp', { timestamp })
         .orderBy('job.nextRunAt', 'ASC')
-        .addOrderBy('job.createdAt', 'ASC')
-        .getMany(),
+        .addOrderBy('job.createdAt', 'ASC');
+      // PostgreSQL 多实例认领：悲观行锁 + SKIP LOCKED，多个实例互不重复认领。
+      if (options.skipLocked && this.dialect === 'postgres')
+        query.setLock('pessimistic_write').skipLocked();
+      return query.getMany();
+    });
+  }
+
+  /** PostgreSQL 下锁定单行直到事务结束；SQLite 单实例无需此原语。 */
+  async lockRowForUpdate(table: TableName, rowId: string): Promise<void> {
+    if (this.dialect !== 'postgres') return;
+    await this.locked(() =>
+      this.manager.query(`SELECT "id" FROM "${table}" WHERE "id" = $1 FOR UPDATE`, [rowId]),
     );
   }
 
@@ -432,5 +453,65 @@ export class Database {
   }
   async close() {
     await this.locked(() => this.source.destroy());
+  }
+  /** 近期某用户名的登录失败次数（多实例共享，基于 loginLogs）。 */
+  async countRecentLoginFailures(username: string, since: string): Promise<number> {
+    return this.locked(() =>
+      this.manager
+        .getRepository('loginLogs')
+        .createQueryBuilder('l')
+        .where('"l"."username" = :username', { username })
+        .andWhere('"l"."outcome" = :outcome', { outcome: 'failed' })
+        .andWhere('"l"."createdAt" >= :since', { since })
+        .getCount(),
+    );
+  }
+  /**
+   * 原子自增限流桶（id 即桶键），返回当前计数与窗口结束时间。
+   * PostgreSQL 用单条 upsert 保证多实例并发正确；SQLite 由进程内互斥串行化。
+   */
+  async incrementRateLimit(
+    key: string,
+    windowMs: number,
+  ): Promise<{ count: number; resetAt: string }> {
+    return this.locked(async () => {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const resetAt = new Date(now.getTime() + windowMs).toISOString();
+      if (this.dialect === 'postgres') {
+        const rows = await this.manager.query(
+          `INSERT INTO "rateLimits" ("id", "createdAt", "updatedAt", "revision", "count", "resetAt")
+           VALUES ($1, $2, $2, 1, 1, $3)
+           ON CONFLICT ("id") DO UPDATE SET
+             "count" = CASE WHEN "rateLimits"."resetAt" <= $2 THEN 1 ELSE "rateLimits"."count" + 1 END,
+             "resetAt" = CASE WHEN "rateLimits"."resetAt" <= $2 THEN $3 ELSE "rateLimits"."resetAt" END,
+             "updatedAt" = $2,
+             "revision" = "rateLimits"."revision" + 1
+           RETURNING "count", "resetAt"`,
+          [key, nowIso, resetAt],
+        );
+        const row = rows[0] as { count: number | string; resetAt: string };
+        return { count: Number(row.count), resetAt: String(row.resetAt) };
+      }
+      const repo = this.manager.getRepository('rateLimits');
+      const existing = await repo.findOneBy({ id: key } as never);
+      if (!existing || Date.parse(existing.resetAt) <= now.getTime()) {
+        await repo.insert({
+          id: key,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          revision: 1,
+          count: 1,
+          resetAt,
+        } as never);
+        return { count: 1, resetAt };
+      }
+      const count = existing.count + 1;
+      await repo.update(
+        { id: key } as never,
+        { count, updatedAt: nowIso, revision: existing.revision + 1 } as never,
+      );
+      return { count, resetAt: existing.resetAt };
+    });
   }
 }
