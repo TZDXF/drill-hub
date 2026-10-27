@@ -189,9 +189,10 @@ export class Database {
         .andWhere('job.nextRunAt <= :timestamp', { timestamp })
         .orderBy('job.nextRunAt', 'ASC')
         .addOrderBy('job.createdAt', 'ASC');
-      // PostgreSQL 多实例认领：悲观行锁 + SKIP LOCKED，多个实例互不重复认领。
+      // PostgreSQL 多实例认领：pessimistic_partial_write 生成 FOR UPDATE SKIP LOCKED，
+      // 多个实例互不重复认领。
       if (options.skipLocked && this.dialect === 'postgres')
-        query.setLock('pessimistic_write').skipLocked();
+        query.setLock('pessimistic_partial_write');
       return query.getMany();
     });
   }
@@ -495,7 +496,7 @@ export class Database {
       }
       const repo = this.manager.getRepository('rateLimits');
       const existing = await repo.findOneBy({ id: key } as never);
-      if (!existing || Date.parse(existing.resetAt) <= now.getTime()) {
+      if (!existing) {
         await repo.insert({
           id: key,
           createdAt: nowIso,
@@ -506,12 +507,20 @@ export class Database {
         } as never);
         return { count: 1, resetAt };
       }
-      const count = existing.count + 1;
+      // 桶已存在时只能更新：窗口过期则重置为 1，否则累加；重复 INSERT 必然主键冲突。
+      const expired = Date.parse(existing.resetAt) <= now.getTime();
+      const count = expired ? 1 : existing.count + 1;
+      const activeResetAt = expired ? resetAt : existing.resetAt;
       await repo.update(
         { id: key } as never,
-        { count, updatedAt: nowIso, revision: existing.revision + 1 } as never,
+        {
+          count,
+          resetAt: activeResetAt,
+          updatedAt: nowIso,
+          revision: existing.revision + 1,
+        } as never,
       );
-      return { count, resetAt: existing.resetAt };
+      return { count, resetAt: activeResetAt };
     });
   }
 }
