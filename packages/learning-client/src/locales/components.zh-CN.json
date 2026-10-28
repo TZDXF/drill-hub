@@ -139,12 +139,17 @@
     "notifySwitchServerFailed": "切换服务器失败",
     "notifyLogoutFailed": "退出登录未完成",
     "sessionWeb": "Web 浏览器",
-    "exportTitle": "数据导出",
-    "exportDescription": "下载全部学习数据的 JSON 快照,作为本地备份。不含助手会话与日志。",
-    "exportData": "导出我的数据",
-    "exporting": "导出中…",
-    "exportDone": "导出成功",
-    "exportFailed": "导出失败"
+    "exportTitle": "数据备份与导出",
+    "exportDescription": "将主题及其内容、题目与历史版本、计划、试卷、作答、错题和答题链接整理为 JSON 文件，便于下载留存。不含助手会话与日志。",
+    "exportFormat": "完整学习数据",
+    "exportLocal": "下载到当前设备",
+    "exportData": "下载 JSON 备份",
+    "exporting": "正在准备备份…",
+    "exportDone": "备份文件已生成",
+    "exportReady": "下载已开始",
+    "exportFailed": "导出失败",
+    "exportRetry": "重新导出",
+    "exportHint": "数据较多时可能需要几秒钟，请保持当前页面打开。"
   },
   "agentSetup": {
     "heading": "Agent 接入",

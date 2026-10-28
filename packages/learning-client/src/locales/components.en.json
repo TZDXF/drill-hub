@@ -131,12 +131,17 @@
     "notifySessionRevokeFailed": "Could not revoke the sign-in session",
     "notifyLogoutFailed": "Could not sign out",
     "sessionWeb": "Web browser",
-    "exportTitle": "Data export",
-    "exportDescription": "Download a JSON snapshot of all learning data as a local backup. Assistant conversations and logs are not included.",
-    "exportData": "Export my data",
-    "exporting": "Exporting…",
-    "exportDone": "Export complete",
-    "exportFailed": "Export failed"
+    "exportTitle": "Data backup & export",
+    "exportDescription": "Download topics, content, questions and their history, plans, assessments, attempts, wrong questions, and answer links as a JSON file for local safekeeping. Assistant conversations and logs are not included.",
+    "exportFormat": "Complete learning data",
+    "exportLocal": "Downloaded to this device",
+    "exportData": "Download JSON backup",
+    "exporting": "Preparing backup…",
+    "exportDone": "Backup file generated",
+    "exportReady": "Download started",
+    "exportFailed": "Export failed",
+    "exportRetry": "Export again",
+    "exportHint": "Large exports may take a few seconds. Keep this page open while your backup is prepared."
   },
   "agentSetup": {
     "notifyClipboardFailed": "Clipboard is unavailable",

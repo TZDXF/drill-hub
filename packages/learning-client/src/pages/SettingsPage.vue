@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import type { ExportBundle, SessionView, UserView } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
 import { useLocale } from '#learning-client/i18n';
@@ -20,6 +20,7 @@ const themeIcons = { auto: 'system', light: 'sun', dark: 'moon' } as const;
 const themeIcon = computed(() => themeIcons[themePreference.value]);
 const themeLabel = computed(() => t(`components.theme.${themePreference.value}`));
 const learning = useLearning();
+const route = useRoute();
 const router = useRouter();
 const displayName = ref(learning.state.user?.displayName ?? '');
 const editingProfile = ref(false);
@@ -32,6 +33,10 @@ const revoking = ref(false);
 const switchOpen = ref(false);
 const switching = ref(false);
 const exporting = ref(false);
+const exportStatus = ref<'idle' | 'success' | 'error'>('idle');
+const exportFileName = ref('');
+const exportError = ref('');
+const exportSection = ref<HTMLElement | null>(null);
 const mobileQuery = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 780px)');
 const isMobile = ref(learning.platform.kind === 'android' || (mobileQuery?.matches ?? false));
 let sessionsRequested = false;
@@ -115,18 +120,26 @@ async function logout() {
 }
 async function exportData() {
   exporting.value = true;
+  exportStatus.value = 'idle';
+  exportError.value = '';
   try {
     const bundle = await learning.get<ExportBundle>('/me/export');
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
+    exportFileName.value = `drill-hub-export-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.href = url;
-    anchor.download = `drill-hub-export-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = exportFileName.value;
+    anchor.style.display = 'none';
+    document.body.append(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    exportStatus.value = 'success';
     learning.notify.success(t('components.settings.exportDone'));
   } catch (reason) {
-    learning.notify.error(t('components.settings.exportFailed'), errorMessage(reason));
+    exportError.value = errorMessage(reason);
+    exportStatus.value = 'error';
   } finally {
     exporting.value = false;
   }
@@ -151,9 +164,14 @@ watch(
   },
   { immediate: true },
 );
-onMounted(() => {
+onMounted(async () => {
   mobileQuery?.addEventListener('change', syncLayout);
   syncLayout();
+  if (route.query.focus === 'export') {
+    await nextTick();
+    exportSection.value?.focus({ preventScroll: true });
+    exportSection.value?.scrollIntoView({ block: 'center' });
+  }
 });
 onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
 </script>
@@ -366,24 +384,64 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </button>
       </section>
 
-      <section class="card settings-card" aria-labelledby="export-title">
+      <section
+        id="data-export"
+        ref="exportSection"
+        class="card settings-card settings-export-card"
+        aria-labelledby="export-title"
+        tabindex="-1"
+      >
         <div class="settings-card__heading">
-          <span class="list-card__icon"><AppIcon name="download" /></span>
+          <span class="list-card__icon settings-export-card__icon"
+            ><AppIcon name="download"
+          /></span>
           <h2 id="export-title">{{ t('components.settings.exportTitle') }}</h2>
+          <span class="badge badge--teal settings-export-card__badge">JSON</span>
         </div>
-        <p class="muted small">
+        <p class="settings-export-card__description">
           {{ t('components.settings.exportDescription') }}
         </p>
-        <button
-          class="button"
-          type="button"
-          data-testid="settings-export"
-          :disabled="exporting"
-          @click="exportData"
-        >
-          <span v-if="exporting" class="spinner" /><AppIcon v-else name="download" :size="16" />
-          {{ exporting ? t('components.settings.exporting') : t('components.settings.exportData') }}
-        </button>
+        <div class="settings-export-card__meta" aria-label="JSON">
+          <span
+            ><AppIcon name="content" :size="15" />{{ t('components.settings.exportFormat') }}</span
+          >
+          <span><AppIcon name="lock" :size="15" />{{ t('components.settings.exportLocal') }}</span>
+        </div>
+        <div class="settings-export-card__status" aria-live="polite">
+          <div v-if="exportStatus === 'success'" class="notice notice--success">
+            <AppIcon name="check" />
+            <div>
+              <strong>{{ t('components.settings.exportReady') }}</strong>
+              <p>{{ exportFileName }}</p>
+            </div>
+          </div>
+          <div v-else-if="exportStatus === 'error'" class="notice notice--error" role="alert">
+            <AppIcon name="alert" />
+            <div>
+              <strong>{{ t('components.settings.exportFailed') }}</strong>
+              <p>{{ exportError }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="settings-export-card__footer">
+          <button
+            class="button button--primary"
+            type="button"
+            data-testid="settings-export"
+            :disabled="exporting"
+            @click="exportData"
+          >
+            <span v-if="exporting" class="spinner" /><AppIcon v-else name="download" :size="16" />
+            {{
+              exporting
+                ? t('components.settings.exporting')
+                : exportStatus === 'error'
+                  ? t('components.settings.exportRetry')
+                  : t('components.settings.exportData')
+            }}
+          </button>
+          <span class="settings-export-card__hint">{{ t('components.settings.exportHint') }}</span>
+        </div>
       </section>
 
       <section v-if="!isMobile" class="card settings-card" aria-labelledby="sessions-title">
@@ -487,3 +545,70 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
     </ConfirmDialog>
   </div>
 </template>
+
+<style scoped>
+.settings-export-card {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--badge-teal-line);
+}
+.settings-export-card:focus {
+  outline: none;
+}
+.settings-export-card__icon {
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+.settings-export-card__badge {
+  margin-left: auto;
+}
+.settings-export-card__description {
+  max-width: 560px;
+  margin: 0;
+  line-height: 1.7;
+}
+.settings-export-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 16px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.settings-export-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.settings-export-card__meta .app-icon {
+  color: var(--teal);
+}
+.settings-export-card__status .notice {
+  margin-top: 16px;
+}
+.settings-export-card__status .notice p {
+  overflow-wrap: anywhere;
+}
+.settings-export-card__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+.settings-export-card__hint {
+  color: var(--ink-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+@media (max-width: 520px) {
+  .settings-export-card__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .settings-export-card__footer .button {
+    width: 100%;
+  }
+}
+</style>

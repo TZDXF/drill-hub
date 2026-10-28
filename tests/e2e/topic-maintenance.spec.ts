@@ -63,12 +63,23 @@ test('主题页可吊销答题链接并经影响预览永久删除主题', async
   await revokeDialog.getByRole('button', { name: '确认吊销' }).click();
   await expect(linksCard).toContainText('已吊销');
 
+  await page.getByTestId('topic-export').click();
+  await expect(page).toHaveURL(/\/settings\?focus=export$/);
+  await expect(page.getByRole('heading', { name: '数据备份与导出' })).toBeInViewport();
+  await page.goBack();
+
   await page.getByTestId('topic-purge').click();
   const dialog = page.getByRole('dialog');
+  const deleteButton = dialog.getByRole('button', { name: '永久删除', exact: true });
   await expect(dialog).toContainText(title);
-  await expect(dialog).toContainText('将被永久删除');
+  await expect(dialog).toContainText('此操作无法撤销');
   await expect(dialog).toContainText('作答记录');
-  await dialog.getByRole('button', { name: '永久删除', exact: true }).click();
+  await expect(deleteButton).toBeDisabled();
+  await page.getByTestId('topic-purge-confirmation').fill(`${title}-错误`);
+  await expect(deleteButton).toBeDisabled();
+  await page.getByTestId('topic-purge-confirmation').fill(title);
+  await expect(deleteButton).toBeEnabled();
+  await deleteButton.click();
   await expect(page).toHaveURL(/\/topics$/);
   await expect(page.locator('h1')).toHaveText('学习主题');
   await expect(page.locator('.list-card', { hasText: title })).toHaveCount(0);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
@@ -36,6 +36,10 @@ const purgePreview = ref<PurgePreview | null>(null);
 const purgeOpen = ref(false);
 const purgeBusy = ref(false);
 const purgeLoading = ref(false);
+const purgeConfirmation = ref('');
+const purgeError = ref('');
+const purgeConfirmInput = ref<HTMLInputElement | null>(null);
+const purgeConfirmed = computed(() => purgeConfirmation.value === purgePreview.value?.topic.title);
 const revokeTarget = ref<AnswerLinkListItem | null>(null);
 const revokeBusy = ref(false);
 const compactLayoutQuery =
@@ -124,18 +128,30 @@ function linkStatusLabel(link: AnswerLinkListItem) {
 }
 async function openPurge() {
   purgeLoading.value = true;
+  purgeError.value = '';
   try {
     purgePreview.value = await learning.get<PurgePreview>(`/topics/${topicId.value}/purge-preview`);
+    purgeConfirmation.value = '';
     purgeOpen.value = true;
+    await nextTick();
+    purgeConfirmInput.value?.focus();
   } catch (reason) {
     learning.notify.error(t('learning.topicDetail.purge.failed'), errorMessage(reason));
   } finally {
     purgeLoading.value = false;
   }
 }
+function closePurge(open: boolean) {
+  purgeOpen.value = open;
+  if (!open) {
+    purgeConfirmation.value = '';
+    purgeError.value = '';
+  }
+}
 async function purge() {
-  if (!purgePreview.value) return;
+  if (!purgePreview.value || !purgeConfirmed.value) return;
   purgeBusy.value = true;
+  purgeError.value = '';
   try {
     await learning.del(`/topics/${topicId.value}`, {
       expectedRevision: purgePreview.value.topic.revision,
@@ -144,7 +160,7 @@ async function purge() {
     purgeOpen.value = false;
     await router.replace({ name: 'topics' });
   } catch (reason) {
-    learning.notify.error(t('learning.topicDetail.purge.failed'), errorMessage(reason));
+    purgeError.value = errorMessage(reason);
   } finally {
     purgeBusy.value = false;
   }
@@ -363,46 +379,111 @@ watch(topicId, load);
         </div>
       </section>
       <section class="card topic-danger-zone" aria-labelledby="purge-title">
-        <div class="settings-card__heading">
-          <span class="list-card__icon"><AppIcon name="trash" /></span>
-          <h2 id="purge-title">{{ t('learning.topicDetail.purge.title') }}</h2>
+        <div class="topic-danger-zone__header">
+          <span class="topic-danger-zone__icon"><AppIcon name="alert" /></span>
+          <div class="topic-danger-zone__heading">
+            <div>
+              <span class="topic-danger-zone__eyebrow">{{
+                t('learning.topicDetail.purge.eyebrow')
+              }}</span>
+              <h2 id="purge-title">{{ t('learning.topicDetail.purge.title') }}</h2>
+            </div>
+            <span class="badge badge--red">{{ t('learning.topicDetail.purge.irreversible') }}</span>
+          </div>
         </div>
-        <p class="muted small">{{ t('learning.topicDetail.purge.description') }}</p>
-        <button
-          class="button button--danger"
-          type="button"
-          data-testid="topic-purge"
-          :disabled="purgeLoading"
-          @click="openPurge"
-        >
-          <span v-if="purgeLoading" class="spinner" />
-          {{ t('learning.topicDetail.purge.action') }}
-        </button>
+        <p class="topic-danger-zone__description">
+          {{ t('learning.topicDetail.purge.description') }}
+        </p>
+        <div class="topic-danger-zone__actions">
+          <RouterLink
+            class="button"
+            :to="{ name: 'settings', query: { focus: 'export' } }"
+            data-testid="topic-export"
+          >
+            <AppIcon name="download" :size="16" />
+            {{ t('learning.topicDetail.purge.exportFirst') }}
+          </RouterLink>
+          <button
+            class="button button--danger"
+            type="button"
+            data-testid="topic-purge"
+            :disabled="purgeLoading"
+            @click="openPurge"
+          >
+            <span v-if="purgeLoading" class="spinner" /><AppIcon v-else name="trash" :size="16" />
+            {{
+              purgeLoading
+                ? t('learning.topicDetail.purge.loading')
+                : t('learning.topicDetail.purge.action')
+            }}
+          </button>
+        </div>
       </section>
     </template>
     <ConfirmDialog
       :open="purgeOpen"
-      :title="
-        purgePreview
-          ? t('learning.topicDetail.purge.dialogTitle', { title: purgePreview.topic.title })
-          : ''
-      "
+      class="topic-purge-dialog"
+      :title="t('learning.topicDetail.purge.dialogTitle')"
+      :description="t('learning.topicDetail.purge.dialogDescription')"
       :confirm-label="t('learning.topicDetail.purge.confirm')"
+      :confirm-disabled="!purgeConfirmed"
       danger
       :busy="purgeBusy"
-      @update:open="!$event && (purgeOpen = false)"
+      @update:open="closePurge"
       @confirm="purge"
     >
-      <p class="muted small">{{ t('learning.topicDetail.purge.impact') }}</p>
-      <ul v-if="purgePreview" class="purge-counts">
-        <li v-for="(value, key) in purgePreview.counts" :key="key">
-          <span>{{ t(`learning.topicDetail.purge.counts.${key}`) }}</span>
-          <strong>{{ n(value) }}</strong>
-        </li>
-      </ul>
-      <p v-if="purgePreview && purgePreview.total === 0" class="muted small">
-        {{ t('learning.topicDetail.purge.nothing') }}
-      </p>
+      <div v-if="purgePreview" class="purge-dialog-content">
+        <div class="purge-topic">
+          <span>{{ t('learning.topicDetail.purge.topicLabel') }}</span>
+          <strong>{{ purgePreview.topic.title }}</strong>
+        </div>
+        <div class="notice notice--error purge-warning">
+          <AppIcon name="alert" />
+          <div>
+            <strong>{{ t('learning.topicDetail.purge.warningTitle') }}</strong>
+            <p>{{ t('learning.topicDetail.purge.warningDescription') }}</p>
+          </div>
+        </div>
+        <section class="purge-impact" aria-labelledby="purge-impact-title">
+          <div class="purge-impact__heading">
+            <strong id="purge-impact-title">{{ t('learning.topicDetail.purge.impact') }}</strong>
+            <span>{{
+              t('learning.topicDetail.purge.total', { count: n(purgePreview.total) })
+            }}</span>
+          </div>
+          <ul class="purge-counts">
+            <li v-for="(value, key) in purgePreview.counts" :key="key">
+              <span>{{ t(`learning.topicDetail.purge.counts.${key}`) }}</span>
+              <strong>{{ n(value) }}</strong>
+            </li>
+          </ul>
+          <p v-if="purgePreview.total === 0" class="muted small">
+            {{ t('learning.topicDetail.purge.nothing') }}
+          </p>
+        </section>
+        <div class="purge-confirmation">
+          <label for="purge-confirmation-input">
+            {{ t('learning.topicDetail.purge.confirmationLabel') }}
+          </label>
+          <p>{{ t('learning.topicDetail.purge.confirmationHint') }}</p>
+          <code>{{ purgePreview.topic.title }}</code>
+          <input
+            id="purge-confirmation-input"
+            ref="purgeConfirmInput"
+            v-model="purgeConfirmation"
+            class="input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            :placeholder="t('learning.topicDetail.purge.confirmationPlaceholder')"
+            :disabled="purgeBusy"
+            data-testid="topic-purge-confirmation"
+          />
+        </div>
+        <p v-if="purgeError" class="notice notice--error" role="alert">
+          <AppIcon name="alert" />{{ purgeError }}
+        </p>
+      </div>
     </ConfirmDialog>
     <ConfirmDialog
       :open="Boolean(revokeTarget)"
@@ -421,25 +502,165 @@ watch(topicId, load);
 .topic-links,
 .topic-danger-zone {
   margin-top: 18px;
+}
+.topic-links {
   display: grid;
   gap: 10px;
 }
-.topic-danger-zone .button--danger {
-  justify-self: start;
+.topic-danger-zone {
+  padding: 22px;
+  border-color: var(--danger-line);
+  background: linear-gradient(135deg, var(--danger-soft), var(--paper) 46%);
+}
+.topic-danger-zone__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.topic-danger-zone__icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--danger-line);
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--danger);
+}
+.topic-danger-zone__heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+}
+.topic-danger-zone__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.topic-danger-zone h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.topic-danger-zone__description {
+  max-width: 720px;
+  margin: 16px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.topic-danger-zone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.purge-dialog-content {
+  display: grid;
+  gap: 18px;
+}
+.purge-topic {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper-muted);
+}
+.purge-topic span,
+.purge-confirmation p {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+.purge-topic strong {
+  overflow-wrap: anywhere;
+}
+.purge-warning strong {
+  color: var(--notice-red-ink);
+}
+.purge-impact__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.purge-impact__heading span {
+  color: var(--ink-faint);
+  font-size: 12px;
 }
 .purge-counts {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
 }
 .purge-counts li {
+  min-width: 0;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px dashed var(--line);
-  padding-bottom: 6px;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper-muted);
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.purge-counts strong {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.purge-confirmation {
+  display: grid;
+  gap: 8px;
+}
+.purge-confirmation label {
+  font-size: 13px;
+  font-weight: 650;
+}
+.purge-confirmation code {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--paper-muted);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 520px) {
+  .topic-danger-zone {
+    padding: 18px;
+  }
+  .topic-danger-zone__heading {
+    align-items: flex-start;
+  }
+  .topic-danger-zone__heading .badge {
+    display: none;
+  }
+  .topic-danger-zone__actions .button {
+    flex: 1;
+  }
+  .purge-counts {
+    gap: 6px;
+  }
+  .purge-counts li {
+    padding: 7px 8px;
+  }
 }
 .topic-category__icon {
   display: inline-flex;
