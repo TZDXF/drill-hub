@@ -23,7 +23,10 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 RUN pnpm build \
-    && pnpm deploy --filter @drill-hub/server --prod /out
+    && pnpm deploy --filter @drill-hub/server --prod /out/apps/server \
+    && mkdir -p /out/apps/web /out/deploy \
+    && cp -R apps/web/dist /out/apps/web/dist \
+    && cp docker-compose.yml .env.example /out/deploy/
 
 FROM node:24-bookworm-slim AS runtime
 
@@ -34,11 +37,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY --from=build /out/package.json ./apps/server/package.json
-COPY --from=build /out/dist ./apps/server/dist
-COPY --from=build /out/node_modules ./apps/server/node_modules
-COPY --from=build /app/apps/web/dist ./apps/web/dist
-COPY --from=build /app/docker-compose.yml /app/.env.example ./deploy/
+COPY --from=build /out/ ./
 
 RUN mkdir -p /app/data \
     && chown node:node /app/data
