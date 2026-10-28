@@ -165,11 +165,6 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         isMobile ? t('components.shell.navMobile.settings') : t('components.shell.titles.settings')
       "
       :eyebrow="isMobile ? 'MY PROFILE' : 'PERSONAL SETTINGS'"
-      :description="
-        isMobile
-          ? t('components.settings.descriptionMobile')
-          : t('components.settings.descriptionDesktop')
-      "
     />
     <div class="settings-grid" :class="{ 'settings-grid--mobile': isMobile }">
       <section class="card settings-card" aria-labelledby="profile-title">
@@ -456,14 +451,6 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <dt>{{ t('components.settings.serverAddress') }}</dt>
             <dd>{{ learning.state.connection?.baseUrl }}</dd>
           </div>
-          <div>
-            <dt>{{ t('components.settings.serverInstance') }}</dt>
-            <dd>{{ learning.state.connection?.instanceId }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('components.settings.serverApiMajor') }}</dt>
-            <dd>{{ learning.state.serverInfo?.apiMajor }}</dd>
-          </div>
         </dl>
         <button
           v-if="learning.platform.kind === 'android'"
@@ -473,9 +460,6 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         >
           {{ t('components.settings.switchServer') }}
         </button>
-        <p v-else class="field-hint settings-server-action">
-          {{ t('components.settings.serverWebHint') }}
-        </p>
       </section>
     </div>
 
