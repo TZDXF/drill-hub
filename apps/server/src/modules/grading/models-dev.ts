@@ -112,6 +112,22 @@ export function searchModelsCatalog(
   return scored.slice(0, limit).map((entry) => entry.match);
 }
 
+/** 按完整模型 ID 精确匹配；带供应商前缀时，再尝试去掉前缀的 ID。 */
+export function findExactModelsCatalogMatch(
+  catalog: unknown,
+  modelKey: string,
+): ModelCatalogMatch | null {
+  const key = modelKey.trim().toLowerCase();
+  const unprefixed = key.slice(key.lastIndexOf('/') + 1);
+  for (const query of [...new Set([key, unprefixed])]) {
+    const match = searchModelsCatalog(catalog, query).find(
+      (item) => item.modelId.toLowerCase() === query,
+    );
+    if (match) return match;
+  }
+  return null;
+}
+
 /** 获取 models.dev 目录（内存缓存 6 小时）。 */
 export async function fetchModelsCatalog(): Promise<unknown> {
   if (cache && Date.now() - cache.fetchedAt < CATALOG_REFRESH_MS) return cache.data;

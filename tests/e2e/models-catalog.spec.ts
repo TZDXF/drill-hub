@@ -82,11 +82,9 @@ test('默认参数直接按模型 ID 获取，合并去重带前缀查询并保�
   await page.goto('/admin/settings/models');
   await page.getByRole('button', { name: '添加模型', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '添加模型 ID', exact: true });
-  const fetchButton = dialog.getByRole('button', { name: '获取', exact: true });
   await expect(dialog.locator('#catalog-query')).toHaveCount(0);
-  await expect(fetchButton).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: '获取', exact: true })).toHaveCount(0);
   await dialog.getByLabel('模型 ID', { exact: true }).fill('free/model_name');
-  await fetchButton.click();
   const candidates = dialog.locator('.model-dialog__matches li');
   await expect(candidates).toHaveCount(3);
   expect([...queries].sort()).toEqual(['free/model_name', 'model_name']);
@@ -104,8 +102,6 @@ test('默认参数直接按模型 ID 获取，合并去重带前缀查询并保�
     .getByRole('button', { name: '编辑', exact: true })
     .click();
   dialog = page.getByRole('dialog', { name: '编辑模型', exact: true });
-  await expect(dialog.locator('.model-dialog__matches li')).toHaveCount(0);
-  await dialog.getByRole('button', { name: '获取', exact: true }).click();
   await expect(dialog.locator('.model-dialog__matches li')).toHaveCount(3);
   expect([...queries].sort()).toEqual([
     'free/model_name',
@@ -137,32 +133,26 @@ test('默认参数支持无前缀、空结果、部分失败，并忽略模型 I
   await page.getByRole('button', { name: '添加模型', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加模型 ID', exact: true });
   const key = dialog.getByLabel('模型 ID', { exact: true });
-  const fetchButton = dialog.getByRole('button', { name: '获取', exact: true });
   const candidates = dialog.locator('.model-dialog__matches li');
   await key.fill('model_name');
-  await fetchButton.click();
   await expect(candidates).toHaveCount(1);
   expect(queries).toEqual(['model_name']);
 
   await key.fill('unknown_model');
   await expect(candidates).toHaveCount(0);
-  await fetchButton.click();
   await expect(dialog.getByText('models.dev 中没有匹配的模型，可以手动填写参数。')).toBeVisible();
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '添加模型', exact: true }).click();
   await expect(dialog.getByText('models.dev 中没有匹配的模型，可以手动填写参数。')).toHaveCount(0);
 
   await key.fill('free/vendor/model_name');
-  await fetchButton.click();
   await expect(candidates).toHaveCount(1);
   expect(queries.slice(-2).sort()).toEqual(['free/vendor/model_name', 'model_name']);
   await expect(page.getByText('获取 models.dev 目录失败', { exact: true })).toBeVisible();
 
   await key.fill('old_model');
-  await fetchButton.click();
   await expect.poll(() => queries.at(-1)).toBe('old_model');
   await key.fill('unknown_model');
-  await fetchButton.click();
   await expect(dialog.getByText('models.dev 中没有匹配的模型，可以手动填写参数。')).toBeVisible();
   const oldResponse = page.waitForResponse(
     (response) => new URL(response.url()).searchParams.get('q') === 'old_model',
@@ -170,5 +160,4 @@ test('默认参数支持无前缀、空结果、部分失败，并忽略模型 I
   releaseOldQuery!();
   await oldResponse;
   await expect(candidates).toHaveCount(0);
-  await expect(fetchButton).toBeEnabled();
 });

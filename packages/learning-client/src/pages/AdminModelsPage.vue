@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type {
   DiscoveredProviderModel,
   GradingProfile,
@@ -14,7 +13,7 @@ import type {
 import { useModelDiscoverySelection } from '#learning-client/modelDiscoverySelection';
 import { useLearning } from '#learning-client/injection';
 import type { ModelAdapter } from '#learning-client/types';
-import { errorMessage, formatDate } from '#learning-client/utils';
+import { errorMessage } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppFormField from '#learning-client/components/AppFormField.vue';
@@ -59,7 +58,9 @@ const costCacheWrite = ref<number | null>(null);
 const catalogSearching = ref(false);
 const catalogSearched = ref(false);
 const catalogMatches = ref<ModelCatalogMatch[]>([]);
+const catalogApplied = ref<ModelCatalogMatch | null>(null);
 let catalogRequestId = 0;
+let catalogTimer: ReturnType<typeof setTimeout> | undefined;
 const catalogQueries = computed(() => {
   const key = modelKey.value.trim();
   const unprefixed = key.slice(key.lastIndexOf('/') + 1);
@@ -69,26 +70,21 @@ const catalogQueries = computed(() => {
 });
 watch([modelKey, modelOpen], () => {
   catalogRequestId += 1;
+  if (catalogTimer) clearTimeout(catalogTimer);
   catalogSearching.value = false;
   catalogSearched.value = false;
   catalogMatches.value = [];
+  catalogApplied.value = null;
+  if (modelOpen.value && catalogQueries.value.length) {
+    catalogTimer = setTimeout(() => void searchCatalog(), 350);
+  }
 });
 const discoverOpen = ref(false);
 const discovering = ref(false);
-const profileOpen = ref(false);
-const providerModelId = ref('');
-const editingProfile = ref<GradingProfile | null>(null);
-const profileModels = ref<ProviderModel[]>([]);
-const concurrency = ref(2);
+const deletingModel = ref<ProviderModel | null>(null);
 const defaultProfile = computed(() => profiles.value.find((item) => item.isDefault));
-const timeoutMs = ref(60000);
-const maxRetries = ref(2);
-const isDefault = ref(true);
 const selected = computed(
   () => connections.value.find((item) => item.id === selectedId.value) ?? null,
-);
-const usableModels = computed(() =>
-  models.value.filter((item) => selected.value?.enabled && item.enabled),
 );
 const existingModelKeys = computed(() => new Set(models.value.map((item) => item.modelKey)));
 const {
@@ -113,25 +109,6 @@ const protocolValue = computed({
     protocol.value = value as ModelProtocol;
   },
 });
-const profileModelOptions = computed(() =>
-  profileModels.value.map((model) => ({
-    value: model.id,
-    label: `${connections.value.find((item) => item.id === model.connectionId)?.displayName} / ${model.displayName}（${model.modelKey}）`,
-  })),
-);
-const profileFormValid = computed(
-  () =>
-    profileModels.value.some((model) => model.id === providerModelId.value) &&
-    Number.isInteger(concurrency.value) &&
-    concurrency.value >= 1 &&
-    concurrency.value <= 20 &&
-    Number.isInteger(timeoutMs.value) &&
-    timeoutMs.value >= 100 &&
-    timeoutMs.value <= 120000 &&
-    Number.isInteger(maxRetries.value) &&
-    maxRetries.value >= 0 &&
-    maxRetries.value <= 5,
-);
 const discoveryConfirmLabel = computed(() =>
   selectedDiscoveredKeys.value.length
     ? t('management.models.importLabel', { count: selectedDiscoveredKeys.value.length })
@@ -353,7 +330,7 @@ function openModelDialog(model: ProviderModel | null) {
 }
 
 async function searchCatalog() {
-  if (catalogSearching.value || !catalogQueries.value.length) return;
+  if (!catalogQueries.value.length) return;
   const requestId = ++catalogRequestId;
   catalogSearching.value = true;
   catalogSearched.value = false;
@@ -375,6 +352,13 @@ async function searchCatalog() {
     }
     catalogMatches.value = [...matches.values()];
     catalogSearched.value = results.some((result) => result.status === 'fulfilled');
+    const exactMatch = catalogQueries.value
+      .map((query) =>
+        catalogMatches.value.find((match) => match.modelId.toLowerCase() === query.toLowerCase()),
+      )
+      .find((match) => match !== undefined);
+    if (exactMatch) applyCatalogMatch(exactMatch, false);
+    else catalogApplied.value = null;
     const failure = results.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected')
       learning.notify.error(t('management.models.catalogFailed'), errorMessage(failure.reason));
@@ -384,7 +368,8 @@ async function searchCatalog() {
 }
 
 /** 用 models.dev 的匹配结果回填默认参数与价格（美元/百万 tokens）。 */
-function applyCatalogMatch(match: ModelCatalogMatch) {
+function applyCatalogMatch(match: ModelCatalogMatch, notify = true) {
+  catalogApplied.value = match;
   if (!modelName.value || editingModel.value) modelName.value = match.name ?? match.modelId;
   contextWindow.value = match.contextWindow;
   maxTokens.value = match.maxTokens;
@@ -394,10 +379,11 @@ function applyCatalogMatch(match: ModelCatalogMatch) {
   costOutput.value = match.costPerMillion?.output ?? null;
   costCacheRead.value = match.costPerMillion?.cacheRead ?? null;
   costCacheWrite.value = match.costPerMillion?.cacheWrite ?? null;
-  learning.notify.success(
-    t('management.models.catalogApplied'),
-    `${match.providerName} / ${match.modelId}`,
-  );
+  if (notify)
+    learning.notify.success(
+      t('management.models.catalogApplied'),
+      `${match.providerName} / ${match.modelId}`,
+    );
 }
 
 async function saveModel() {
@@ -462,64 +448,6 @@ async function toggleModel(model: ProviderModel) {
     busy.value = false;
   }
 }
-async function openProfile(profile: GradingProfile | null = null) {
-  busy.value = true;
-  try {
-    const available = await Promise.all(
-      connections.value
-        .filter((item) => item.enabled)
-        .map(async (connection) => {
-          const items = await learning.get<ProviderModel[]>(
-            `/admin/model-connections/${connection.id}/models`,
-          );
-          return items.filter((model) => model.enabled);
-        }),
-    );
-    profileModels.value = available.flat();
-    editingProfile.value = profile;
-    providerModelId.value = profile?.providerModelId ?? profileModels.value[0]?.id ?? '';
-    concurrency.value = profile?.concurrency ?? 2;
-    timeoutMs.value = profile?.timeoutMs ?? 60000;
-    maxRetries.value = profile?.maxRetries ?? 2;
-    isDefault.value = profile?.isDefault ?? !defaultProfile.value;
-    profileOpen.value = true;
-  } catch (reason) {
-    learning.notify.error(t('management.models.profileModelError'), errorMessage(reason));
-  } finally {
-    busy.value = false;
-  }
-}
-async function saveProfile() {
-  if (!profileFormValid.value) return;
-  busy.value = true;
-  try {
-    const body = {
-      providerModelId: providerModelId.value,
-      concurrency: concurrency.value,
-      timeoutMs: timeoutMs.value,
-      maxRetries: maxRetries.value,
-      isDefault: isDefault.value,
-    };
-    if (editingProfile.value) {
-      await learning.patch(`/admin/grading-profiles/${editingProfile.value.id}`, {
-        ...body,
-        expectedRevision: editingProfile.value.revision,
-      });
-    } else {
-      await learning.post('/admin/grading-profiles', body);
-    }
-    profileOpen.value = false;
-    await load();
-    learning.notify.success(
-      t('management.models.profileSaved'),
-      t('management.models.profileSavedDesc'),
-    );
-  } catch (reason) {
-    learning.notify.error(t('management.models.profileSaveFailed'), errorMessage(reason));
-  } finally {
-    busy.value = false;
-  }
-}
 async function useGradingModel(model: ProviderModel) {
   busy.value = true;
   try {
@@ -550,19 +478,19 @@ async function useGradingModel(model: ProviderModel) {
     busy.value = false;
   }
 }
-async function useProfile(profile: GradingProfile) {
+async function deleteModel() {
+  if (!deletingModel.value) return;
+  const model = deletingModel.value;
   busy.value = true;
   try {
-    await learning.post(`/admin/grading-profiles/${profile.id}/default`, {
-      expectedRevision: profile.revision,
+    await learning.del(`/admin/provider-models/${model.id}`, {
+      expectedRevision: model.revision,
     });
-    await load();
-    learning.notify.success(
-      t('management.models.defaultSwitched'),
-      t('management.models.defaultSwitchedDesc'),
-    );
+    deletingModel.value = null;
+    await loadModels();
+    learning.notify.success(t('management.models.modelDeleted'), model.displayName);
   } catch (reason) {
-    learning.notify.error(t('management.models.defaultSwitchFailed'), errorMessage(reason));
+    learning.notify.error(t('management.models.modelDeleteFailed'), errorMessage(reason));
   } finally {
     busy.value = false;
   }
@@ -607,312 +535,210 @@ onMounted(() => void load(true));
         {{ t('management.common.retry') }}
       </button></EmptyState
     >
-    <TabsRoot v-else default-value="connections">
-      <AppScrollArea class="tabs-scroll" orientation="horizontal" type="auto">
-        <TabsList class="tabs-list" :aria-label="t('management.models.tabsLabel')"
-          ><TabsTrigger class="tabs-trigger" value="connections"
-            ><AppIcon name="server" :size="17" />{{
-              t('management.models.tabConnections')
-            }}</TabsTrigger
-          ><TabsTrigger class="tabs-trigger" value="profiles"
-            ><AppIcon name="model" :size="17" />{{ t('management.models.tabProfiles') }}
-            <span class="badge">{{ profiles.length }}</span></TabsTrigger
-          ></TabsList
+    <div v-else class="tabs-content">
+      <EmptyState
+        v-if="!connections.length"
+        :title="t('management.models.emptyProviders')"
+        :description="t('management.models.emptyProvidersDesc')"
+        ><button
+          class="button button--primary"
+          type="button"
+          :disabled="!adapters.length"
+          @click="openConnection(null)"
         >
-      </AppScrollArea>
-      <TabsContent class="tabs-content" value="connections">
-        <EmptyState
-          v-if="!connections.length"
-          :title="t('management.models.emptyProviders')"
-          :description="t('management.models.emptyProvidersDesc')"
-          ><button
-            class="button button--primary"
-            type="button"
-            :disabled="!adapters.length"
-            @click="openConnection(null)"
-          >
-            {{ t('management.models.addConnection') }}
-          </button></EmptyState
-        >
-        <div v-else class="model-layout">
-          <aside
-            class="paper-panel model-sidebar"
-            :aria-label="t('management.models.sidebarLabel')"
-          >
-            <button
-              v-for="connection in connections"
-              :key="connection.id"
-              class="model-connection"
-              :class="{ active: connection.id === selectedId }"
-              type="button"
-              @click="selectConnection(connection.id)"
-            >
-              <AppIcon name="server" :size="18" />
-              <div>
-                <strong>{{ connection.displayName }}</strong
-                ><span>{{ connection.protocol }} · v{{ connection.configVersion }}</span>
-              </div>
-              <span class="status-dot" :class="{ offline: !connection.enabled }" />
-            </button>
-          </aside>
-          <section
-            v-if="selected"
-            class="paper-panel model-detail"
-            :aria-labelledby="`connection-${selected.id}`"
-          >
-            <header class="model-detail__header">
-              <div>
-                <h2 :id="`connection-${selected.id}`">{{ selected.displayName }}</h2>
-                <p>{{ selected.baseUrl }}</p>
-              </div>
-              <div class="button-row">
-                <button
-                  class="button button--small"
-                  type="button"
-                  :disabled="testing === `connection-${selected.id}`"
-                  @click="testConnection"
-                >
-                  <span v-if="testing === `connection-${selected.id}`" class="spinner" />{{
-                    t('management.models.testConnection')
-                  }}</button
-                ><button
-                  class="button button--small"
-                  type="button"
-                  @click="openConnection(selected)"
-                >
-                  {{ t('management.models.edit') }}
-                </button>
-              </div>
-            </header>
-            <div class="tag-list" style="margin-bottom: 20px">
-              <span class="badge" :class="selected.enabled ? 'badge--green' : 'badge--red'">{{
-                selected.enabled
-                  ? t('management.models.state.enabled')
-                  : t('management.models.state.disabled')
-              }}</span
-              ><span class="badge">{{
-                t('management.models.configVersion', { version: selected.configVersion })
-              }}</span
-              ><span
-                class="badge"
-                :class="selected.apiKeyConfigured ? 'badge--teal' : 'badge--amber'"
-                >{{
-                  selected.apiKeyConfigured
-                    ? t('management.models.keyConfigured')
-                    : t('management.models.keyMissing')
-                }}</span
-              >
-            </div>
-            <div class="section-heading section-heading--models">
-              <div>
-                <h3>{{ t('management.models.modelsHeading') }}</h3>
-                <p>{{ t('management.models.modelsDesc') }}</p>
-              </div>
-              <div class="button-row">
-                <button
-                  class="button button--small"
-                  type="button"
-                  :disabled="discovering"
-                  @click="discoverModels"
-                >
-                  <span v-if="discovering" class="spinner" /><AppIcon
-                    v-else
-                    name="refresh"
-                    :size="15"
-                  />{{ t('management.models.discover') }}
-                </button>
-                <button class="button button--small" type="button" @click="openModelDialog(null)">
-                  <AppIcon name="plus" :size="15" />{{ t('management.models.addModel') }}
-                </button>
-              </div>
-            </div>
-            <div v-if="loadingModels" class="loading-block" style="min-height: 120px">
-              <span class="spinner" />{{ t('management.models.loadingModels') }}
-            </div>
-            <EmptyState
-              v-else-if="modelLoadError"
-              compact
-              icon="alert"
-              :title="t('management.models.modelLoadFailed')"
-              :description="t('management.common.networkRetry')"
-              ><button class="button button--small" type="button" @click="loadModels">
-                {{ t('management.common.retry') }}
-              </button></EmptyState
-            >
-            <AppScrollArea
-              v-else-if="models.length"
-              class="model-list-scroll"
-              orientation="vertical"
-              type="hover"
-            >
-              <div class="list-stack">
-                <article
-                  v-for="model in models"
-                  :key="model.id"
-                  class="card list-card provider-model-card"
-                >
-                  <span class="list-card__icon"><AppIcon name="model" /></span>
-                  <div class="list-card__body">
-                    <h3>{{ model.displayName }}</h3>
-                    <p>{{ model.modelKey }}</p>
-                    <div class="list-card__meta">
-                      <span
-                        v-if="defaultProfile?.providerModelId === model.id"
-                        class="badge badge--green"
-                        >{{ t('management.models.gradingModel') }}</span
-                      >
-                      <span>{{
-                        model.enabled
-                          ? t('management.models.state.enabled')
-                          : t('management.models.state.disabled')
-                      }}</span
-                      ><span v-if="model.contextWindow">{{
-                        t('management.models.contextSummary', {
-                          context: Math.round(model.contextWindow / 1000),
-                        })
-                      }}</span
-                      ><span v-if="model.costPerMillion">{{
-                        t('management.models.costSummary', {
-                          input: model.costPerMillion.input,
-                          output: model.costPerMillion.output,
-                        })
-                      }}</span
-                      ><span v-if="model.reasoning" class="badge badge--teal">{{
-                        t('management.models.reasoningTag')
-                      }}</span>
-                    </div>
-                  </div>
-                  <div class="list-card__aside">
-                    <button
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy || testing !== ''"
-                      @click="useGradingModel(model)"
-                    >
-                      {{ t('management.models.useAsGrading') }}
-                    </button>
-                    <button
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy"
-                      @click="openModelDialog(model)"
-                    >
-                      {{ t('management.assistant.edit') }}</button
-                    ><button
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy"
-                      @click="toggleModel(model)"
-                    >
-                      {{
-                        model.enabled
-                          ? t('management.models.action.disable')
-                          : t('management.models.action.enable')
-                      }}
-                    </button>
-                  </div>
-                </article>
-              </div>
-            </AppScrollArea>
-            <EmptyState
-              v-else
-              compact
-              :title="t('management.models.noModels')"
-              :description="t('management.models.noModelsDesc')"
-            />
-          </section>
-        </div>
-      </TabsContent>
-      <TabsContent class="tabs-content" value="profiles">
-        <div class="section-heading">
-          <div>
-            <h2>{{ t('management.models.profilesTitle') }}</h2>
-            <p>{{ t('management.models.profilesDesc') }}</p>
-          </div>
+          {{ t('management.models.addConnection') }}
+        </button></EmptyState
+      >
+      <div v-else class="model-layout">
+        <aside class="paper-panel model-sidebar" :aria-label="t('management.models.sidebarLabel')">
           <button
-            class="button button--primary"
+            v-for="connection in connections"
+            :key="connection.id"
+            class="model-connection"
+            :class="{ active: connection.id === selectedId }"
             type="button"
-            :disabled="busy || !usableModels.length"
-            @click="openProfile()"
+            @click="selectConnection(connection.id)"
           >
-            <AppIcon name="plus" :size="16" />{{ t('management.models.newProfile') }}
+            <AppIcon name="server" :size="18" />
+            <div>
+              <strong>{{ connection.displayName }}</strong
+              ><span>{{ connection.protocol }} · v{{ connection.configVersion }}</span>
+            </div>
+            <span class="status-dot" :class="{ offline: !connection.enabled }" />
           </button>
-        </div>
-        <AppScrollArea
-          v-if="profiles.length"
-          class="paper-panel table-wrap"
-          orientation="horizontal"
-          type="auto"
+        </aside>
+        <section
+          v-if="selected"
+          class="paper-panel model-detail"
+          :aria-labelledby="`connection-${selected.id}`"
         >
-          <table class="data-table responsive-table">
-            <thead>
-              <tr>
-                <th>{{ t('management.models.col.snapshot') }}</th>
-                <th>{{ t('management.models.col.concurrency') }}</th>
-                <th>{{ t('management.models.col.timeout') }}</th>
-                <th>{{ t('management.models.col.maxRetries') }}</th>
-                <th>{{ t('management.models.col.createdAt') }}</th>
-                <th>{{ t('management.models.col.usage') }}</th>
-                <th>{{ t('management.common.actions') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="profile in profiles" :key="profile.id">
-                <td :data-label="t('management.models.col.snapshot')">
-                  <span class="table-primary">{{ profile.modelIdSnapshot }}</span
-                  ><span class="table-secondary">{{ profile.providerModelId }}</span>
-                </td>
-                <td :data-label="t('management.models.col.concurrency')">
-                  {{ profile.concurrency }}
-                </td>
-                <td :data-label="t('management.models.col.timeout')">{{ profile.timeoutMs }} ms</td>
-                <td :data-label="t('management.models.col.maxRetries')">
-                  {{ profile.maxRetries }}
-                </td>
-                <td :data-label="t('management.models.col.createdAt')">
-                  {{ formatDate(profile.createdAt) }}
-                </td>
-                <td :data-label="t('management.models.col.usage')">
-                  <span v-if="profile.isDefault" class="badge badge--green">{{
-                    t('management.models.defaultGrading')
-                  }}</span
-                  ><span v-else class="badge">{{ t('management.models.nonDefault') }}</span>
-                </td>
-                <td :data-label="t('management.common.actions')">
-                  <div class="button-row">
-                    <button
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy"
-                      @click="openProfile(profile)"
+          <header class="model-detail__header">
+            <div>
+              <h2 :id="`connection-${selected.id}`">{{ selected.displayName }}</h2>
+              <p>{{ selected.baseUrl }}</p>
+            </div>
+            <div class="button-row">
+              <button
+                class="button button--small"
+                type="button"
+                :disabled="testing === `connection-${selected.id}`"
+                @click="testConnection"
+              >
+                <span v-if="testing === `connection-${selected.id}`" class="spinner" />{{
+                  t('management.models.testConnection')
+                }}</button
+              ><button class="button button--small" type="button" @click="openConnection(selected)">
+                {{ t('management.models.edit') }}
+              </button>
+            </div>
+          </header>
+          <div class="tag-list" style="margin-bottom: 20px">
+            <span class="badge" :class="selected.enabled ? 'badge--green' : 'badge--red'">{{
+              selected.enabled
+                ? t('management.models.state.enabled')
+                : t('management.models.state.disabled')
+            }}</span
+            ><span class="badge">{{
+              t('management.models.configVersion', { version: selected.configVersion })
+            }}</span
+            ><span
+              class="badge"
+              :class="selected.apiKeyConfigured ? 'badge--teal' : 'badge--amber'"
+              >{{
+                selected.apiKeyConfigured
+                  ? t('management.models.keyConfigured')
+                  : t('management.models.keyMissing')
+              }}</span
+            >
+          </div>
+          <div class="section-heading section-heading--models">
+            <div>
+              <h3>{{ t('management.models.modelsHeading') }}</h3>
+              <p>{{ t('management.models.modelsDesc') }}</p>
+            </div>
+            <div class="button-row">
+              <button
+                class="button button--small"
+                type="button"
+                :disabled="discovering"
+                @click="discoverModels"
+              >
+                <span v-if="discovering" class="spinner" /><AppIcon
+                  v-else
+                  name="refresh"
+                  :size="15"
+                />{{ t('management.models.discover') }}
+              </button>
+              <button class="button button--small" type="button" @click="openModelDialog(null)">
+                <AppIcon name="plus" :size="15" />{{ t('management.models.addModel') }}
+              </button>
+            </div>
+          </div>
+          <div v-if="loadingModels" class="loading-block" style="min-height: 120px">
+            <span class="spinner" />{{ t('management.models.loadingModels') }}
+          </div>
+          <EmptyState
+            v-else-if="modelLoadError"
+            compact
+            icon="alert"
+            :title="t('management.models.modelLoadFailed')"
+            :description="t('management.common.networkRetry')"
+            ><button class="button button--small" type="button" @click="loadModels">
+              {{ t('management.common.retry') }}
+            </button></EmptyState
+          >
+          <AppScrollArea
+            v-else-if="models.length"
+            class="model-list-scroll"
+            orientation="vertical"
+            type="hover"
+          >
+            <div class="list-stack">
+              <article
+                v-for="model in models"
+                :key="model.id"
+                class="card list-card provider-model-card"
+              >
+                <span class="list-card__icon"><AppIcon name="model" /></span>
+                <div class="list-card__body">
+                  <h3>{{ model.displayName }}</h3>
+                  <p>{{ model.modelKey }}</p>
+                  <div class="list-card__meta">
+                    <span
+                      v-if="defaultProfile?.providerModelId === model.id"
+                      class="badge badge--green"
+                      >{{ t('management.models.gradingModel') }}</span
                     >
-                      {{ t('management.models.edit') }}
-                    </button>
-                    <button
-                      v-if="!profile.isDefault"
-                      class="button button--small"
-                      type="button"
-                      :disabled="busy"
-                      @click="useProfile(profile)"
-                    >
-                      {{ t('management.models.setDefault') }}
-                    </button>
+                    <span>{{
+                      model.enabled
+                        ? t('management.models.state.enabled')
+                        : t('management.models.state.disabled')
+                    }}</span
+                    ><span v-if="model.contextWindow">{{
+                      t('management.models.contextSummary', {
+                        context: Math.round(model.contextWindow / 1000),
+                      })
+                    }}</span
+                    ><span v-if="model.costPerMillion">{{
+                      t('management.models.costSummary', {
+                        input: model.costPerMillion.input,
+                        output: model.costPerMillion.output,
+                      })
+                    }}</span
+                    ><span v-if="model.reasoning" class="badge badge--teal">{{
+                      t('management.models.reasoningTag')
+                    }}</span>
                   </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </AppScrollArea>
-        <EmptyState
-          v-else
-          :title="t('management.models.noProfiles')"
-          :description="t('management.models.noProfilesDesc')"
-        />
-        <div v-if="!usableModels.length" class="notice notice--pending" style="margin-top: 14px">
-          <AppIcon name="alert" />{{ t('management.models.noUsableModels') }}
-        </div>
-      </TabsContent>
-    </TabsRoot>
+                </div>
+                <div class="list-card__aside">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    :disabled="busy || testing !== ''"
+                    @click="useGradingModel(model)"
+                  >
+                    {{ t('management.models.useAsGrading') }}
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    :disabled="busy"
+                    @click="openModelDialog(model)"
+                  >
+                    {{ t('management.assistant.edit') }}</button
+                  ><button
+                    class="button button--small"
+                    type="button"
+                    :disabled="busy"
+                    @click="toggleModel(model)"
+                  >
+                    {{
+                      model.enabled
+                        ? t('management.models.action.disable')
+                        : t('management.models.action.enable')
+                    }}
+                  </button>
+                  <button
+                    class="button button--small button--danger"
+                    type="button"
+                    :disabled="busy"
+                    @click="deletingModel = model"
+                  >
+                    {{ t('management.models.action.delete') }}
+                  </button>
+                </div>
+              </article>
+            </div>
+          </AppScrollArea>
+          <EmptyState
+            v-else
+            compact
+            :title="t('management.models.noModels')"
+            :description="t('management.models.noModelsDesc')"
+          />
+        </section>
+      </div>
+    </div>
     <ConfirmDialog
       :open="connectionOpen"
       :title="
@@ -1173,23 +999,13 @@ onMounted(() => void load(true));
           :label="t('management.models.catalogTitle')"
           :hint="t('management.models.catalogHint')"
         >
-          <div class="model-dialog__catalog-row">
-            <button
-              id="catalog-fetch"
-              class="button"
-              type="button"
-              :aria-label="t('management.models.catalogSearch')"
-              :disabled="catalogSearching || !catalogQueries.length"
-              @click="searchCatalog"
-            >
-              <span v-if="catalogSearching" class="spinner" /><AppIcon
-                v-else
-                name="search"
-                :size="15"
-              />
-              {{ t('management.models.catalogSearch') }}
-            </button>
-          </div>
+          <p v-if="catalogSearching" class="field-hint">
+            <span class="spinner" /> {{ t('management.models.catalogSearching') }}
+          </p>
+          <p v-else-if="catalogApplied" class="field-hint">
+            {{ t('management.models.catalogApplied') }}：{{ catalogApplied.providerName }} /
+            {{ catalogApplied.modelId }}
+          </p>
           <ul v-if="catalogMatches.length" class="model-dialog__matches">
             <li v-for="match in catalogMatches" :key="`${match.providerId}/${match.modelId}`">
               <button type="button" @click="applyCatalogMatch(match)">
@@ -1211,69 +1027,17 @@ onMounted(() => void load(true));
       </div></ConfirmDialog
     >
     <ConfirmDialog
-      v-model:open="profileOpen"
-      :title="
-        editingProfile
-          ? t('management.models.profileTitleEdit')
-          : t('management.models.profileTitleNew')
+      :open="Boolean(deletingModel)"
+      :title="t('management.models.deleteModelTitle')"
+      :description="
+        t('management.models.deleteModelDesc', { name: deletingModel?.displayName ?? '' })
       "
-      :description="t('management.models.profileDesc')"
-      :confirm-label="
-        editingProfile
-          ? t('management.models.profileConfirmEdit')
-          : t('management.models.profileConfirmNew')
-      "
+      :confirm-label="t('management.models.action.delete')"
       :busy="busy"
-      :confirm-disabled="!profileFormValid"
-      @confirm="saveProfile"
-      ><div class="form-grid">
-        <AppFormField
-          class="form-field--full"
-          id="profile-model"
-          :label="t('management.models.field.profileModel')"
-        >
-          <AppSelect id="profile-model" v-model="providerModelId" :items="profileModelOptions" />
-        </AppFormField>
-        <AppFormField id="profile-concurrency" :label="t('management.models.field.concurrency')">
-          <input
-            id="profile-concurrency"
-            v-model.number="concurrency"
-            class="input"
-            type="number"
-            min="1"
-            max="20"
-            required
-          />
-        </AppFormField>
-        <AppFormField id="timeout-ms" :label="t('management.models.field.timeoutMs')">
-          <input
-            id="timeout-ms"
-            v-model.number="timeoutMs"
-            class="input"
-            type="number"
-            min="100"
-            max="120000"
-            required
-          />
-        </AppFormField>
-        <AppFormField id="max-retries" :label="t('management.models.field.maxRetries')">
-          <input
-            id="max-retries"
-            v-model.number="maxRetries"
-            class="input"
-            type="number"
-            min="0"
-            max="5"
-            required
-          />
-        </AppFormField>
-        <div class="form-field--full">
-          <AppCheckbox v-model="isDefault" :disabled="editingProfile?.isDefault">{{
-            t('management.models.field.setDefaultProfile')
-          }}</AppCheckbox>
-        </div>
-      </div></ConfirmDialog
-    >
+      danger
+      @update:open="deletingModel = $event ? deletingModel : null"
+      @confirm="deleteModel"
+    />
   </div>
 </template>
 

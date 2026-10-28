@@ -98,9 +98,17 @@ type ProviderResponder = (
   payload: any,
 ) => Response | Promise<Response>;
 
-function installProvider(responder: ProviderResponder, options: { models?: unknown[] } = {}) {
+function installProvider(
+  responder: ProviderResponder,
+  options: { models?: unknown[]; catalog?: unknown } = {},
+) {
   const chatRequests: Record<string, any>[] = [];
   const fake = vi.fn<typeof fetch>(async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url) === 'https://models.dev/api.json')
+      return new Response(JSON.stringify(options.catalog ?? {}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     if (String(url).endsWith('/models'))
       return new Response(JSON.stringify({ data: options.models ?? [] }), {
         status: 200,
@@ -530,6 +538,18 @@ describe('grading administration and persistent model workflow', () => {
           { id: 'model-b' },
           { id: 'existing-model', name: 'Existing Model' },
         ],
+        catalog: {
+          test: {
+            models: {
+              'model-a': {
+                reasoning: true,
+                modalities: { input: ['text', 'image'] },
+                limit: { context: 128000, output: 8192 },
+                cost: { input: 1, output: 2, cache_read: 0.1 },
+              },
+            },
+          },
+        },
       },
     );
     const connectionResponse = await app.inject({
@@ -586,6 +606,19 @@ describe('grading administration and persistent model workflow', () => {
       'model-b',
     ]);
     expect(imported.json().data.skipped).toEqual(['existing-model', 'model-a']);
+    expect(imported.json().data.created[0]).toMatchObject({
+      modelKey: 'model-a',
+      contextWindow: 128000,
+      maxTokens: 8192,
+      reasoning: true,
+      input: ['text', 'image'],
+      costPerMillion: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
+    });
+    expect(imported.json().data.created[1]).toMatchObject({
+      modelKey: 'model-b',
+      contextWindow: null,
+      maxTokens: null,
+    });
 
     const repeated = await app.inject({
       method: 'POST',
@@ -628,6 +661,39 @@ describe('grading administration and persistent model workflow', () => {
     expect((await app.ctx.db.get('settings', 'global'))?.defaultGradingProfileId).toBe(
       configured.profile.id,
     );
+    const referencedDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${configured.model.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.model.revision },
+    });
+    expect(referencedDelete.statusCode).toBe(409);
+    expect(referencedDelete.json().error.code).toBe('MODEL_IN_USE');
+    expect(await app.ctx.db.get('providerModels', configured.model.id)).not.toBeNull();
+
+    const spareResponse = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/model-connections/${configured.connection.id}/models`,
+      headers: admin,
+      payload: { modelKey: 'spare-model' },
+    });
+    const spare = spareResponse.json().data;
+    const staleDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${spare.id}`,
+      headers: admin,
+      payload: { expectedRevision: spare.revision + 1 },
+    });
+    expect(staleDelete.statusCode).toBe(409);
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${spare.id}`,
+      headers: admin,
+      payload: { expectedRevision: spare.revision },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().data).toEqual({ deleted: true, id: spare.id });
+    expect(await app.ctx.db.get('providerModels', spare.id)).toBeUndefined();
     const list = await app.inject({ url: '/api/v1/admin/model-connections', headers: admin });
     expect(list.body).not.toContain(configured.secret);
     expect(list.body).not.toContain('encryptedApiKey');

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { searchModelsCatalog } from '#server/modules/grading/models-dev.js';
+import {
+  findExactModelsCatalogMatch,
+  searchModelsCatalog,
+} from '#server/modules/grading/models-dev.js';
 
 const catalog = {
   deepseek: {
@@ -64,6 +67,22 @@ describe('searchModelsCatalog', () => {
       cacheRead: 1.25,
       cacheWrite: 0,
     });
+  });
+
+  it('matches the full id before an unprefixed id', () => {
+    const prefixed = {
+      free: { models: { 'openai/gpt-4o': { limit: { context: 64000 } } } },
+      ...catalog,
+    };
+    expect(findExactModelsCatalogMatch(prefixed, 'openai/gpt-4o')).toMatchObject({
+      providerId: 'free',
+      contextWindow: 64000,
+    });
+    expect(findExactModelsCatalogMatch(catalog, 'openai/gpt-4o')).toMatchObject({
+      providerId: 'openai',
+      modelId: 'gpt-4o',
+    });
+    expect(findExactModelsCatalogMatch(catalog, 'gpt')).toBeNull();
   });
 
   it('falls back to name matching and tolerates malformed entries', () => {

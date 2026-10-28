@@ -257,6 +257,7 @@
     "MODEL_CONNECTION_NOT_FOUND": "The model connection does not exist",
     "MODEL_DISABLED": "The model is disabled",
     "MODEL_HTTP_ERROR": "The model provider returned an error",
+    "MODEL_IN_USE": "This model is referenced by a grading profile and cannot be deleted",
     "MODEL_INCOMPLETE": "The model response is incomplete",
     "MODEL_INVALID_FINISH": "The model did not return a complete result",
     "MODEL_INVALID_GRADE_SHAPE": "The model returned an invalid grading structure",

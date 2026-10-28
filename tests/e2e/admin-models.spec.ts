@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { GradingProfile, ModelConnectionView, ProviderModel } from '@drill-hub/contracts';
 import { login } from '#e2e/helpers';
 
-test('评分配置支持更换模型、并发设置以及列表快速切换', async ({ page }) => {
+test('模型列表支持快速切换评分模型和删除模型', async ({ page }) => {
   await login(page);
   const base = {
     createdAt: '2026-10-19T00:00:00.000Z',
@@ -51,6 +51,12 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
       if (data === null) return route.continue();
       return route.fulfill({ json: { data } });
     }
+    if (request.method() === 'DELETE' && path.includes('/provider-models/')) {
+      const id = path.split('/').pop();
+      const index = models.findIndex((model) => model.id === id);
+      if (index >= 0) models.splice(index, 1);
+      return route.fulfill({ json: { data: { deleted: true, id } } });
+    }
     if (!path.includes('/grading-profiles')) return route.continue();
     const body = request.postDataJSON() as Record<string, unknown>;
     writes.push(body);
@@ -89,9 +95,6 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
   const alpha = page
     .locator('.list-card')
     .filter({ has: page.getByRole('heading', { name: 'alpha 模型', exact: true }) });
-  const beta = page
-    .locator('.list-card')
-    .filter({ has: page.getByRole('heading', { name: 'beta 模型', exact: true }) });
   const unverified = page
     .locator('.list-card')
     .filter({ has: page.getByRole('heading', { name: 'unverified 模型', exact: true }) });
@@ -111,45 +114,11 @@ test('评分配置支持更换模型、并发设置以及列表快速切换', as
     concurrency: 2,
     isDefault: true,
   });
-
-  await page.getByRole('tab', { name: /评分配置/ }).click();
-  await expect(page.getByRole('columnheader', { name: '提示词版本' })).toHaveCount(0);
-  await expect(page.locator('td[data-label="并发数"]')).toHaveText('2');
-  await page.getByRole('button', { name: '新建配置', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: '新建评分配置', exact: true });
-  await expect(dialog.getByLabel('并发数')).toHaveValue('2');
-  await expect(dialog.getByLabel('提示词版本')).toHaveCount(0);
-  await dialog.getByLabel('并发数').fill('0');
-  await expect(dialog.getByRole('button', { name: '创建配置', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
-
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: '编辑评分配置', exact: true });
-  await dialog.getByRole('combobox', { name: '评分模型' }).click();
-  await page.getByRole('option', { name: /beta 模型/ }).click();
-  await dialog.getByLabel('并发数').fill('4');
-  await dialog.getByLabel('超时（毫秒）').fill('45000');
-  await dialog.getByRole('button', { name: '保存配置', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /评分配置/ })).toHaveCount(0);
+  await unverified.getByRole('button', { name: '删除', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '删除模型', exact: true });
+  await dialog.getByRole('button', { name: '删除', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  expect(writes[1]).toMatchObject({
-    providerModelId: 'model-beta',
-    concurrency: 4,
-    timeoutMs: 45000,
-    expectedRevision: 1,
-    isDefault: true,
-  });
-  expect(writes.every((body) => !('promptVersion' in body))).toBe(true);
-  const defaultRow = page.getByRole('row').filter({ hasText: '默认评分' });
-  await expect(defaultRow.getByText('beta', { exact: true })).toBeVisible();
-  await expect(defaultRow.locator('[data-label="并发数"]')).toHaveText('4');
-
-  await page.getByRole('tab', { name: '连接与模型' }).click();
-  await expect(beta.getByText('评分模型', { exact: true })).toBeVisible();
-  await alpha.getByRole('button', { name: '设为评分模型', exact: true }).click();
-  await expect(alpha.getByText('评分模型', { exact: true })).toBeVisible();
-  await expect(beta.getByText('评分模型', { exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: /评分配置/ }).click();
-  await expect(defaultRow.getByText('alpha', { exact: true })).toBeVisible();
-  await expect(defaultRow.locator('[data-label="并发数"]')).toHaveText('4');
-  await expect(defaultRow.locator('[data-label="超时"]')).toHaveText('45000 ms');
+  await expect(unverified).toHaveCount(0);
+  expect(models.map((model) => model.id)).not.toContain('model-unverified');
 });

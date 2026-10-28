@@ -20,7 +20,11 @@ import {
   ProviderError,
 } from '#server/modules/grading/chat-completions.js';
 import { gradeRubric, isBlankAnswer } from '#server/modules/grading/engine.js';
-import { fetchModelsCatalog, searchModelsCatalog } from '#server/modules/grading/models-dev.js';
+import {
+  fetchModelsCatalog,
+  findExactModelsCatalogMatch,
+  searchModelsCatalog,
+} from '#server/modules/grading/models-dev.js';
 import { gradingRuntime, isActiveGradingJob } from '#server/modules/grading/service.js';
 
 import { tokenUsageReport } from '#server/modules/grading/token-usage.js';
@@ -620,6 +624,12 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       const input = body(request);
       keys(input, ['models']);
       const candidates = modelImportInput(input.models);
+      let catalog: unknown = null;
+      try {
+        catalog = await fetchModelsCatalog();
+      } catch {
+        // 公共目录不可用不应阻断供应商模型导入，默认参数仍可稍后手动维护。
+      }
       const result = await ctx.db.transaction(async (tx) => {
         assert(
           await tx.get('modelConnections', request.params.id),
@@ -638,17 +648,18 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
             continue;
           }
           requested.add(candidate.modelKey);
+          const match = findExactModelsCatalogMatch(catalog, candidate.modelKey);
           const record = await tx.insert('providerModels', {
             ...baseRecord(),
             connectionId: request.params.id,
             modelKey: candidate.modelKey,
             displayName: candidate.displayName ?? candidate.modelKey,
             enabled: true,
-            contextWindow: null,
-            maxTokens: null,
-            reasoning: false,
-            input: ['text'],
-            costPerMillion: null,
+            contextWindow: match?.contextWindow ?? null,
+            maxTokens: match?.maxTokens ?? null,
+            reasoning: match?.reasoning ?? false,
+            input: match?.input ?? ['text'],
+            costPerMillion: match?.costPerMillion ?? null,
           });
           created.push(record);
         }
@@ -804,6 +815,39 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
       return record;
     });
     return { data: updated };
+  });
+
+  app.delete<{ Params: { id: string } }>(`${PREFIX}/admin/provider-models/:id`, async (request) => {
+    const actor = await ctx.requireAdmin(request);
+    const input = body(request);
+    keys(input, ['expectedRevision']);
+    const revision = expectedRevision(input);
+    await ctx.db.transaction(async (tx) => {
+      const current = await tx.get('providerModels', request.params.id);
+      assert(current, 'NOT_FOUND', '模型不存在', 404);
+      assert(
+        current.revision === revision,
+        'VERSION_CONFLICT',
+        '数据已发生变化，请刷新后重试',
+        409,
+      );
+      assert(
+        !(await tx.findOne('gradingProfiles', { providerModelId: current.id })),
+        'MODEL_IN_USE',
+        '该模型已被评分配置引用，不能删除',
+        409,
+      );
+      await tx.delete('providerModels', current.id);
+      await ctx.audit(
+        actor,
+        'provider_model.deleted',
+        'providerModel',
+        current.id,
+        { modelKey: current.modelKey },
+        tx,
+      );
+    });
+    return { data: { deleted: true, id: request.params.id } };
   });
 
   app.get(`${PREFIX}/admin/grading-profiles`, async (request) => {
