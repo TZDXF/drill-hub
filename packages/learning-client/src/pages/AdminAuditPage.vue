@@ -7,6 +7,7 @@ import { useLearning } from '#learning-client/injection';
 import { errorMessage, formatDate } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppFormField from '#learning-client/components/AppFormField.vue';
+import AppDateTimePicker from '#learning-client/components/AppDateTimePicker.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppSelect from '#learning-client/components/AppSelect.vue';
 import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
@@ -274,12 +275,14 @@ onBeforeUnmount(() => {
             type="search"
           />
         </AppFormField>
-        <AppFormField id="log-from" :label="t('management.audit.field.from')">
-          <input id="log-from" v-model="from" class="input" type="datetime-local" />
-        </AppFormField>
-        <AppFormField id="log-until" :label="t('management.audit.field.until')">
-          <input id="log-until" v-model="until" class="input" type="datetime-local" />
-        </AppFormField>
+        <div class="form-field">
+          <label id="log-from-label">{{ t('management.audit.field.from') }}</label>
+          <AppDateTimePicker id="log-from" v-model="from" labelled-by="log-from-label" />
+        </div>
+        <div class="form-field">
+          <label id="log-until-label">{{ t('management.audit.field.until') }}</label>
+          <AppDateTimePicker id="log-until" v-model="until" labelled-by="log-until-label" />
+        </div>
         <template v-if="tab !== 'audit'">
           <AppFormField id="log-channel" :label="t('management.audit.field.channel')">
             <AppSelect id="log-channel" v-model="channel" :items="channelOptions" />

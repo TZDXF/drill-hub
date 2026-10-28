@@ -200,11 +200,11 @@
     "viewportLabel": "Notifications"
   },
   "dateTime": {
-    "triggerLabel": "Choose a due date",
-    "clearLabel": "Clear due date and time",
+    "triggerLabel": "Choose date and time",
+    "clearLabel": "Clear date and time",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
-    "calendarLabel": "Choose a due date",
+    "calendarLabel": "Choose date and time",
     "hint": "Adjust the time in the input fields. Your device's time zone is used."
   },
   "attemptNav": {

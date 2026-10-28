@@ -311,10 +311,10 @@ test('Reka 日期时间选择支持月份切换、键盘输入时分、清空并
   await expect(
     dialog.locator('input[type="datetime-local"]:not([aria-hidden="true"])'),
   ).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: '清空到期时间' })).toHaveCount(0);
-  const openCalendar = dialog.getByRole('button', { name: '选择到期日期', exact: true });
+  await expect(dialog.getByRole('button', { name: '清空日期时间' })).toHaveCount(0);
+  const openCalendar = dialog.getByRole('button', { name: '选择日期时间', exact: true });
   await openCalendar.click();
-  const calendar = page.getByRole('dialog', { name: '选择到期日期', exact: true });
+  const calendar = page.getByRole('dialog', { name: '选择日期时间', exact: true });
   await expect(calendar).toBeVisible();
   await calendar.getByRole('button', { name: '下个月', exact: true }).click();
   const day = calendar
@@ -341,10 +341,10 @@ test('Reka 日期时间选择支持月份切换、键盘输入时分、清空并
   await page.keyboard.press('Escape');
   await expect(calendar).toBeHidden();
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: '清空到期时间' }).click();
+  await dialog.getByRole('button', { name: '清空日期时间' }).click();
   await expect(hour).toHaveAttribute('data-placeholder');
   await expect(minute).toHaveAttribute('data-placeholder');
-  await expect(dialog.getByRole('button', { name: '清空到期时间' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '清空日期时间' })).toHaveCount(0);
   await openCalendar.click();
   await calendar
     .locator(`[data-reka-calendar-cell-trigger][data-value^="${selectedDate}"]`)
@@ -374,7 +374,7 @@ test('Reka 日期时间选择支持月份切换、键盘输入时分、清空并
   await expect(secretDialog).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '新建令牌', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: '清空到期时间' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '清空日期时间' })).toHaveCount(0);
   await expect(hour).toHaveAttribute('data-placeholder');
 });
 
