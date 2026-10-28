@@ -1,19 +1,23 @@
 import { computed, ref, type Ref } from 'vue';
 import type { DiscoveredProviderModel } from '@drill-hub/contracts';
+import { createListSearch } from '#learning-client/search';
 
 export function useModelDiscoverySelection(existingModelKeys: Ref<Set<string>>) {
   const discoveredModels = ref<DiscoveredProviderModel[]>([]);
   const selectedDiscoveredKeys = ref<string[]>([]);
   const discoveryFilter = ref('');
-  const filteredDiscoveredModels = computed(() => {
-    const query = discoveryFilter.value.trim().toLowerCase();
-    if (!query) return discoveredModels.value;
-    return discoveredModels.value.filter(
-      (item) =>
-        item.modelKey.toLowerCase().includes(query) ||
-        (item.displayName ?? '').toLowerCase().includes(query),
-    );
-  });
+  const search = computed(() =>
+    createListSearch(discoveredModels.value, ['modelKey', 'displayName']),
+  );
+  const discoveryResults = computed(() =>
+    discoveryFilter.value.trim()
+      ? search.value.search(discoveryFilter.value.trim())
+      : discoveredModels.value.map((item, refIndex) => ({ item, refIndex, matches: undefined })),
+  );
+  const filteredDiscoveredModels = computed(() => discoveryResults.value.map(({ item }) => item));
+  const discoveryMatches = computed(
+    () => new Map(discoveryResults.value.map(({ item, matches }) => [item.modelKey, matches])),
+  );
   const selectableDiscoveredModels = computed(() =>
     filteredDiscoveredModels.value.filter((item) => !existingModelKeys.value.has(item.modelKey)),
   );
@@ -44,6 +48,7 @@ export function useModelDiscoverySelection(existingModelKeys: Ref<Set<string>>) 
     selectedDiscoveredKeys,
     discoveryFilter,
     filteredDiscoveredModels,
+    discoveryMatches,
     selectableDiscoveredModels,
     allFilteredDiscoveredSelected,
     toggleDiscovered,

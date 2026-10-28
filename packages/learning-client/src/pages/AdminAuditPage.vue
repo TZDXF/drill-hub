@@ -12,6 +12,7 @@ import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppSelect from '#learning-client/components/AppSelect.vue';
 import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
 import EmptyState from '#learning-client/components/EmptyState.vue';
+import SearchHighlight from '#learning-client/components/SearchHighlight.vue';
 
 const { t, d } = useI18n();
 const learning = useLearning();
@@ -22,6 +23,7 @@ const tabs = computed(() => [
   { value: 'login', label: t('management.audit.tab.login'), icon: 'user' },
 ]);
 const q = ref('');
+const appliedQuery = ref('');
 const from = ref('');
 const until = ref('');
 const channel = ref('all');
@@ -199,6 +201,7 @@ async function load(reset = false, target = page.value) {
     );
     if (current !== ticket) return;
     rows.value = result.items;
+    appliedQuery.value = query.get('q') ?? '';
     page.value = result.page;
     total.value = result.total;
   } catch (reason) {
@@ -375,20 +378,27 @@ onBeforeUnmount(() => {
                     }}</time>
                   </td>
                   <td :data-label="t('management.audit.col.actorAccount')">
-                    <span class="table-primary">{{
-                      row.username ?? t('management.audit.unknownAccount')
-                    }}</span
+                    <span class="table-primary"
+                      ><SearchHighlight
+                        :text="row.username ?? t('management.audit.unknownAccount')"
+                        :query="appliedQuery" /></span
                     ><span class="table-secondary log-code">{{ row.ownerId ?? '—' }}</span>
                   </td>
                   <td :data-label="t('management.audit.col.action')">
-                    <span class="table-primary">{{ actionNames[row.action] ?? row.action }}</span
-                    ><span v-if="actionNames[row.action]" class="table-secondary log-code">{{
-                      row.action
-                    }}</span>
+                    <span class="table-primary"
+                      ><SearchHighlight
+                        :text="actionNames[row.action] ?? row.action"
+                        :query="appliedQuery" /></span
+                    ><span v-if="actionNames[row.action]" class="table-secondary log-code"
+                      ><SearchHighlight :text="row.action" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.resource')">
-                    <span class="table-primary">{{ row.resourceType }}</span
-                    ><span class="table-secondary log-code">{{ row.resourceId }}</span>
+                    <span class="table-primary"
+                      ><SearchHighlight :text="row.resourceType" :query="appliedQuery" /></span
+                    ><span class="table-secondary log-code"
+                      ><SearchHighlight :text="row.resourceId" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.actorId')" class="log-code">
                     {{ row.actorId }}
@@ -424,11 +434,15 @@ onBeforeUnmount(() => {
                 <tr v-for="row in apiRows" :key="row.id">
                   <td :data-label="t('management.audit.col.timeRequestId')">
                     <time :datetime="row.createdAt">{{ time(row.createdAt) }}</time
-                    ><span class="table-secondary log-code">{{ row.requestId }}</span>
+                    ><span class="table-secondary log-code"
+                      ><SearchHighlight :text="row.requestId" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.endpoint')">
                     <span class="badge">{{ row.method }}</span
-                    ><span class="table-secondary log-code">{{ row.route }}</span>
+                    ><span class="table-secondary log-code"
+                      ><SearchHighlight :text="row.route" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.statusDuration')">
                     <span
@@ -436,17 +450,20 @@ onBeforeUnmount(() => {
                       :class="row.statusCode >= 400 ? 'badge--amber' : 'badge--teal'"
                       >{{ row.statusCode }}</span
                     ><span class="table-secondary">{{ row.durationMs }} ms</span
-                    ><span v-if="row.errorCode" class="table-secondary log-code">{{
-                      row.errorCode
-                    }}</span>
+                    ><span v-if="row.errorCode" class="table-secondary log-code"
+                      ><SearchHighlight :text="row.errorCode" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.accountChannel')">
-                    <span class="table-primary">{{
-                      row.username ?? t('management.audit.unauthenticated')
-                    }}</span
+                    <span class="table-primary"
+                      ><SearchHighlight
+                        :text="row.username ?? t('management.audit.unauthenticated')"
+                        :query="appliedQuery" /></span
                     ><span class="table-secondary">{{ channelNames[row.channel] }}</span>
                   </td>
-                  <td :data-label="t('management.audit.col.ip')" class="log-code">{{ row.ip }}</td>
+                  <td :data-label="t('management.audit.col.ip')" class="log-code">
+                    <SearchHighlight :text="row.ip" :query="appliedQuery" />
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -478,12 +495,15 @@ onBeforeUnmount(() => {
                 <tr v-for="row in loginRows" :key="row.id">
                   <td :data-label="t('management.audit.col.timeRequestId')">
                     <time :datetime="row.createdAt">{{ time(row.createdAt) }}</time
-                    ><span class="table-secondary log-code">{{ row.requestId }}</span>
+                    ><span class="table-secondary log-code"
+                      ><SearchHighlight :text="row.requestId" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.loginAccount')">
-                    <span class="table-primary">{{
-                      row.username ?? t('management.audit.loginUnmatched')
-                    }}</span
+                    <span class="table-primary"
+                      ><SearchHighlight
+                        :text="row.username ?? t('management.audit.loginUnmatched')"
+                        :query="appliedQuery" /></span
                     ><span class="table-secondary log-code">{{ row.ownerId ?? '—' }}</span>
                   </td>
                   <td :data-label="t('management.audit.col.result')">
@@ -496,14 +516,16 @@ onBeforeUnmount(() => {
                           : t('management.audit.outcome.failed')
                       }}</span
                     ><span class="table-secondary">HTTP {{ row.statusCode }}</span
-                    ><span v-if="row.errorCode" class="table-secondary log-code">{{
-                      row.errorCode
-                    }}</span>
+                    ><span v-if="row.errorCode" class="table-secondary log-code"
+                      ><SearchHighlight :text="row.errorCode" :query="appliedQuery"
+                    /></span>
                   </td>
                   <td :data-label="t('management.audit.col.channel')">
                     {{ channelNames[row.channel] }}
                   </td>
-                  <td :data-label="t('management.audit.col.ip')" class="log-code">{{ row.ip }}</td>
+                  <td :data-label="t('management.audit.col.ip')" class="log-code">
+                    <SearchHighlight :text="row.ip" :query="appliedQuery" />
+                  </td>
                 </tr>
               </tbody>
             </table>

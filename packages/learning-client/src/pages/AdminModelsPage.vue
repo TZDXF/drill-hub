@@ -11,6 +11,7 @@ import type {
   ProviderModelImportResult,
 } from '@drill-hub/contracts';
 import { useModelDiscoverySelection } from '#learning-client/modelDiscoverySelection';
+import { matchRanges } from '#learning-client/search';
 import { useLearning } from '#learning-client/injection';
 import type { ModelAdapter } from '#learning-client/types';
 import { errorMessage } from '#learning-client/utils';
@@ -22,6 +23,7 @@ import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 import AppSelect from '#learning-client/components/AppSelect.vue';
 import AppCheckbox from '#learning-client/components/AppCheckbox.vue';
 import AppScrollArea from '#learning-client/components/AppScrollArea.vue';
+import SearchHighlight from '#learning-client/components/SearchHighlight.vue';
 
 const { t } = useI18n();
 const learning = useLearning();
@@ -92,6 +94,7 @@ const {
   selectedDiscoveredKeys,
   discoveryFilter,
   filteredDiscoveredModels,
+  discoveryMatches,
   selectableDiscoveredModels,
   allFilteredDiscoveredSelected,
   toggleDiscovered,
@@ -872,19 +875,41 @@ onMounted(() => void load(true));
               @update:model-value="toggleDiscovered(item.modelKey)"
             >
               <span class="model-discovery-row__text">
-                <strong>{{ item.displayName || item.modelKey }}</strong>
-                <code v-if="item.displayName && item.displayName !== item.modelKey">{{
-                  item.modelKey
-                }}</code>
+                <strong
+                  ><SearchHighlight
+                    :text="item.displayName || item.modelKey"
+                    :indices="
+                      matchRanges(
+                        discoveryMatches.get(item.modelKey),
+                        item.displayName ? 'displayName' : 'modelKey',
+                      )
+                    "
+                /></strong>
+                <code v-if="item.displayName && item.displayName !== item.modelKey"
+                  ><SearchHighlight
+                    :text="item.modelKey"
+                    :indices="matchRanges(discoveryMatches.get(item.modelKey), 'modelKey')"
+                /></code>
               </span>
             </AppCheckbox>
             <template v-else>
               <span class="badge">{{ t('management.models.alreadyAdded') }}</span>
               <span class="model-discovery-row__text">
-                <strong>{{ item.displayName || item.modelKey }}</strong>
-                <code v-if="item.displayName && item.displayName !== item.modelKey">{{
-                  item.modelKey
-                }}</code>
+                <strong
+                  ><SearchHighlight
+                    :text="item.displayName || item.modelKey"
+                    :indices="
+                      matchRanges(
+                        discoveryMatches.get(item.modelKey),
+                        item.displayName ? 'displayName' : 'modelKey',
+                      )
+                    "
+                /></strong>
+                <code v-if="item.displayName && item.displayName !== item.modelKey"
+                  ><SearchHighlight
+                    :text="item.modelKey"
+                    :indices="matchRanges(discoveryMatches.get(item.modelKey), 'modelKey')"
+                /></code>
               </span>
             </template>
           </div>

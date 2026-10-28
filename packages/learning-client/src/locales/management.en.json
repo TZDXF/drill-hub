@@ -674,6 +674,9 @@
     "skillContent": "Instructions"
   },
   "search": {
+    "clear": "Clear search",
+    "resultsFor": "“{query}” · {count} results",
+    "resultLimit": "Showing the first {count} results. Narrow your keywords or choose a type to find more results.",
     "title": "Search",
     "description": "Find topics, contents, plans, questions and assessments",
     "queryLabel": "Query",

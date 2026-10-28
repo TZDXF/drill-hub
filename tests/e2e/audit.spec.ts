@@ -104,6 +104,9 @@ test('管理员审计页提供三类日志、筛选、分页和移动布局', as
   const operation = page.getByRole('table', { name: '操作审计记录' });
   await expect(operation).toContainText('user.created');
   await expect(operation).toContainText(userId);
+  await expect(operation.locator('mark')).toContainText([userId]);
+  await page.getByLabel('关键词', { exact: true }).fill('尚未应用的关键词');
+  await expect(operation.locator('mark')).toContainText([userId]);
   await expect(page.getByRole('button', { name: '上一页', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: '重置', exact: true }).click();
 
@@ -130,6 +133,7 @@ test('管理员审计页提供三类日志、筛选、分页和移动布局', as
   await page.getByRole('button', { name: '应用筛选', exact: true }).click();
   const logins = page.getByRole('table', { name: '登录记录' });
   await expect(logins).toContainText(username);
+  await expect(logins.locator('mark').first()).toHaveText(username);
   await expect(logins).toContainText('登录失败');
   await expect(logins).toContainText('INVALID_CREDENTIALS');
   await expect(logins).not.toContainText('Wrong-password-not-logged-42!');

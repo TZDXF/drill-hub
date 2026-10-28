@@ -44,6 +44,9 @@
     "openAssistant": "Learning assistant"
   },
   "topics": {
+    "searchLabel": "Search topics",
+    "searchPlaceholder": "Search titles or learning goals, with typo tolerance",
+    "searchEmpty": "Try different keywords, or clear the search to see all topics.",
     "title": "Learning topics",
     "description": "Each topic organizes plans, reading content, practice and exams around one clear goal.",
     "loading": "Loading topics",

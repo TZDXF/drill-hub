@@ -44,6 +44,9 @@
     "openAssistant": "学习助手"
   },
   "topics": {
+    "searchLabel": "搜索主题",
+    "searchPlaceholder": "搜索标题或学习目标，支持模糊匹配",
+    "searchEmpty": "试试其他关键词，或清除搜索查看全部主题。",
     "title": "学习主题",
     "description": "每个主题围绕一个清晰目标，组织计划、阅读内容、练习与考试。",
     "loading": "正在读取主题",

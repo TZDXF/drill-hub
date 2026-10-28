@@ -14,7 +14,7 @@ defineProps<{ title: string; description: string }>();
       </div>
       <div class="auth-message">
         <span class="eyebrow">PERSONAL LEARNING WORKSPACE</span>
-        <h1 style="white-space: pre-line">{{ t('components.auth.headline') }}</h1>
+        <h2 style="white-space: pre-line">{{ t('components.auth.headline') }}</h2>
         <p>{{ t('components.auth.description') }}</p>
       </div>
       <span class="auth-footnote">{{ t('components.auth.footnote') }}</span>
@@ -22,7 +22,7 @@ defineProps<{ title: string; description: string }>();
     <main class="auth-main">
       <section class="auth-card" aria-labelledby="auth-title">
         <slot name="back" />
-        <h2 id="auth-title">{{ title }}</h2>
+        <h1 id="auth-title">{{ title }}</h1>
         <p>{{ description }}</p>
         <slot />
       </section>

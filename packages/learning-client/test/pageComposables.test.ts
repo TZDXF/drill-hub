@@ -29,6 +29,24 @@ describe('答题值读取', () => {
 });
 
 describe('模型发现选择', () => {
+  it('模糊匹配模型并返回高亮范围，不改变筛选外的选择', () => {
+    const state = useModelDiscoverySelection(ref(new Set<string>()));
+    state.discoveredModels.value = [
+      { modelKey: 'javascript-model', displayName: 'JavaScript 模型' },
+      { modelKey: 'rust-model', displayName: 'Rust 模型' },
+    ];
+    state.toggleDiscovered('rust-model');
+    state.discoveryFilter.value = 'javscript';
+    expect(state.filteredDiscoveredModels.value.map((item) => item.modelKey)).toEqual([
+      'javascript-model',
+    ]);
+    expect(state.discoveryMatches.value.get('javascript-model')?.length).toBeGreaterThan(0);
+    state.toggleAllDiscovered();
+    expect(state.selectedDiscoveredKeys.value).toEqual(['rust-model', 'javascript-model']);
+    state.discoveryFilter.value = '';
+    expect(state.filteredDiscoveredModels.value).toHaveLength(2);
+  });
+
   it('仅批量切换当前筛选中尚未添加的模型，保留其他选择', () => {
     const existing = ref(new Set(['existing']));
     const state = useModelDiscoverySelection(existing);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import type { SearchOutcome, SearchResourceType, SearchResult } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
@@ -10,25 +10,32 @@ import AppFormField from '#learning-client/components/AppFormField.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppSelect from '#learning-client/components/AppSelect.vue';
 import EmptyState from '#learning-client/components/EmptyState.vue';
+import SearchHighlight from '#learning-client/components/SearchHighlight.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();
 const router = useRouter();
-const query = ref('');
-const type = ref('all');
+const route = useRoute();
+const query = ref(typeof route.query.q === 'string' ? route.query.q.slice(0, 100) : '');
+const resourceTypes = ['topic', 'content', 'plan', 'question', 'assessment'] as const;
+const type = ref(
+  resourceTypes.some((value) => value === route.query.types) ? String(route.query.types) : 'all',
+);
 const loading = ref(false);
-const searched = ref(false);
 const error = ref('');
 const outcome = ref<SearchOutcome | null>(null);
+let disposed = false;
 const typeOptions = computed(() => [
   { value: 'all', label: t('management.search.type.all') },
-  ...(['topic', 'content', 'plan', 'question', 'assessment'] as const).map((value) => ({
+  ...resourceTypes.map((value) => ({
     value,
     label: t(`management.search.type.${value}`),
   })),
 ]);
 const results = computed(() => outcome.value?.results ?? []);
-const total = computed(() => results.value.length);
+const total = computed(() =>
+  Object.values(outcome.value?.counts ?? {}).reduce((sum, count) => sum + count, 0),
+);
 
 function typeLabel(resourceType: SearchResourceType): string {
   return t(`management.search.type.${resourceType}`);
@@ -64,19 +71,31 @@ function icon(resourceType: SearchResourceType): string {
 async function run() {
   const q = query.value.trim();
   if (!q || loading.value) return;
+  const selectedType = type.value;
   loading.value = true;
   error.value = '';
   try {
-    const types = type.value === 'all' ? '' : `&types=${type.value}`;
-    outcome.value = await learning.get<SearchOutcome>(`/search?q=${encodeURIComponent(q)}${types}`);
-    searched.value = true;
+    const types = selectedType === 'all' ? '' : `&types=${selectedType}`;
+    const result = await learning.get<SearchOutcome>(`/search?q=${encodeURIComponent(q)}${types}`);
+    if (disposed) return;
+    outcome.value = result;
+    await router.replace({
+      query: { q, ...(selectedType === 'all' ? {} : { types: selectedType }) },
+    });
   } catch (reason) {
+    if (disposed) return;
     error.value = errorMessage(reason);
     learning.notify.error(t('management.search.failed'), error.value);
   } finally {
     loading.value = false;
   }
 }
+onMounted(() => {
+  if (query.value.trim()) void run();
+});
+onBeforeUnmount(() => {
+  disposed = true;
+});
 </script>
 
 <template>
@@ -86,8 +105,17 @@ async function run() {
       eyebrow="SEARCH"
       :description="t('management.search.description')"
     />
-    <form class="card filter-bar" role="search" @submit.prevent="run">
-      <AppFormField id="search-query" :label="t('management.search.queryLabel')">
+    <form
+      class="card filter-bar search-filters"
+      role="search"
+      :aria-busy="loading"
+      @submit.prevent="run"
+    >
+      <AppFormField
+        id="search-query"
+        class="search-filters__query"
+        :label="t('management.search.queryLabel')"
+      >
         <input
           id="search-query"
           v-model="query"
@@ -95,23 +123,35 @@ async function run() {
           type="search"
           :placeholder="t('management.search.queryPlaceholder')"
           maxlength="100"
+          :disabled="loading"
         />
       </AppFormField>
       <AppFormField id="search-type" :label="t('management.search.typeLabel')">
-        <AppSelect id="search-type" v-model="type" :items="typeOptions" />
+        <AppSelect id="search-type" v-model="type" :items="typeOptions" :disabled="loading" />
       </AppFormField>
-      <button class="button button--primary" type="submit" :disabled="loading">
+      <button class="button button--primary" type="submit" :disabled="loading || !query.trim()">
         <span v-if="loading" class="spinner" /><AppIcon v-else name="search" :size="16" />
         {{ t('management.search.submit') }}
       </button>
     </form>
-    <div v-if="loading" class="loading-block">
+    <div v-if="loading" class="loading-block" role="status">
       <span class="spinner" />{{ t('management.search.loading') }}
     </div>
-    <template v-else-if="searched">
-      <p v-if="total" class="muted small search-summary">
-        {{ t('management.search.resultCount', { count: n(total) }) }}
-      </p>
+    <EmptyState
+      v-else-if="error"
+      icon="alert"
+      :title="t('management.search.failed')"
+      :description="error"
+    >
+      <button class="button" type="button" @click="run">{{ t('management.common.retry') }}</button>
+    </EmptyState>
+    <template v-else-if="outcome">
+      <div class="search-summary" role="status">
+        <p>{{ t('management.search.resultsFor', { query: outcome.query, count: n(total) }) }}</p>
+        <p v-if="total > results.length" class="field-hint">
+          {{ t('management.search.resultLimit', { count: n(results.length) }) }}
+        </p>
+      </div>
       <div v-if="results.length" class="list-stack">
         <RouterLink
           v-for="result in results"
@@ -122,12 +162,14 @@ async function run() {
           <span class="list-card__icon"><AppIcon :name="icon(result.resourceType)" /></span>
           <div class="list-card__body">
             <h3>
-              {{ result.title }}
+              <SearchHighlight :text="result.title" :query="outcome.query" />
               <span v-if="result.archived" class="badge">{{
                 t('management.search.archived')
               }}</span>
             </h3>
-            <p v-if="result.snippet">{{ result.snippet }}</p>
+            <p v-if="result.snippet">
+              <SearchHighlight :text="result.snippet" :query="outcome.query" />
+            </p>
             <div class="list-card__meta">
               <span>{{ typeLabel(result.resourceType) }}</span>
               <span>{{
@@ -139,7 +181,7 @@ async function run() {
         </RouterLink>
       </div>
       <EmptyState
-        v-else-if="!error"
+        v-else
         icon="search"
         :title="t('management.search.emptyTitle')"
         :description="t('management.search.emptyDescription')"
@@ -155,7 +197,23 @@ async function run() {
 </template>
 
 <style scoped>
+.search-filters__query {
+  flex: 1 1 280px;
+}
 .search-summary {
-  margin: 0 0 10px;
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.search-summary p {
+  margin: 0;
+}
+@media (max-width: 520px) {
+  .search-filters__query {
+    flex-basis: auto;
+  }
 }
 </style>
