@@ -161,7 +161,7 @@ describe('administrator audit and access logs', () => {
       errorCode: 'AGENT_TOKEN_INVALID',
     });
     expect(correlated!.durationMs).toBeGreaterThanOrEqual(0);
-    expect(correlated!.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(correlated!.requestId).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(rows.some((row) => row.route === '/api/[unmatched]')).toBe(false);
     expect(rows).toContainEqual(
       expect.objectContaining({ route: '/api/v1/me', statusCode: 401, channel: 'anonymous' }),

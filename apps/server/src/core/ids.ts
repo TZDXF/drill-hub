@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-export const id = () => randomUUID();
+import { randomBytes } from 'node:crypto';
+export const id = () => randomBytes(12).toString('base64url');
 export const now = () => new Date().toISOString();
 export const baseRecord = () => {
   const timestamp = now();
