@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   DropdownMenuContent,
@@ -13,6 +13,13 @@ import {
 } from 'reka-ui';
 import { useLearning } from '#learning-client/injection';
 import { useAssistant } from '#learning-client/assistant/store';
+import {
+  clampFloatingRect,
+  moveFloatingRect,
+  resizeFloatingRect,
+  type AssistantFloatingRect,
+  type AssistantResizeDirection,
+} from '#learning-client/assistant/floating';
 import { useLocale } from '#learning-client/i18n';
 import { cycleThemePreference, themePreference } from '#learning-client/theme';
 import { errorMessage } from '#learning-client/utils';
@@ -94,6 +101,120 @@ const assistantActive = computed(
     Boolean(learning.state.user) &&
     assistant.state.layoutMode !== 'content',
 );
+const assistantDocked = computed(
+  () => assistantActive.value && assistant.state.position !== 'floating',
+);
+const assistantFloating = computed(
+  () => assistantActive.value && assistant.state.position === 'floating' && !focused.value,
+);
+const assistantLauncherVisible = computed(
+  () =>
+    assistantAvailable.value &&
+    assistant.state.position === 'floating' &&
+    !assistantActive.value &&
+    !immersive.value &&
+    !focused.value &&
+    Boolean(learning.state.user),
+);
+
+function defaultFloatingRect(): AssistantFloatingRect {
+  const width = Math.max(320, Math.min(420, window.innerWidth - 48));
+  const height = Math.max(360, Math.min(640, window.innerHeight - 48));
+  return { x: window.innerWidth - width - 24, y: window.innerHeight - height - 24, width, height };
+}
+const floatingRect = ref<AssistantFloatingRect>(defaultFloatingRect());
+const floatingStyle = computed(() => ({
+  left: `${floatingRect.value.x}px`,
+  top: `${floatingRect.value.y}px`,
+  width: `${floatingRect.value.width}px`,
+  height: `${floatingRect.value.height}px`,
+}));
+let stopPointerInteraction: (() => void) | null = null;
+
+function trackPointer(
+  event: PointerEvent,
+  update: (initial: AssistantFloatingRect, deltaX: number, deltaY: number) => AssistantFloatingRect,
+) {
+  if (
+    !event.isPrimary ||
+    (event.pointerType === 'mouse' && event.button !== 0) ||
+    window.matchMedia('(max-width: 780px)').matches
+  )
+    return;
+  event.preventDefault();
+  stopPointerInteraction?.();
+  const pointerId = event.pointerId;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const initial = { ...floatingRect.value };
+  const previousUserSelect = document.body.style.userSelect;
+  document.body.style.userSelect = 'none';
+  const onMove = (moveEvent: PointerEvent) => {
+    if (moveEvent.pointerId !== pointerId) return;
+    floatingRect.value = clampFloatingRect(
+      update(initial, moveEvent.clientX - startX, moveEvent.clientY - startY),
+      window.innerWidth,
+      window.innerHeight,
+    );
+  };
+  const stop = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+    document.body.style.userSelect = previousUserSelect;
+    if (stopPointerInteraction === stop) stopPointerInteraction = null;
+  };
+  stopPointerInteraction = stop;
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+}
+
+function startFloatingDrag(event: PointerEvent) {
+  if ((event.target as HTMLElement).closest('button, input, textarea, select')) return;
+  trackPointer(event, (initial, deltaX, deltaY) =>
+    moveFloatingRect(initial, deltaX, deltaY, window.innerWidth, window.innerHeight),
+  );
+}
+
+function startFloatingResize(event: PointerEvent, direction: AssistantResizeDirection) {
+  trackPointer(event, (initial, deltaX, deltaY) =>
+    resizeFloatingRect(initial, direction, deltaX, deltaY, window.innerWidth, window.innerHeight),
+  );
+}
+
+function resizeWithKeyboard(event: KeyboardEvent, direction: AssistantResizeDirection) {
+  const deltas = {
+    ArrowLeft: [-16, 0],
+    ArrowRight: [16, 0],
+    ArrowUp: [0, -16],
+    ArrowDown: [0, 16],
+  } as const;
+  const delta = deltas[event.key as keyof typeof deltas];
+  if (!delta || window.matchMedia('(max-width: 780px)').matches) return;
+  event.preventDefault();
+  floatingRect.value = resizeFloatingRect(
+    floatingRect.value,
+    direction,
+    delta[0],
+    delta[1],
+    window.innerWidth,
+    window.innerHeight,
+  );
+}
+
+function handleFloatingViewportResize() {
+  floatingRect.value = clampFloatingRect(floatingRect.value, window.innerWidth, window.innerHeight);
+}
+
+watch(assistantFloating, (active) => {
+  if (active) handleFloatingViewportResize();
+});
+onMounted(() => window.addEventListener('resize', handleFloatingViewportResize));
+onBeforeUnmount(() => {
+  stopPointerInteraction?.();
+  window.removeEventListener('resize', handleFloatingViewportResize);
+});
 const title = computed(() => {
   const names: Record<string, string> = {
     home: t('components.shell.titles.home'),
@@ -121,7 +242,6 @@ const title = computed(() => {
 });
 const primaryNav = computed(() => [
   { name: 'home', label: t('components.shell.titles.home'), icon: 'home' },
-  { name: 'assistant', label: t('components.shell.titles.assistant'), icon: 'assistant' },
   { name: 'topics', label: t('components.shell.titles.topics'), icon: 'topics' },
   {
     name: 'wrong-questions',
@@ -214,13 +334,15 @@ async function logout() {
     :class="{
       'app-layout--focused': focused,
       'app-layout--sidebar-resizing': sidebarDrag !== null,
-      'app-layout--assistant': assistantActive && !focused,
+      'app-layout--assistant': assistantDocked && !focused,
+      'app-layout--assistant-right':
+        assistantDocked && !focused && assistant.state.position === 'right',
       'app-layout--assistant-chat':
-        assistantActive && !focused && assistant.state.layoutMode === 'chat',
+        assistantDocked && !focused && assistant.state.layoutMode === 'chat',
     }"
     :style="{
       '--sidebar-width': `${sidebarCollapsed ? 72 : sidebarWidth}px`,
-      '--assistant-width': assistantActive ? `${assistant.state.chatWidth}px` : undefined,
+      '--assistant-width': assistantDocked ? `${assistant.state.chatWidth}px` : undefined,
     }"
   >
     <a class="skip-link" href="#main-content">{{ t('components.shell.skipToContent') }}</a>
@@ -323,17 +445,48 @@ async function logout() {
     <aside
       v-if="assistantActive"
       class="assistant-pane"
+      :class="{ 'assistant-pane--floating': assistantFloating }"
+      :style="assistantFloating ? floatingStyle : undefined"
       data-testid="assistant-pane"
-      aria-label="学习助手"
+      :aria-label="t('components.assistant.title')"
     >
-      <AssistantPanel />
+      <template v-if="assistantFloating">
+        <button
+          v-for="direction in ['top-left', 'top', 'left'] as const"
+          :key="direction"
+          class="assistant-resize-handle"
+          :class="`assistant-resize-handle--${direction}`"
+          type="button"
+          :data-testid="`assistant-resize-${direction}`"
+          :aria-label="t(`components.assistant.resize.${direction}`)"
+          :title="t(`components.assistant.resize.${direction}`)"
+          @pointerdown="startFloatingResize($event, direction)"
+          @keydown="resizeWithKeyboard($event, direction)"
+        />
+      </template>
+      <AssistantPanel @floating-drag-start="startFloatingDrag" />
     </aside>
+
+    <AppTooltip v-if="assistantLauncherVisible" :label="t('components.assistant.openFloating')">
+      <button
+        class="assistant-launcher"
+        type="button"
+        data-testid="assistant-floating-launcher"
+        :aria-label="t('components.assistant.openFloating')"
+        @click="assistant.openPanel()"
+      >
+        <AppIcon name="assistant" :size="24" />
+      </button>
+    </AppTooltip>
 
     <div class="app-main">
       <header class="topbar">
         <h2>{{ title }}</h2>
         <div class="flex items-center gap-3.5">
-          <AppTooltip v-if="assistantAvailable" :label="t('components.assistant.open')">
+          <AppTooltip
+            v-if="assistantAvailable && assistant.state.position !== 'floating'"
+            :label="t('components.assistant.open')"
+          >
             <button
               class="icon-button"
               type="button"

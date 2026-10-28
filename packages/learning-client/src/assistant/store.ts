@@ -50,9 +50,12 @@ const ASSISTANT_TO_ROUTE: Record<AssistantRouteName, string> = {
   archive: 'archive',
 };
 
+export type AssistantPanelPosition = 'left' | 'right' | 'floating';
+
 export interface AssistantState {
   status: AssistantStatus | null;
   open: boolean;
+  position: AssistantPanelPosition;
   layoutMode: AssistantLayoutMode;
   chatWidth: number;
   threads: AssistantThread[];
@@ -87,6 +90,7 @@ let olderPromise: Promise<void> | null = null;
 const state = reactive<AssistantState>({
   status: null,
   open: false,
+  position: 'left',
   layoutMode: 'split',
   chatWidth: 400,
   threads: [],
@@ -595,6 +599,10 @@ function closePanel(): void {
   state.open = false;
   stopStream();
 }
+function setPosition(position: AssistantPanelPosition): void {
+  state.position = position;
+  state.open = true;
+}
 function setLayout(mode: AssistantLayoutMode): void {
   state.layoutMode = mode;
   state.open = mode !== 'content';
@@ -620,6 +628,7 @@ export interface AssistantStore {
   cancelTurn(): Promise<void>;
   openPanel(): void;
   closePanel(): void;
+  setPosition(position: AssistantPanelPosition): void;
   setLayout(mode: AssistantLayoutMode): void;
   setChatWidth(width: number): void;
   loadOlder(): Promise<void>;
@@ -649,6 +658,7 @@ export function useAssistant(): AssistantStore {
     cancelTurn,
     openPanel,
     closePanel,
+    setPosition,
     setLayout,
     setChatWidth,
     loadOlder,

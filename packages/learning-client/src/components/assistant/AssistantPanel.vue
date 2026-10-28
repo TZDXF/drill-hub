@@ -68,6 +68,12 @@ const { t } = useI18n();
 const learning = useLearning();
 const assistant = useAssistant();
 const state = assistant.state;
+const emit = defineEmits<{ floatingDragStart: [event: PointerEvent] }>();
+const positionOptions = [
+  { value: 'left', label: 'positionLeft', icon: 'panel' },
+  { value: 'right', label: 'positionRight', icon: 'panelRight' },
+  { value: 'floating', label: 'positionFloating', icon: 'floating' },
+] as const;
 const { history } = useAssistantHistory(state);
 const content = ref<HTMLElement | null>(null);
 const scroll = useConversationScroll(content);
@@ -540,7 +546,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="assistant-panel" data-testid="assistant-panel">
-    <header class="assistant-panel__header">
+    <header
+      class="assistant-panel__header"
+      :class="{ 'assistant-panel__header--floating': state.position === 'floating' }"
+      data-testid="assistant-floating-drag-handle"
+      @pointerdown="state.position === 'floating' && emit('floatingDragStart', $event)"
+    >
       <div class="assistant-panel__title" :title="currentThread?.title ?? ''">
         <AppIcon name="assistant" :size="17" /><strong>{{
           currentThread?.title || t('components.assistant.title')
@@ -600,7 +611,46 @@ onBeforeUnmount(() => {
             </DropdownMenuContent></DropdownMenuPortal
           >
         </DropdownMenuRoot>
+        <DropdownMenuRoot>
+          <DropdownMenuTrigger as-child>
+            <button
+              class="icon-button assistant-position-control"
+              type="button"
+              data-testid="assistant-position-trigger"
+              :aria-label="t('components.assistant.position')"
+              :title="t('components.assistant.position')"
+            >
+              <AppIcon
+                :name="
+                  positionOptions.find((option) => option.value === state.position)?.icon ?? 'panel'
+                "
+                :size="17"
+              />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuContent class="dropdown-content" align="end" :side-offset="6">
+              <DropdownMenuItem
+                v-for="option in positionOptions"
+                :key="option.value"
+                class="dropdown-item"
+                :data-testid="`assistant-position-${option.value}`"
+                @select="assistant.setPosition(option.value)"
+              >
+                <AppIcon :name="option.icon" :size="16" />
+                <span>{{ t(`components.assistant.${option.label}`) }}</span>
+                <AppIcon
+                  v-if="state.position === option.value"
+                  class="assistant-position-check"
+                  name="check"
+                  :size="15"
+                />
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenuRoot>
         <AppTooltip
+          v-if="state.position !== 'floating'"
           :label="
             t(
               state.layoutMode === 'split'

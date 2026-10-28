@@ -39,6 +39,8 @@ import x from '@iconify-icons/lucide/x';
 import sparkles from '@iconify-icons/lucide/sparkles';
 import send from '@iconify-icons/lucide/send';
 import panelLeft from '@iconify-icons/lucide/panel-left';
+import panelRight from '@iconify-icons/lucide/panel-right';
+import pictureInPicture2 from '@iconify-icons/lucide/picture-in-picture-2';
 import square from '@iconify-icons/lucide/square';
 import trash from '@iconify-icons/lucide/trash-2';
 import messageSquare from '@iconify-icons/lucide/message-square';
@@ -99,6 +101,8 @@ const icons: Record<string, IconifyIcon> = {
   assistant: sparkles,
   send,
   panel: panelLeft,
+  panelRight,
+  floating: pictureInPicture2,
   square,
   trash,
   message: messageSquare,

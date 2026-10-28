@@ -272,6 +272,16 @@
     "thinking": "Thinking…",
     "layoutSplit": "Side-by-side layout",
     "layoutChat": "Focused chat layout",
+    "position": "Assistant position",
+    "positionLeft": "Left sidebar",
+    "positionRight": "Right sidebar",
+    "positionFloating": "Floating window",
+    "openFloating": "Open learning assistant",
+    "resize": {
+      "left": "Resize assistant from the left",
+      "top": "Resize assistant from the top",
+      "top-left": "Resize assistant from the top-left corner"
+    },
     "processSummary": "Ran {seconds}s · {count} actions",
     "processCount": "{count} actions",
     "turnFailed": "This turn could not be completed",

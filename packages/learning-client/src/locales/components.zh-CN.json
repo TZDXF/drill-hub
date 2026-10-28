@@ -272,6 +272,16 @@
     "thinking": "正在思考…",
     "layoutSplit": "并排布局",
     "layoutChat": "专注对话布局",
+    "position": "助手位置",
+    "positionLeft": "左侧栏",
+    "positionRight": "右侧栏",
+    "positionFloating": "浮窗",
+    "openFloating": "打开学习助手",
+    "resize": {
+      "left": "从左侧调整助手浮窗大小",
+      "top": "从顶部调整助手浮窗大小",
+      "top-left": "从左上角调整助手浮窗大小"
+    },
     "processSummary": "执行了 {seconds} 秒 · {count} 项操作",
     "processCount": "{count} 项操作",
     "turnFailed": "本轮对话未能完成",

@@ -584,6 +584,61 @@ test.describe('内置学习助手', () => {
     await expect(toggle).toHaveAttribute('aria-label', '专注对话布局');
   });
 
+  test('助手支持左右侧栏和可拖动缩放的浮窗', async ({ page, isMobile }) => {
+    test.skip(isMobile, '手机端助手始终全屏覆盖');
+    await login(page);
+    await page.goto('/assistant');
+    const layout = page.locator('.app-layout');
+    const pane = page.getByTestId('assistant-pane');
+
+    await page.getByTestId('assistant-position-trigger').click();
+    await page.getByTestId('assistant-position-right').click();
+    await expect(layout).toHaveClass(/app-layout--assistant-right/);
+    const mainBox = await page.locator('.app-main').boundingBox();
+    const rightPaneBox = await pane.boundingBox();
+    expect(rightPaneBox!.x).toBeGreaterThanOrEqual(mainBox!.x + mainBox!.width);
+
+    await page.getByTestId('assistant-position-trigger').click();
+    await page.getByTestId('assistant-position-floating').click();
+    await expect(layout).not.toHaveClass(/app-layout--assistant(?:\s|$)/);
+    await expect(pane).toHaveClass(/assistant-pane--floating/);
+    await expect(page.locator('.app-main')).toBeVisible();
+
+    await page.getByTestId('assistant-close').click();
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+    const launcher = page.getByTestId('assistant-floating-launcher');
+    await expect(launcher).toBeVisible();
+    await launcher.click();
+    await expect(page.getByTestId('assistant-panel')).toBeVisible();
+
+    const beforeDrag = await pane.boundingBox();
+    const header = await page.getByTestId('assistant-floating-drag-handle').boundingBox();
+    await page.mouse.move(header!.x + 60, header!.y + header!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(header!.x - 40, header!.y + header!.height / 2 - 30, { steps: 5 });
+    await page.mouse.up();
+    const afterDrag = await pane.boundingBox();
+    expect(afterDrag!.x).toBeCloseTo(beforeDrag!.x - 100, 0);
+    expect(afterDrag!.y).toBeCloseTo(beforeDrag!.y - 30, 0);
+
+    const resizeHandle = await page.getByTestId('assistant-resize-top-left').boundingBox();
+    await page.mouse.move(resizeHandle!.x + 8, resizeHandle!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(resizeHandle!.x - 32, resizeHandle!.y - 2, { steps: 5 });
+    await page.mouse.up();
+    const afterResize = await pane.boundingBox();
+    expect(afterResize!.width).toBeCloseTo(afterDrag!.width + 40, 0);
+    expect(afterResize!.height).toBeCloseTo(afterDrag!.height + 10, 0);
+    expect(afterResize!.x + afterResize!.width).toBeCloseTo(afterDrag!.x + afterDrag!.width, 0);
+    expect(afterResize!.y + afterResize!.height).toBeCloseTo(afterDrag!.y + afterDrag!.height, 0);
+
+    await page.getByTestId('assistant-position-trigger').click();
+    await page.getByTestId('assistant-position-left').click();
+    await expect(layout).toHaveClass(/app-layout--assistant/);
+    await expect(layout).not.toHaveClass(/app-layout--assistant-right/);
+    await expect(pane).not.toHaveClass(/assistant-pane--floating/);
+  });
+
   test('助手侧边栏仅在学习路由展示', async ({ page, isMobile }) => {
     await login(page);
     if (isMobile) {
