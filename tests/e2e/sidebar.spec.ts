@@ -53,10 +53,31 @@ test('收起后保留图标导航与提示，展开恢复调整后的宽度', as
   test.skip(isMobile, '仅桌面显示侧边栏');
   await login(page);
   await dragSidebar(page, 80);
-  await page.getByRole('button', { name: '收起侧边栏' }).click();
+  const header = page.locator('.sidebar-header');
+  const collapse = header.getByRole('button', { name: '收起侧边栏' });
+  await expect(collapse).toBeVisible();
+  expect(
+    await header.evaluate((element) => {
+      const brand = element.querySelector('.brand')!.getBoundingClientRect();
+      const button = element.querySelector('button')!.getBoundingClientRect();
+      return (
+        button.x >= brand.right &&
+        Math.abs(button.y + button.height / 2 - brand.y - brand.height / 2) < 1
+      );
+    }),
+  ).toBe(true);
+  await collapse.click();
   await expect.poll(() => sidebarWidth(page)).toBe(72);
-  const expand = page.getByRole('button', { name: '展开侧边栏' });
+  const expand = header.getByRole('button', { name: '展开侧边栏' });
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await page.mouse.move(600, 100);
+  await expect(expand.locator('.sidebar-toggle__brand')).toHaveCSS('opacity', '1');
+  await expect(expand.locator('.sidebar-toggle__action')).toHaveCSS('opacity', '0');
+  await expand.hover();
+  await expect(expand.locator('.sidebar-toggle__brand')).toHaveCSS('opacity', '0');
+  await expect(expand.locator('.sidebar-toggle__action')).toHaveCSS('opacity', '1');
+  await page.mouse.move(600, 100);
+  await expect(expand.locator('.sidebar-toggle__brand')).toHaveCSS('opacity', '1');
   await expect(page.getByRole('separator', { name: '调整侧边栏宽度' })).toHaveCount(0);
   await expect(page.locator('.brand strong')).toBeHidden();
   const history = page
@@ -75,6 +96,21 @@ test('收起后保留图标导航与提示，展开恢复调整后的宽度', as
     'true',
   );
   await expect(history.locator('span')).toBeVisible();
+});
+
+test('顶部侧栏开关可通过键盘收起和展开，聚焦时显示展开图标', async ({ page, isMobile }) => {
+  test.skip(isMobile, '仅桌面显示侧边栏');
+  await login(page);
+  await page.locator('.brand').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: '收起侧边栏' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  const expand = page.getByRole('button', { name: '展开侧边栏' });
+  await expect(expand).toBeFocused();
+  await expect(expand.locator('.sidebar-toggle__action')).toHaveCSS('opacity', '1');
+  await expect(expand.locator('.sidebar-toggle__brand')).toHaveCSS('opacity', '0');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => sidebarWidth(page)).toBe(244);
 });
 
 test('助手布局中可以收起和展开侧边栏，移动视口保留底部导航', async ({ page, isMobile }) => {

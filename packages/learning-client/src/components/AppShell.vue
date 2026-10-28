@@ -352,16 +352,38 @@ async function logout() {
       class="sidebar"
       :class="{ 'sidebar--collapsed': sidebarCollapsed }"
     >
-      <RouterLink
-        class="brand"
-        :to="{ name: 'home' }"
-        :aria-label="t('components.shell.brandHome')"
-      >
-        <span class="brand-mark"><AppIcon name="book" :size="22" /></span>
-        <span
-          ><strong>Drill Hub</strong><small>{{ t('components.shell.brandSubtitle') }}</small></span
+      <div class="sidebar-header">
+        <RouterLink
+          v-show="!sidebarCollapsed"
+          class="brand"
+          :to="{ name: 'home' }"
+          :aria-label="t('components.shell.brandHome')"
         >
-      </RouterLink>
+          <span class="brand-mark"><AppIcon name="book" :size="22" /></span>
+          <span
+            ><strong>Drill Hub</strong
+            ><small>{{ t('components.shell.brandSubtitle') }}</small></span
+          >
+        </RouterLink>
+        <AppTooltip :label="sidebarToggleLabel" side="right">
+          <button
+            class="sidebar-toggle icon-button"
+            :class="{ 'sidebar-toggle--brand': sidebarCollapsed }"
+            type="button"
+            :aria-label="sidebarToggleLabel"
+            :aria-expanded="!sidebarCollapsed"
+            aria-controls="desktop-sidebar-nav"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
+            <AppIcon v-if="sidebarCollapsed" class="sidebar-toggle__brand" name="book" :size="22" />
+            <AppIcon
+              class="sidebar-toggle__action"
+              :name="sidebarCollapsed ? 'panelExpand' : 'panelCollapse'"
+              :size="20"
+            />
+          </button>
+        </AppTooltip>
+      </div>
       <AppScrollArea class="sidebar-nav-scroll" orientation="vertical" type="hover">
         <nav
           id="desktop-sidebar-nav"
@@ -410,18 +432,6 @@ async function logout() {
           </template>
         </nav>
       </AppScrollArea>
-      <AppTooltip :label="sidebarToggleLabel" side="right">
-        <button
-          class="sidebar-toggle nav-link"
-          type="button"
-          :aria-label="sidebarToggleLabel"
-          :aria-expanded="!sidebarCollapsed"
-          aria-controls="desktop-sidebar-nav"
-          @click="sidebarCollapsed = !sidebarCollapsed"
-        >
-          <AppIcon name="panel" :size="19" /><span>{{ sidebarToggleLabel }}</span>
-        </button>
-      </AppTooltip>
       <div
         v-if="!sidebarCollapsed"
         class="sidebar-resize-handle"

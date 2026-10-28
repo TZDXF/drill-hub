@@ -39,6 +39,8 @@ import x from '@iconify-icons/lucide/x';
 import sparkles from '@iconify-icons/lucide/sparkles';
 import send from '@iconify-icons/lucide/send';
 import panelLeft from '@iconify-icons/lucide/panel-left';
+import panelLeftClose from '@iconify-icons/lucide/panel-left-close';
+import panelLeftOpen from '@iconify-icons/lucide/panel-left-open';
 import panelRight from '@iconify-icons/lucide/panel-right';
 import pictureInPicture2 from '@iconify-icons/lucide/picture-in-picture-2';
 import square from '@iconify-icons/lucide/square';
@@ -101,6 +103,8 @@ const icons: Record<string, IconifyIcon> = {
   assistant: sparkles,
   send,
   panel: panelLeft,
+  panelCollapse: panelLeftClose,
+  panelExpand: panelLeftOpen,
   panelRight,
   floating: pictureInPicture2,
   square,
