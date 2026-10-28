@@ -1,5 +1,8 @@
 {
   "shell": {
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "resizeSidebar": "Resize sidebar",
     "titles": {
       "topics": "Learning topics",
       "plan": "Learning plan",

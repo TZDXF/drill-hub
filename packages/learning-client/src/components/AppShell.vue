@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   DropdownMenuContent,
@@ -31,6 +31,58 @@ const learning = useLearning();
 const assistant = useAssistant();
 const route = useRoute();
 const router = useRouter();
+const sidebarCollapsed = ref(false);
+const sidebarWidth = ref(244);
+const sidebarMinWidth = 200;
+const sidebarMaxWidth = 360;
+const sidebarDrag = ref<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+const sidebarToggleLabel = computed(() =>
+  t(`components.shell.${sidebarCollapsed.value ? 'expandSidebar' : 'collapseSidebar'}`),
+);
+
+function setSidebarWidth(width: number) {
+  sidebarWidth.value = Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, Math.round(width)));
+}
+
+function startSidebarResize(event: PointerEvent) {
+  if (event.button !== 0 || !event.isPrimary) return;
+  const handle = event.currentTarget as HTMLElement;
+  handle.focus();
+  handle.setPointerCapture(event.pointerId);
+  sidebarDrag.value = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: sidebarWidth.value,
+  };
+  event.preventDefault();
+}
+
+function resizeSidebar(event: PointerEvent) {
+  const drag = sidebarDrag.value;
+  if (drag?.pointerId !== event.pointerId) return;
+  setSidebarWidth(drag.startWidth + event.clientX - drag.startX);
+}
+
+function stopSidebarResize(event: PointerEvent) {
+  if (sidebarDrag.value?.pointerId !== event.pointerId) return;
+  sidebarDrag.value = null;
+  const handle = event.currentTarget as HTMLElement;
+  if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+}
+
+function resizeSidebarWithKeyboard(event: KeyboardEvent) {
+  const widths: Record<string, number> = {
+    ArrowLeft: sidebarWidth.value - 10,
+    ArrowRight: sidebarWidth.value + 10,
+    Home: sidebarMinWidth,
+    End: sidebarMaxWidth,
+  };
+  const width = widths[event.key];
+  if (width === undefined) return;
+  event.preventDefault();
+  setSidebarWidth(width);
+}
+
 const immersive = computed(() => Boolean(route.meta.immersive));
 const focused = computed(() => Boolean(route.meta.focus));
 const assistantAvailable = computed(() => Boolean(route.meta.assistantPanel));
@@ -161,14 +213,23 @@ async function logout() {
     class="app-layout"
     :class="{
       'app-layout--focused': focused,
+      'app-layout--sidebar-resizing': sidebarDrag !== null,
       'app-layout--assistant': assistantActive && !focused,
       'app-layout--assistant-chat':
         assistantActive && !focused && assistant.state.layoutMode === 'chat',
     }"
-    :style="assistantActive ? { '--assistant-width': `${assistant.state.chatWidth}px` } : undefined"
+    :style="{
+      '--sidebar-width': `${sidebarCollapsed ? 72 : sidebarWidth}px`,
+      '--assistant-width': assistantActive ? `${assistant.state.chatWidth}px` : undefined,
+    }"
   >
     <a class="skip-link" href="#main-content">{{ t('components.shell.skipToContent') }}</a>
-    <aside v-if="!focused" class="sidebar">
+    <aside
+      v-if="!focused"
+      id="desktop-sidebar"
+      class="sidebar"
+      :class="{ 'sidebar--collapsed': sidebarCollapsed }"
+    >
       <RouterLink
         class="brand"
         :to="{ name: 'home' }"
@@ -180,41 +241,83 @@ async function logout() {
         >
       </RouterLink>
       <AppScrollArea class="sidebar-nav-scroll" orientation="vertical" type="hover">
-        <nav class="sidebar-nav" :aria-label="t('components.shell.mainNav')">
+        <nav
+          id="desktop-sidebar-nav"
+          class="sidebar-nav"
+          :aria-label="t('components.shell.mainNav')"
+        >
           <span class="nav-section-label">{{ t('components.shell.sectionLearn') }}</span>
-          <RouterLink
-            v-for="item in primaryNav"
-            :key="item.name"
-            :to="{ name: item.name }"
-            class="nav-link"
-            :class="{ active: isActive(item.name) }"
-          >
-            <AppIcon :name="item.icon" :size="19" /><span>{{ item.label }}</span>
-          </RouterLink>
-          <span class="nav-section-label">{{ t('components.shell.sectionManage') }}</span>
-          <RouterLink
-            v-for="item in secondaryNav"
-            :key="item.name"
-            :to="{ name: item.name }"
-            class="nav-link"
-            :class="{ active: isActive(item.name) }"
-          >
-            <AppIcon :name="item.icon" :size="19" /><span>{{ item.label }}</span>
-          </RouterLink>
-          <template v-if="learning.state.user?.role === 'admin'">
-            <span class="nav-section-label">{{ t('components.shell.sectionSystem') }}</span>
+          <AppTooltip v-for="item in primaryNav" :key="item.name" :label="item.label" side="right">
             <RouterLink
-              v-for="item in adminNav"
-              :key="item.name"
               :to="{ name: item.name }"
               class="nav-link"
               :class="{ active: isActive(item.name) }"
+              :aria-label="item.label"
             >
               <AppIcon :name="item.icon" :size="19" /><span>{{ item.label }}</span>
             </RouterLink>
+          </AppTooltip>
+          <span class="nav-section-label">{{ t('components.shell.sectionManage') }}</span>
+          <AppTooltip
+            v-for="item in secondaryNav"
+            :key="item.name"
+            :label="item.label"
+            side="right"
+          >
+            <RouterLink
+              :to="{ name: item.name }"
+              class="nav-link"
+              :class="{ active: isActive(item.name) }"
+              :aria-label="item.label"
+            >
+              <AppIcon :name="item.icon" :size="19" /><span>{{ item.label }}</span>
+            </RouterLink>
+          </AppTooltip>
+          <template v-if="learning.state.user?.role === 'admin'">
+            <span class="nav-section-label">{{ t('components.shell.sectionSystem') }}</span>
+            <AppTooltip v-for="item in adminNav" :key="item.name" :label="item.label" side="right">
+              <RouterLink
+                :to="{ name: item.name }"
+                class="nav-link"
+                :class="{ active: isActive(item.name) }"
+                :aria-label="item.label"
+              >
+                <AppIcon :name="item.icon" :size="19" /><span>{{ item.label }}</span>
+              </RouterLink>
+            </AppTooltip>
           </template>
         </nav>
       </AppScrollArea>
+      <AppTooltip :label="sidebarToggleLabel" side="right">
+        <button
+          class="sidebar-toggle nav-link"
+          type="button"
+          :aria-label="sidebarToggleLabel"
+          :aria-expanded="!sidebarCollapsed"
+          aria-controls="desktop-sidebar-nav"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          <AppIcon name="panel" :size="19" /><span>{{ sidebarToggleLabel }}</span>
+        </button>
+      </AppTooltip>
+      <div
+        v-if="!sidebarCollapsed"
+        class="sidebar-resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        aria-controls="desktop-sidebar"
+        :aria-label="t('components.shell.resizeSidebar')"
+        :aria-valuemin="sidebarMinWidth"
+        :aria-valuemax="sidebarMaxWidth"
+        :aria-valuenow="sidebarWidth"
+        @pointerdown="startSidebarResize"
+        @pointermove="resizeSidebar"
+        @pointerup="stopSidebarResize"
+        @pointercancel="stopSidebarResize"
+        @lostpointercapture="stopSidebarResize"
+        @keydown="resizeSidebarWithKeyboard"
+      />
     </aside>
 
     <aside
