@@ -55,7 +55,7 @@ describe('server connection and request isolation', () => {
         { headers: { 'content-type': 'application/json' } },
       );
     });
-    const refreshCsrf = vi.fn(async () => 'fresh-token');
+    const refreshCsrf = vi.fn<() => Promise<string | null>>(async () => 'fresh-token');
     const client = new ApiClient({
       baseUrl: 'https://study.example.org',
       credentials: 'omit',
@@ -79,7 +79,7 @@ describe('server connection and request isolation', () => {
           { status: 403 },
         ),
     );
-    const refreshCsrf = vi.fn(async () => null);
+    const refreshCsrf = vi.fn<() => Promise<string | null>>(async () => null);
     const client = new ApiClient({
       baseUrl: 'https://study.example.org',
       credentials: 'omit',

@@ -9,6 +9,7 @@
     "baseUrl": ".",
     "paths": {
       "#server/*": ["apps/server/src/*"],
+      "#server-root/*": ["apps/server/*"],
       "#learning-client/*": ["packages/learning-client/src/*"],
       "#mobile/*": ["apps/mobile/src/*"],
       "#api-client/*": ["packages/api-client/src/*"]

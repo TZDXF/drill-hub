@@ -6,7 +6,7 @@ import {
   seedTopicBundle,
   setupLearningApp,
   type LearningFixture,
-} from './learning-fixture.js';
+} from '#server-root/test/learning-fixture.js';
 
 afterEach(closeTrackedApps);
 

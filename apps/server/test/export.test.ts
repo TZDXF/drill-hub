@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { closeTrackedApps, seedTopicBundle, setupLearningApp } from './learning-fixture.js';
+import {
+  closeTrackedApps,
+  seedTopicBundle,
+  setupLearningApp,
+} from '#server-root/test/learning-fixture.js';
 
 afterEach(closeTrackedApps);
 
