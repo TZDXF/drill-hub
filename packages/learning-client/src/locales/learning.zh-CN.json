@@ -90,6 +90,7 @@
       "title": "永久删除主题",
       "irreversible": "不可恢复",
       "description": "将彻底删除此主题及全部学习数据，包括已归档内容。若日后仍需使用，请先下载数据备份。",
+      "descriptionMobile": "将彻底删除此主题及全部学习数据，包括已归档内容。此操作无法撤销。",
       "exportFirst": "先导出备份",
       "action": "永久删除主题…",
       "loading": "正在检查影响…",

@@ -2586,23 +2586,42 @@
   }
   .settings-grid--mobile {
     grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-grid--mobile .settings-profile {
+    padding: 18px 16px;
+  }
+  .settings-grid--mobile .settings-profile > .settings-card__heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .settings-grid--mobile .settings-profile .form-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-grid--mobile .settings-profile .form-actions .button {
+    min-height: 48px;
   }
   .profile-display {
     width: 100%;
     display: flex;
     align-items: center;
     gap: 13px;
-    margin-bottom: 12px;
-    padding: 15px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--paper-muted);
+    min-height: 64px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
     color: var(--ink);
     text-align: left;
     cursor: pointer;
   }
   .profile-display:hover {
-    border-color: var(--teal);
+    background: var(--paper-muted);
   }
   .profile-display:focus-visible {
     outline: 3px solid var(--profile-focus-ring);
@@ -2642,32 +2661,114 @@
     color: var(--teal);
     font-size: 12px;
   }
+  .profile-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .profile-details > div {
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 5px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--paper-muted);
+    font-size: 11px;
+  }
+  .settings-group-title {
+    margin: 0 0 10px;
+    padding-left: 4px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .settings-tools__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .settings-tool {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 72px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .settings-tool .list-card__icon {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+  }
+  .settings-tool > span:nth-child(2) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .settings-grid--mobile .settings-menu {
+    padding: 0;
+    overflow: hidden;
+  }
+  .settings-menu .settings-card__heading {
+    margin: 0;
+    padding: 14px 16px 4px;
+  }
+  .settings-menu h2 {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
   .mobile-setting-list {
     display: grid;
-    gap: 8px;
+    padding: 0 16px;
   }
   .mobile-setting-link {
     width: 100%;
-    min-height: 50px;
+    min-height: 56px;
     display: flex;
     align-items: center;
     gap: 11px;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper);
+    padding: 12px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--ink);
     text-align: left;
     cursor: pointer;
   }
   .mobile-setting-link:hover {
-    border-color: var(--teal);
     background: var(--teal-soft);
+  }
+  .mobile-setting-link + .mobile-setting-link {
+    border-top: 1px solid var(--line);
+  }
+  .mobile-setting-link:focus-visible,
+  .settings-tool:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: -3px;
   }
   .mobile-setting-link > span {
     flex: 1;
-    font-size: 13px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 14px;
     font-weight: 650;
+  }
+  .mobile-setting-link > .mobile-setting-value {
+    flex: 0 0 auto;
+    max-width: 50%;
+    color: var(--ink-soft);
+    text-align: right;
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .mobile-setting-link > .app-icon {
+    flex: 0 0 auto;
   }
   .mobile-setting-link > .app-icon:first-child {
     color: var(--teal);
@@ -2678,7 +2779,8 @@
   .mobile-logout {
     width: 100%;
     justify-content: center;
-    margin-top: 16px;
+    min-height: 48px;
+    margin-top: 0;
   }
   .settings-grid .settings-account-actions,
   .settings-grid .settings-server-action {

@@ -12,6 +12,7 @@ import type {
   Topic,
 } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
+import { useMobileLayout } from '#learning-client/useMobileLayout';
 import { errorMessage, formatDate, formatDuration, formatScore } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
@@ -20,6 +21,7 @@ import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 
 const { t, n } = useI18n();
 const learning = useLearning();
+const isMobile = useMobileLayout();
 const route = useRoute();
 const router = useRouter();
 const topic = ref<Topic | null>(null);
@@ -392,10 +394,11 @@ watch(topicId, load);
           </div>
         </div>
         <p class="topic-danger-zone__description">
-          {{ t('learning.topicDetail.purge.description') }}
+          {{ t(`learning.topicDetail.purge.${isMobile ? 'descriptionMobile' : 'description'}`) }}
         </p>
         <div class="topic-danger-zone__actions">
           <RouterLink
+            v-if="!isMobile"
             class="button"
             :to="{ name: 'settings', query: { focus: 'export' } }"
             data-testid="topic-export"

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { AnswerLinkCreated, Assessment, Topic } from '@drill-hub/contracts';
 import { login, post, agentHeaders } from '#e2e/helpers';
 
-test('主题页可吊销答题链接并经影响预览永久删除主题', async ({ page }) => {
+test('主题页可吊销答题链接并经影响预览永久删除主题', async ({ page, isMobile }) => {
   await login(page);
   const headers = await agentHeaders(page.request, `maintenance-${randomUUID()}`, [
     'read',
@@ -63,10 +63,15 @@ test('主题页可吊销答题链接并经影响预览永久删除主题', async
   await revokeDialog.getByRole('button', { name: '确认吊销' }).click();
   await expect(linksCard).toContainText('已吊销');
 
-  await page.getByTestId('topic-export').click();
-  await expect(page).toHaveURL(/\/settings\?focus=export$/);
-  await expect(page.getByRole('heading', { name: '数据备份与导出' })).toBeInViewport();
-  await page.goBack();
+  if (isMobile) {
+    await expect(page.getByTestId('topic-export')).toHaveCount(0);
+    await expect(page.locator('.topic-danger-zone')).not.toContainText('下载数据备份');
+  } else {
+    await page.getByTestId('topic-export').click();
+    await expect(page).toHaveURL(/\/settings\?focus=export$/);
+    await expect(page.getByRole('heading', { name: '数据备份与导出' })).toBeInViewport();
+    await page.goBack();
+  }
 
   await page.getByTestId('topic-purge').click();
   const dialog = page.getByRole('dialog');

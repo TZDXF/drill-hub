@@ -105,6 +105,8 @@
     "saveProfile": "保存资料",
     "changePassword": "修改密码",
     "securityTitleMobile": "账号与安全",
+    "preferencesTitleMobile": "偏好设置",
+    "toolsTitleMobile": "学习工具",
     "securityTitleDesktop": "账号与授权",
     "fieldUsername": "用户名",
     "switchServer": "切换服务器",

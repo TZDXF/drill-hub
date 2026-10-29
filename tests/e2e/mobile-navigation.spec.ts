@@ -39,6 +39,13 @@ test('手机端我的页面展示可编辑的个人信息，并提供清晰的�
   await expect(page.getByRole('checkbox', { name: '答题后自动提交' })).toHaveCount(0);
 
   await page.getByRole('button', { name: '编辑个人信息', exact: true }).click();
+  await expect(page.getByLabel('显示名称', { exact: true })).toBeFocused();
+  const originalName = await page.getByLabel('显示名称', { exact: true }).inputValue();
+  await page.getByLabel('显示名称', { exact: true }).fill('不保存的名称');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('button', { name: '编辑个人信息', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: '编辑个人信息', exact: true }).click();
+  await expect(page.getByLabel('显示名称', { exact: true })).toHaveValue(originalName);
   await expect(page.getByLabel('时区', { exact: true })).toHaveCount(0);
   await page.getByLabel('显示名称', { exact: true }).fill('移动端学习者');
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -64,4 +71,37 @@ test('手机端我的页面展示可编辑的个人信息，并提供清晰的�
 
   await page.getByRole('link', { name: '返回个人设置', exact: true }).click();
   await expect(page).toHaveURL(/\/settings$/);
+});
+
+test('我的页面按用途分组，窄屏触控区域足够且没有横向溢出', async ({ page }, testInfo) => {
+  await login(page);
+  await page.goto('/settings');
+  const tools = page.getByRole('region', { name: '学习工具', exact: true });
+  const preferences = page.getByRole('region', { name: '偏好设置', exact: true });
+  const security = page.getByRole('region', { name: '账号与安全', exact: true });
+  await expect(tools.getByRole('link')).toHaveCount(2);
+  await expect(preferences.getByRole('button')).toHaveCount(2);
+  await expect(security.getByRole('link')).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: '数据备份与导出' })).toHaveCount(0);
+
+  for (const width of [320, 393, 780]) {
+    await page.setViewportSize({ width, height: 851 });
+    await expect(preferences).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    for (const target of await page
+      .locator('.profile-display, .settings-tool, .mobile-setting-link, .mobile-logout')
+      .all()) {
+      const box = await target.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(48);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`settings-${width}.png`), fullPage: true });
+  }
+
+  await tools.getByRole('link', { name: '站内搜索', exact: true }).click();
+  await expect(page).toHaveURL(/\/search$/);
+  await page.goBack();
+  await tools.getByRole('link', { name: 'Token 用量', exact: true }).click();
+  await expect(page).toHaveURL(/\/token-usage$/);
 });

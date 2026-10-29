@@ -39,7 +39,7 @@ function fixture(days = 30, empty = false): TokenUsageReport {
   };
 }
 
-test('用量页可从设置进入，展示空状态并读取真实会话接口', async ({ page }) => {
+test('用量页可从设置进入，展示空状态并读取真实会话接口', async ({ page, isMobile }) => {
   await login(page);
   const response = await page.request.get('/api/v1/me/token-usage?days=7&utcOffsetMinutes=480');
   await expect(response).toBeOK();
@@ -50,7 +50,10 @@ test('用量页可从设置进入，展示空状态并读取真实会话接口',
     }),
   );
   await page.goto('/settings');
-  await page.getByRole('main').getByRole('link', { name: 'Token 用量', exact: true }).click();
+  const entry = isMobile
+    ? page.getByRole('region', { name: '学习工具', exact: true })
+    : page.getByRole('navigation', { name: '主导航', exact: true });
+  await entry.getByRole('link', { name: 'Token 用量', exact: true }).click();
   await expect(page).toHaveURL(/\/token-usage$/);
   await expect(
     page.getByRole('heading', { name: 'Token 用量', exact: true, level: 1 }),

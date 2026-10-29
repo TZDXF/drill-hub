@@ -107,6 +107,8 @@
     "save": "Save",
     "saveProfile": "Save profile",
     "securityTitleMobile": "Account and security",
+    "preferencesTitleMobile": "Preferences",
+    "toolsTitleMobile": "Learning tools",
     "securityTitleDesktop": "Account and authorization",
     "logout": "Sign out",
     "sessionsTitle": "Sign-in sessions",

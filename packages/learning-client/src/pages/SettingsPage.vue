@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { ExportBundle, UserView } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
+import { useMobileLayout } from '#learning-client/useMobileLayout';
 import { useLocale } from '#learning-client/i18n';
 import { cycleThemePreference, themePreference } from '#learning-client/theme';
 import { errorMessage } from '#learning-client/utils';
@@ -25,6 +26,8 @@ const route = useRoute();
 const router = useRouter();
 const displayName = ref(learning.state.user?.displayName ?? '');
 const editingProfile = ref(false);
+const profileTrigger = ref<HTMLButtonElement | null>(null);
+const profileNameInput = ref<HTMLInputElement | null>(null);
 const saving = ref(false);
 const passwordOpen = ref(false);
 const changingPassword = ref(false);
@@ -36,19 +39,18 @@ const exportStatus = ref<'idle' | 'success' | 'error'>('idle');
 const exportFileName = ref('');
 const exportError = ref('');
 const exportSection = ref<HTMLElement | null>(null);
-const mobileQuery = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 780px)');
-const isMobile = ref(learning.platform.kind === 'android' || (mobileQuery?.matches ?? false));
-
-function syncLayout() {
-  isMobile.value = learning.platform.kind === 'android' || (mobileQuery?.matches ?? false);
-}
-function startProfileEdit() {
+const isMobile = useMobileLayout();
+async function startProfileEdit() {
   displayName.value = learning.state.user?.displayName ?? '';
   editingProfile.value = true;
+  await nextTick();
+  profileNameInput.value?.focus();
 }
-function cancelProfileEdit() {
+async function cancelProfileEdit() {
   displayName.value = learning.state.user?.displayName ?? '';
   editingProfile.value = false;
+  await nextTick();
+  profileTrigger.value?.focus();
 }
 async function saveProfile() {
   if (!learning.state.user) return;
@@ -61,6 +63,8 @@ async function saveProfile() {
     learning.state.user = user;
     displayName.value = user.displayName;
     editingProfile.value = false;
+    await nextTick();
+    profileTrigger.value?.focus();
     learning.notify.success(
       isMobile.value
         ? t('components.settings.notifyProfileUpdatedMobile')
@@ -126,15 +130,12 @@ async function switchServer() {
 }
 
 onMounted(async () => {
-  mobileQuery?.addEventListener('change', syncLayout);
-  syncLayout();
-  if (route.query.focus === 'export') {
+  if (!isMobile.value && route.query.focus === 'export') {
     await nextTick();
     exportSection.value?.focus({ preventScroll: true });
     exportSection.value?.scrollIntoView({ block: 'center' });
   }
 });
-onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
 </script>
 
 <template>
@@ -146,7 +147,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
       :eyebrow="isMobile ? 'MY PROFILE' : 'PERSONAL SETTINGS'"
     />
     <div class="settings-grid" :class="{ 'settings-grid--mobile': isMobile }">
-      <section class="card settings-card" aria-labelledby="profile-title">
+      <section class="card settings-card settings-profile" aria-labelledby="profile-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="user" /></span>
           <h2 id="profile-title">
@@ -159,6 +160,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </div>
         <div v-if="isMobile && !editingProfile">
           <button
+            ref="profileTrigger"
             class="profile-display"
             type="button"
             :aria-label="t('components.settings.profileEditLabel')"
@@ -175,7 +177,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
               >{{ t('components.settings.profileEditAction') }}<AppIcon name="chevron" :size="16"
             /></span>
           </button>
-          <dl class="definition-list">
+          <dl class="definition-list profile-details">
             <div>
               <dt>{{ t('components.settings.fieldRole') }}</dt>
               <dd>
@@ -208,6 +210,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             >
               <input
                 id="profile-name"
+                ref="profileNameInput"
                 v-model="displayName"
                 class="input"
                 required
@@ -216,7 +219,13 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             </AppFormField>
           </div>
           <div class="form-actions">
-            <button v-if="isMobile" class="button" type="button" @click="cancelProfileEdit">
+            <button
+              v-if="isMobile"
+              class="button"
+              type="button"
+              :disabled="saving"
+              @click="cancelProfileEdit"
+            >
               {{ t('components.settings.cancel') }}
             </button>
             <button
@@ -237,10 +246,29 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </form>
       </section>
 
-      <section v-if="isMobile" class="card settings-card" aria-labelledby="security-title">
+      <section v-if="isMobile" class="settings-tools" aria-labelledby="tools-title">
+        <h2 id="tools-title" class="settings-group-title">
+          {{ t('components.settings.toolsTitleMobile') }}
+        </h2>
+        <div class="settings-tools__grid">
+          <RouterLink class="settings-tool" :to="{ name: 'search' }">
+            <span class="list-card__icon"><AppIcon name="search" /></span>
+            <span>{{ t('components.shell.titles.search') }}</span>
+          </RouterLink>
+          <RouterLink class="settings-tool" :to="{ name: 'token-usage' }">
+            <span class="list-card__icon"><AppIcon name="usage" /></span>
+            <span>{{ t('components.shell.titles.tokenUsage') }}</span>
+          </RouterLink>
+        </div>
+      </section>
+
+      <section
+        v-if="isMobile"
+        class="card settings-card settings-menu"
+        aria-labelledby="preferences-title"
+      >
         <div class="settings-card__heading">
-          <span class="list-card__icon"><AppIcon name="lock" /></span>
-          <h2 id="security-title">{{ t('components.settings.securityTitleMobile') }}</h2>
+          <h2 id="preferences-title">{{ t('components.settings.preferencesTitleMobile') }}</h2>
         </div>
         <div class="mobile-setting-list">
           <button
@@ -252,9 +280,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           >
             <AppIcon name="settings" :size="18" />
             <span>{{ t('components.language.label') }}</span>
-            <span class="ml-auto text-(--ink-soft)">{{
-              locale === 'zh-CN' ? '中文' : 'English'
-            }}</span>
+            <span class="mobile-setting-value">{{ locale === 'zh-CN' ? '中文' : 'English' }}</span>
           </button>
           <button
             class="mobile-setting-link"
@@ -265,26 +291,28 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
           >
             <AppIcon :name="themeIcon" :size="18" />
             <span>{{ t('components.theme.label') }}</span>
-            <span class="ml-auto text-(--ink-soft)">{{ themeLabel }}</span>
+            <span class="mobile-setting-value">{{ themeLabel }}</span>
           </button>
+        </div>
+      </section>
+
+      <section
+        v-if="isMobile"
+        class="card settings-card settings-menu"
+        aria-labelledby="security-title"
+      >
+        <div class="settings-card__heading">
+          <h2 id="security-title">{{ t('components.settings.securityTitleMobile') }}</h2>
+        </div>
+        <div class="mobile-setting-list">
           <RouterLink class="mobile-setting-link" :to="{ name: 'change-password' }">
             <AppIcon name="lock" :size="18" />
             <span>{{ t('components.settings.changePassword') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
-          <RouterLink class="mobile-setting-link" :to="{ name: 'search' }">
-            <AppIcon name="search" :size="18" />
-            <span>{{ t('components.shell.titles.search') }}</span>
-            <AppIcon name="chevron" :size="17" />
-          </RouterLink>
           <RouterLink class="mobile-setting-link" :to="{ name: 'agent-tokens' }">
             <AppIcon name="token" :size="18" />
             <span>{{ t('components.shell.titles.agentTokens') }}</span>
-            <AppIcon name="chevron" :size="17" />
-          </RouterLink>
-          <RouterLink class="mobile-setting-link" :to="{ name: 'token-usage' }">
-            <AppIcon name="usage" :size="18" />
-            <span>{{ t('components.shell.titles.tokenUsage') }}</span>
             <AppIcon name="chevron" :size="17" />
           </RouterLink>
           <button
@@ -298,12 +326,19 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <AppIcon name="chevron" :size="17" />
           </button>
         </div>
-        <button class="button button--danger mobile-logout" type="button" @click="logout">
-          <AppIcon name="logout" :size="17" />{{ t('components.shell.menuLogout') }}
-        </button>
       </section>
 
+      <button
+        v-if="isMobile"
+        class="button button--danger mobile-logout"
+        type="button"
+        @click="logout"
+      >
+        <AppIcon name="logout" :size="17" />{{ t('components.shell.menuLogout') }}
+      </button>
+
       <section
+        v-if="!isMobile"
         id="data-export"
         ref="exportSection"
         class="card settings-card settings-export-card"

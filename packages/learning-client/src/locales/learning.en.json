@@ -90,6 +90,7 @@
       "title": "Permanently delete topic",
       "irreversible": "Irreversible",
       "description": "This permanently removes the topic and all learning data, including archived items. Download a backup first if you may need this data again.",
+      "descriptionMobile": "This permanently removes the topic and all learning data, including archived items. This action cannot be undone.",
       "exportFirst": "Export a backup first",
       "action": "Delete topic permanently…",
       "loading": "Checking impact…",

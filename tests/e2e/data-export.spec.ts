@@ -2,9 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { login } from '#e2e/helpers';
 
-test('设置页可导出学习数据快照', async ({ page }) => {
+test('设置页仅在桌面提供学习数据导出', async ({ page, isMobile }) => {
   await login(page);
-  await page.goto('/settings');
+  await page.goto('/settings?focus=export');
+  if (isMobile) {
+    await expect(page.getByRole('heading', { name: '我的', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '数据备份与导出' })).toHaveCount(0);
+    await expect(page.getByTestId('settings-export')).toHaveCount(0);
+    await expect(page.locator('#data-export')).toHaveCount(0);
+    return;
+  }
   await expect(page.getByRole('heading', { name: '数据备份与导出' })).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('settings-export').click();
@@ -25,7 +32,8 @@ test('设置页可导出学习数据快照', async ({ page }) => {
   await expect(page.getByTestId('settings-export')).toBeEnabled();
 });
 
-test('导出失败时显示内联错误并可直接重试', async ({ page }) => {
+test('导出失败时显示内联错误并可直接重试', async ({ page, isMobile }) => {
+  test.skip(isMobile, '移动端不提供数据导出');
   await login(page);
   await page.goto('/settings');
   await page.route('**/api/v1/me/export', async (route) => {
