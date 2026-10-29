@@ -8,6 +8,7 @@ import { signInternalToken } from '#server/core/internal-auth.js';
 import { baseRecord } from '#server/core/ids.js';
 import { createUser } from '#server/modules/auth/index.js';
 import { runSearch } from '#server/modules/assistant/search.js';
+import { createTurn } from '#server/modules/assistant/service.js';
 import type { SearchProviderRecord } from '#server/db/records.js';
 
 const PASSWORD = 'Test-only-password-42!';
@@ -201,6 +202,142 @@ async function createThread(app: FastifyInstance, admin: Record<string, string>)
   expect(response.statusCode).toBe(201);
   return response.json().data;
 }
+
+describe('assistant conversation archives', () => {
+  it('persists archives, restores with revision checks and only deletes archived conversations', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'drill-assistant-archive-'));
+    dataDirs.push(dir);
+    const databasePath = join(dir, 'test.sqlite');
+    const first = await setupApp(databasePath);
+    const thread = await createThread(first.app, first.admin);
+    const url = `/api/v1/me/assistant/threads/${thread.id}`;
+    expect(thread.archivedAt).toBeNull();
+    const refused = await first.app.inject({ method: 'DELETE', url, headers: first.admin });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe('THREAD_NOT_ARCHIVED');
+    const turn = await createTurn(first.app.ctx, first.ownerId, thread.id, '归档保留的测试消息');
+    const archived = await first.app.inject({
+      method: 'POST',
+      url: `${url}/archive`,
+      headers: first.admin,
+      payload: { expectedRevision: thread.revision },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().data.archivedAt).toEqual(expect.any(String));
+    const busy = await first.app.inject({ method: 'DELETE', url, headers: first.admin });
+    expect(busy.statusCode).toBe(409);
+    expect(busy.json().error.code).toBe('THREAD_BUSY');
+    const queuedTurn = await first.app.ctx.db.get('assistantTurns', turn.turnId);
+    await first.app.ctx.db.update('assistantTurns', turn.turnId, queuedTurn!.revision, {
+      status: 'succeeded',
+    });
+    await first.app.close();
+    apps.splice(apps.indexOf(first.app), 1);
+
+    const { app, admin } = await setupApp(databasePath);
+    const history = await app.inject({ method: 'GET', url, headers: admin });
+    expect(history.json().data.messages).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: turn.userMessageId })]),
+    );
+    for (const [suffix, ids] of [
+      ['', []],
+      ['?archiveState=archived', [thread.id]],
+      ['?archiveState=all', [thread.id]],
+    ] as const) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/me/assistant/threads${suffix}`,
+        headers: admin,
+      });
+      expect(response.json().data.map((item: { id: string }) => item.id)).toEqual(ids);
+    }
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/assistant/threads?archiveState=invalid',
+      headers: admin,
+    });
+    expect(invalid.statusCode).toBe(400);
+    const conflict = await app.inject({
+      method: 'POST',
+      url: `${url}/restore`,
+      headers: admin,
+      payload: { expectedRevision: thread.revision },
+    });
+    expect(conflict.statusCode).toBe(409);
+    const restored = await app.inject({
+      method: 'POST',
+      url: `${url}/restore`,
+      headers: admin,
+      payload: { expectedRevision: archived.json().data.revision },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().data.archivedAt).toBeNull();
+    const active = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/assistant/threads',
+      headers: admin,
+    });
+    expect(active.json().data.map((item: { id: string }) => item.id)).toEqual([thread.id]);
+    await app.inject({
+      method: 'POST',
+      url: `${url}/archive`,
+      headers: admin,
+      payload: { expectedRevision: restored.json().data.revision },
+    });
+    const deleted = await app.inject({ method: 'DELETE', url, headers: admin });
+    expect(deleted.statusCode).toBe(204);
+    expect(await app.ctx.db.get('assistantThreads', thread.id)).toBeUndefined();
+    expect(await app.ctx.db.list('assistantTurns', { threadId: thread.id })).toEqual([]);
+    expect(await app.ctx.db.list('assistantMessages', { threadId: thread.id })).toEqual([]);
+    const actions = (await app.ctx.db.list('auditLogs', {}))
+      .filter((entry) => entry.resourceId === thread.id)
+      .map((entry) => entry.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'assistant.thread.archive',
+        'assistant.thread.restore',
+        'assistant.thread.delete',
+      ]),
+    );
+  });
+
+  it('does not let an administrator archive, restore or delete another user’s conversation', async () => {
+    const { app, admin } = await setupApp();
+    const other = await createUser(app.ctx.db, {
+      username: 'archive-owner',
+      password: PASSWORD,
+      displayName: '归档用户',
+      role: 'user',
+    });
+    const thread = {
+      ...baseRecord(),
+      ownerId: other.id,
+      title: '另一个用户',
+      lastMessageAt: new Date().toISOString(),
+      archivedAt: new Date().toISOString(),
+      durableConversationId: null,
+    };
+    await app.ctx.db.insert('assistantThreads', thread);
+    for (const action of ['archive', 'restore', 'delete']) {
+      const response = await app.inject({
+        method: action === 'delete' ? 'DELETE' : 'POST',
+        url: `/api/v1/me/assistant/threads/${thread.id}${action === 'delete' ? '' : `/${action}`}`,
+        headers: admin,
+        ...(action === 'delete' ? {} : { payload: { expectedRevision: thread.revision } }),
+      });
+      expect(response.statusCode).toBe(404);
+    }
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me/assistant/threads?archiveState=all',
+      headers: admin,
+    });
+    expect(list.json().data).toEqual([]);
+    expect((await app.ctx.db.get('assistantThreads', thread.id))?.archivedAt).toBe(
+      thread.archivedAt,
+    );
+  });
+});
 
 async function pollUntil(
   app: FastifyInstance,

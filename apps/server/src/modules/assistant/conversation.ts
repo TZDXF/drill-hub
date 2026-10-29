@@ -134,6 +134,7 @@ export async function forkAssistantThread(
     ownerId: actor.userId,
     title: `${source.title.slice(0, 180)} · 分支`,
     lastMessageAt: keptTurns.at(-1)?.updatedAt ?? source.createdAt,
+    archivedAt: null,
     durableConversationId: null,
   };
   await ctx.db.transaction(async (tx) => {

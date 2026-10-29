@@ -28,6 +28,10 @@ GET /me/assistant/models（对话可选模型：仅返回启用模型及其启�
 GET /me/assistant/threads/:id?before=<messageId>&limit=<1..100>（按消息分页读取，保留时间线）
 POST /me/assistant/threads/:id/fork（before/through 复制历史到新对话，原对话不变）
 PATCH /me/assistant/threads/:id（expectedRevision 乐观并发控制，手动修改会话标题）
+GET /me/assistant/threads?archiveState=active|archived|all（默认 active；对话含 archivedAt）
+POST /me/assistant/threads/:id/archive（expectedRevision；归档后从普通会话列表隐藏）
+POST /me/assistant/threads/:id/restore（expectedRevision；恢复归档会话）
+DELETE /me/assistant/threads/:id（仅可删除已归档且无进行中轮次的会话；否则 409 THREAD_NOT_ARCHIVED / THREAD_BUSY）
 PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息）
 ```
 
@@ -88,6 +92,7 @@ PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息�
 
 - 桌面（>1100px）：侧栏 + 助手面板（默认 400px，320–560 可调）+ 内容三栏；平板（781–1100px）：面板收窄至 300–340px；手机（≤780px）：全屏覆盖层，`navigate` 动作自动收起，经入口重新打开。
 - 入口：桌面顶栏助手按钮与侧边栏"学习助手"；手机首页快捷链接与 `/assistant` 路由。
+- 会话列表每行末尾提供归档按钮，桌面悬停或键盘聚焦时显示，触屏设备常显。归档当前会话后切换至剩余会话，若无剩余则清空当前视图；归档不会中断服务端生成。下拉菜单不提供删除入口，统一进入 `/assistant/archive` 归档对话管理页恢复或确认永久删除。归档、恢复和删除均检查所有权并记录审计日志。
 - 流式输出：仅使用 SSE，`text_delta` 逐字渲染（vue-stream-markdown）；连接失败或提前结束时每隔 2s 重连 SSE，携带 `after` 游标补齐持久化事件，不降级轮询；页面隐藏或关闭面板时暂停，恢复或重新打开时重连。完成或失败事件统一刷新会话中的最终回复、耗时与过程摘要。
 - 管理页：`/admin/settings/assistant`（搜索/MCP/Skills）；供应商与模型在 `/admin/settings/models` 管理，助手使用的模型在对话中按轮选择。每轮 API 调用与写操作次数不设上限，不提供管理页配置。
 

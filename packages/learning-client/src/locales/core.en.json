@@ -157,6 +157,8 @@
     "EMPTY_UPDATE": "There is nothing to update",
     "EVIDENCE_NOT_IN_ANSWER": "The evidence of the criterion is not part of the bound answer",
     "FORK_ACTIVE_TURN": "An active turn cannot be forked",
+    "THREAD_NOT_ARCHIVED": "Archive the conversation before deleting it",
+    "THREAD_BUSY": "The conversation is still generating a reply. Try deleting it later",
     "FORK_TURN_NOT_FOUND": "The turn to fork was not found",
     "GRADE_VERSION_CONFLICT": "The grading version changed, please refresh and retry",
     "GRADING_ALREADY_ACTIVE": "A grading task is already running",

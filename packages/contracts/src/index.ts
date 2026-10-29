@@ -641,6 +641,7 @@ export interface AssistantThread extends BaseRecord {
   ownerId: string;
   title: string;
   lastMessageAt: string;
+  archivedAt: string | null;
 }
 export type AssistantMessageStatus = 'complete' | 'streaming' | 'failed' | 'interrupted';
 export interface AssistantImageAttachment {

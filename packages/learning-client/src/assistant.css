@@ -1098,6 +1098,33 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .assistant-thread-row {
+    display: flex;
+    align-items: center;
+  }
+  .assistant-thread-select {
+    flex: 1;
+    min-width: 0;
+  }
+  .assistant-thread-archive {
+    flex: none;
+    justify-content: center;
+    width: 32px;
+    padding: 8px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .assistant-thread-row:hover .assistant-thread-archive,
+  .assistant-thread-row:focus-within .assistant-thread-archive {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (hover: none) {
+    .assistant-thread-archive {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
   .assistant-copied {
     position: absolute;
     right: 18px;

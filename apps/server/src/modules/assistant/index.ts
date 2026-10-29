@@ -178,8 +178,25 @@ export function registerAssistantRoutes(
   // ===== 用户：线程与消息 =====
   app.get(`${API_PREFIX}/me/assistant/threads`, async (request) => {
     const actor = await ctx.requireUser(request);
+    const archiveState = query(request).archiveState ?? 'active';
+    assert(
+      ['active', 'archived', 'all'].includes(String(archiveState)),
+      'INVALID_ARCHIVE_STATE',
+      '归档状态无效',
+      400,
+    );
     const threads = await ctx.db.list('assistantThreads', { ownerId: actor.userId });
-    return { data: threads.map(threadView) };
+    return {
+      data: threads
+        .filter((thread) =>
+          archiveState === 'all'
+            ? true
+            : archiveState === 'archived'
+              ? thread.archivedAt !== null
+              : thread.archivedAt === null,
+        )
+        .map(threadView),
+    };
   });
 
   app.post(`${API_PREFIX}/me/assistant/threads`, async (request, reply) => {
@@ -190,6 +207,7 @@ export function registerAssistantRoutes(
       ownerId: actor.userId,
       title: optionalString(input, 'title', '新对话', 200),
       lastMessageAt: now(),
+      archivedAt: null,
       durableConversationId: null,
     };
     await ctx.db.insert('assistantThreads', thread);
@@ -266,10 +284,31 @@ export function registerAssistantRoutes(
     return { data: threadView(updated) };
   });
 
+  for (const action of ['archive', 'restore'] as const) {
+    app.post(`${API_PREFIX}/me/assistant/threads/:id/${action}`, async (request) => {
+      const actor = await ctx.requireUser(request);
+      const revision = expectedRevision(body(request));
+      const updated = await ctx.db.transaction(async (tx) => {
+        const thread = await owned(tx, 'assistantThreads', params(request).id, actor.userId);
+        const result = await tx.update('assistantThreads', thread.id, revision, {
+          archivedAt: action === 'archive' ? now() : null,
+        });
+        await ctx.audit(actor, `assistant.thread.${action}`, 'assistantThread', thread.id, {}, tx);
+        return result;
+      });
+      return { data: threadView(updated) };
+    });
+  }
+
   app.delete(`${API_PREFIX}/me/assistant/threads/:id`, async (request, reply) => {
     const actor = await ctx.requireUser(request);
-    const thread = await owned(ctx.db, 'assistantThreads', params(request).id, actor.userId);
     await ctx.db.transaction(async (tx) => {
+      const thread = await owned(tx, 'assistantThreads', params(request).id, actor.userId);
+      assert(thread.archivedAt !== null, 'THREAD_NOT_ARCHIVED', '请先归档对话再删除', 409);
+      const active = (await tx.list('assistantTurns', { threadId: thread.id })).some(
+        (turn) => turn.status === 'queued' || turn.status === 'running',
+      );
+      assert(!active, 'THREAD_BUSY', '对话仍在生成回复，请稍后再删除', 409);
       for (const table of [
         'assistantEvents',
         'assistantMessages',

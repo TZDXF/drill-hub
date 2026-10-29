@@ -26,6 +26,7 @@ import AdminGradingPage from '#learning-client/pages/AdminGradingPage.vue';
 import AdminAuditPage from '#learning-client/pages/AdminAuditPage.vue';
 import AdminAssistantPage from '#learning-client/pages/AdminAssistantPage.vue';
 import AssistantPage from '#learning-client/pages/AssistantPage.vue';
+import AssistantArchivePage from '#learning-client/pages/AssistantArchivePage.vue';
 
 export function createLearningRouter(context: LearningContext, ready: Promise<void>): Router {
   const router = createRouter({
@@ -125,6 +126,11 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
             meta: { assistantPanel: true },
           },
           { path: 'archive', name: 'archive', component: ArchivePage },
+          {
+            path: 'assistant/archive',
+            name: 'assistant-archive',
+            component: AssistantArchivePage,
+          },
           { path: 'search', name: 'search', component: SearchPage, meta: { assistantPanel: true } },
           { path: 'settings', name: 'settings', component: SettingsPage },
           { path: 'token-usage', name: 'token-usage', component: TokenUsagePage },

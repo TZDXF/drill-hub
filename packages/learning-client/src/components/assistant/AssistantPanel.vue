@@ -9,6 +9,7 @@ import {
   type WatchStopHandle,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -41,7 +42,6 @@ import { errorMessage } from '#learning-client/utils';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
 import AppDialog from '#learning-client/components/AppDialog.vue';
-import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
 import MessageResponse from '#learning-client/components/ai-elements/message/MessageResponse.vue';
 import AssistantComposer from '#learning-client/components/assistant/AssistantComposer.vue';
 import AssistantTurn from '#learning-client/components/assistant/AssistantTurn.vue';
@@ -65,6 +65,7 @@ import {
 } from '#learning-client/assistant/selectionAnchors';
 
 const { t } = useI18n();
+const router = useRouter();
 const learning = useLearning();
 const assistant = useAssistant();
 const state = assistant.state;
@@ -88,9 +89,7 @@ const {
 } = useAssistantQuotes(selectionScope);
 const composer = ref<InstanceType<typeof AssistantComposer> | null>(null);
 const sending = ref(false);
-const threadToDelete = ref<{ id: string; title: string } | null>(null);
-const deletingThread = ref(false);
-const deleteError = ref('');
+const archivingThread = ref<string | null>(null);
 const threadToRename = ref<AssistantThread | null>(null);
 const renamingThread = ref(false);
 const renameError = ref('');
@@ -130,23 +129,15 @@ function notifyCopied() {
     copied.value = false;
   }, 1600);
 }
-function requestRemoveThread() {
-  if (currentThread.value && !deletingThread.value) {
-    threadToDelete.value = { id: currentThread.value.id, title: currentThread.value.title };
-    deleteError.value = '';
-  }
-}
-async function removeThread() {
-  if (!threadToDelete.value || deletingThread.value) return;
-  deletingThread.value = true;
-  deleteError.value = '';
+async function archiveThread(threadId: string) {
+  if (archivingThread.value) return;
+  archivingThread.value = threadId;
   try {
-    await assistant.deleteThread(threadToDelete.value.id);
-    threadToDelete.value = null;
+    await assistant.archiveThread(threadId);
   } catch (reason) {
-    deleteError.value = errorMessage(reason);
+    state.error = errorMessage(reason);
   } finally {
-    deletingThread.value = false;
+    archivingThread.value = null;
   }
 }
 function requestRenameThread() {
@@ -579,16 +570,38 @@ onBeforeUnmount(() => {
               align="end"
               :side-offset="6"
             >
-              <DropdownMenuItem
+              <div
                 v-for="thread in state.threads"
                 :key="thread.id"
-                class="dropdown-item"
-                @select="switchThread(thread.id)"
-                ><AppIcon
-                  :name="thread.id === state.currentThreadId ? 'check' : 'message'"
-                  :size="16"
-                /><span>{{ thread.title }}</span></DropdownMenuItem
+                class="assistant-thread-row"
+                :data-testid="`assistant-thread-${thread.id}`"
               >
+                <DropdownMenuItem
+                  class="dropdown-item assistant-thread-select"
+                  :aria-label="thread.title"
+                  @select="switchThread(thread.id)"
+                >
+                  <AppIcon
+                    :name="thread.id === state.currentThreadId ? 'check' : 'message'"
+                    :size="16"
+                  /><span>{{ thread.title }}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  as-child
+                  :disabled="Boolean(archivingThread)"
+                  @select="archiveThread(thread.id)"
+                >
+                  <button
+                    class="dropdown-item assistant-thread-archive"
+                    type="button"
+                    :aria-label="t('components.assistant.archiveThread')"
+                    :title="t('components.assistant.archiveThread')"
+                    :disabled="Boolean(archivingThread)"
+                  >
+                    <AppIcon name="archive" :size="16" />
+                  </button>
+                </DropdownMenuItem>
+              </div>
               <DropdownMenuSeparator class="dropdown-separator" />
               <DropdownMenuItem class="dropdown-item" @select="createThread"
                 ><AppIcon name="plus" :size="16" />{{
@@ -605,11 +618,11 @@ onBeforeUnmount(() => {
                 }}</DropdownMenuItem
               >
               <DropdownMenuItem
-                v-if="currentThread"
-                class="dropdown-item dropdown-item--danger"
-                @select="requestRemoveThread"
-                ><AppIcon name="trash" :size="16" />{{
-                  t('components.assistant.deleteThread')
+                class="dropdown-item"
+                data-testid="assistant-archived-threads"
+                @select="router.push({ name: 'assistant-archive' })"
+                ><AppIcon name="archive" :size="16" />{{
+                  t('components.assistant.archivedThreads')
                 }}</DropdownMenuItem
               >
             </DropdownMenuContent></DropdownMenuPortal
@@ -800,23 +813,6 @@ onBeforeUnmount(() => {
     <span v-if="copied" class="assistant-copied" role="status">{{
       t('components.assistant.copied')
     }}</span>
-    <ConfirmDialog
-      :open="Boolean(threadToDelete)"
-      :title="t('components.assistant.deleteThreadTitle')"
-      :description="
-        threadToDelete
-          ? t('components.assistant.deleteThreadDescription', { title: threadToDelete.title })
-          : ''
-      "
-      :confirm-label="t('components.assistant.deleteThread')"
-      :busy="deletingThread"
-      danger
-      @update:open="!$event && !deletingThread && (threadToDelete = null)"
-      @confirm="removeThread"
-      ><p v-if="deleteError" class="assistant-panel__error" role="alert">
-        {{ deleteError }}
-      </p></ConfirmDialog
-    >
     <AppDialog
       class="dialog-content"
       :open="Boolean(threadToRename)"

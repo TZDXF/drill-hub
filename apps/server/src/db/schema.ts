@@ -199,6 +199,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     ownerId: 'text',
     title: 'text',
     lastMessageAt: 'text',
+    archivedAt: 'text?',
     durableConversationId: 'integer?',
   },
   assistantMessages: {

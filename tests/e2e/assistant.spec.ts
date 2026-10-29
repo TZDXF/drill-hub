@@ -123,7 +123,7 @@ test.describe('内置学习助手', () => {
     });
   }
 
-  test('删除对话需确认，支持取消、失败重试并阻止重复提交', async ({ page, isMobile }) => {
+  test('删除对话需确认，支持取消、失败重试并阻止重复提交', async ({ page }) => {
     await login(page);
     const threads = ['待删除的对话', '保留的对话'].map((title, index) => ({
       id: `thread-delete-${index}`,
@@ -133,6 +133,7 @@ test.describe('内置学习助手', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       revision: 1,
+      archivedAt: new Date().toISOString(),
     }));
     const target = threads[0]!;
     let deleteRequests = 0;
@@ -170,14 +171,12 @@ test.describe('内置学习助手', () => {
       });
     });
 
-    if (isMobile) await page.goto('/assistant');
-    else await page.getByTestId('assistant-toggle').click();
-    const panel = page.getByTestId('assistant-panel');
-    await expect(panel.locator('.assistant-panel__title')).toHaveText(target.title);
+    await page.goto('/assistant/archive');
+    const archived = page.getByTestId(`archived-thread-${target.id}`);
+    await expect(archived).toContainText(target.title);
     const dialog = page.getByRole('dialog', { name: '删除这个对话？' });
     const openConfirmation = async () => {
-      await page.getByTestId('assistant-threads').click();
-      await page.getByRole('menuitem', { name: '删除对话' }).click();
+      await archived.getByRole('button', { name: '删除对话', exact: true }).click();
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText(`确定删除“${target.title}”吗？`);
       await expect(dialog).toContainText('无法恢复');
@@ -187,7 +186,7 @@ test.describe('内置学习助手', () => {
     expect(deleteRequests).toBe(0);
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await expect(dialog).toBeHidden();
-    await expect(panel.locator('.assistant-panel__title')).toHaveText(target.title);
+    await expect(archived).toContainText(target.title);
     await openConfirmation();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
@@ -196,7 +195,7 @@ test.describe('内置学习助手', () => {
     await openConfirmation();
     await dialog.getByRole('button', { name: '删除对话', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('服务暂时不可用');
-    await expect(panel.locator('.assistant-panel__title')).toHaveText(target.title);
+    await expect(archived).toContainText(target.title);
     expect(deleteRequests).toBe(1);
 
     try {
@@ -212,10 +211,8 @@ test.describe('内置学习助手', () => {
       finishDelete();
     }
     await expect(dialog).toBeHidden();
-    await expect(panel.locator('.assistant-panel__title')).toHaveText('学习助手');
-    await page.getByTestId('assistant-threads').click();
-    await expect(page.getByRole('menuitem', { name: target.title, exact: true })).toHaveCount(0);
-    await expect(page.getByRole('menuitem', { name: '保留的对话', exact: true })).toBeVisible();
+    await expect(archived).toHaveCount(0);
+    await expect(page.getByTestId('archived-thread-thread-delete-1')).toContainText('保留的对话');
     expect(deleteRequests).toBe(2);
   });
 

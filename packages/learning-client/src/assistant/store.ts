@@ -259,12 +259,34 @@ async function renameThread(threadId: string, title: string): Promise<void> {
 async function deleteThread(threadId: string): Promise<void> {
   await learning().del(`/me/assistant/threads/${threadId}`);
   deleteAssistantQuotes(threadId);
-  await loadThreads();
+  state.threads = state.threads.filter((thread) => thread.id !== threadId);
   if (state.currentThreadId === threadId) {
     stopStream();
     state.currentThreadId = null;
     clearThread();
   }
+}
+async function archiveThread(threadId: string): Promise<void> {
+  const thread = state.threads.find((item) => item.id === threadId);
+  if (!thread) throw new Error(t('components.assistant.threadNotFound'));
+  await learning().post<AssistantThread>(`/me/assistant/threads/${threadId}/archive`, {
+    expectedRevision: thread.revision,
+  });
+  state.threads = state.threads.filter((item) => item.id !== threadId);
+  if (state.currentThreadId === threadId) {
+    stopStream();
+    state.currentThreadId = null;
+    clearThread();
+    if (state.threads.length) await selectThread(state.threads[0]!.id);
+  }
+}
+async function restoreThread(thread: AssistantThread): Promise<void> {
+  const updated = await learning().post<AssistantThread>(
+    `/me/assistant/threads/${thread.id}/restore`,
+    { expectedRevision: thread.revision },
+  );
+  state.threads = [updated, ...state.threads.filter((item) => item.id !== thread.id)];
+  state.threads.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
 }
 async function refreshCurrentThread(preserveStream = false): Promise<void> {
   if (state.currentThreadId) await selectThread(state.currentThreadId, preserveStream);
@@ -621,6 +643,8 @@ export interface AssistantStore {
   newThread(): Promise<AssistantThread>;
   renameThread(threadId: string, title: string): Promise<void>;
   deleteThread(threadId: string): Promise<void>;
+  archiveThread(threadId: string): Promise<void>;
+  restoreThread(thread: AssistantThread): Promise<void>;
   send(
     content: string,
     options?: { images?: AssistantImageAttachment[]; mode?: AssistantQueueMode },
@@ -654,6 +678,8 @@ export function useAssistant(): AssistantStore {
     newThread,
     renameThread,
     deleteThread,
+    archiveThread,
+    restoreThread,
     send,
     cancelTurn,
     openPanel,
