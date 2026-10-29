@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useLearning } from '#learning-client/injection';
@@ -56,13 +56,20 @@ onMounted(() => {
     learning.notify.warning(t('management.login.sessionExpired'), learning.state.authNotice);
     learning.state.authNotice = '';
   }
-  if (route.query.changed === '1') {
-    learning.notify.success(
-      t('management.login.passwordChanged'),
-      t('management.login.passwordChangedNote'),
-    );
-  }
 });
+
+watch(
+  () => route.query.changed,
+  (changed) => {
+    if (changed === '1') {
+      learning.notify.success(
+        t('management.login.passwordChanged'),
+        t('management.login.passwordChangedNote'),
+      );
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

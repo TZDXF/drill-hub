@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { ExportBundle, SessionView, UserView } from '@drill-hub/contracts';
+import type { ExportBundle, UserView } from '@drill-hub/contracts';
 import { useLearning } from '#learning-client/injection';
 import { useLocale } from '#learning-client/i18n';
 import { cycleThemePreference, themePreference } from '#learning-client/theme';
-import { errorMessage, formatDate } from '#learning-client/utils';
+import { errorMessage } from '#learning-client/utils';
 import PageHeader from '#learning-client/components/PageHeader.vue';
 import AppFormField from '#learning-client/components/AppFormField.vue';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import ConfirmDialog from '#learning-client/components/ConfirmDialog.vue';
-import EmptyState from '#learning-client/components/EmptyState.vue';
+import AppDialog from '#learning-client/components/AppDialog.vue';
+import ChangePasswordForm from '#learning-client/components/ChangePasswordForm.vue';
 
 const { t } = useI18n();
 
@@ -24,12 +25,10 @@ const route = useRoute();
 const router = useRouter();
 const displayName = ref(learning.state.user?.displayName ?? '');
 const editingProfile = ref(false);
-const sessions = ref<SessionView[]>([]);
-const loadingSessions = ref(false);
 const saving = ref(false);
-const sessionsError = ref('');
-const selectedSession = ref<SessionView | null>(null);
-const revoking = ref(false);
+const passwordOpen = ref(false);
+const changingPassword = ref(false);
+const passwordTrigger = ref<HTMLButtonElement | null>(null);
 const switchOpen = ref(false);
 const switching = ref(false);
 const exporting = ref(false);
@@ -39,7 +38,6 @@ const exportError = ref('');
 const exportSection = ref<HTMLElement | null>(null);
 const mobileQuery = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 780px)');
 const isMobile = ref(learning.platform.kind === 'android' || (mobileQuery?.matches ?? false));
-let sessionsRequested = false;
 
 function syncLayout() {
   isMobile.value = learning.platform.kind === 'android' || (mobileQuery?.matches ?? false);
@@ -51,19 +49,6 @@ function startProfileEdit() {
 function cancelProfileEdit() {
   displayName.value = learning.state.user?.displayName ?? '';
   editingProfile.value = false;
-}
-async function loadSessions() {
-  sessionsRequested = true;
-  loadingSessions.value = true;
-  sessionsError.value = '';
-  try {
-    sessions.value = await learning.get<SessionView[]>('/me/sessions');
-  } catch (reason) {
-    sessionsError.value = errorMessage(reason);
-    learning.notify.error(t('components.settings.sessionsErrorTitle'), sessionsError.value);
-  } finally {
-    loadingSessions.value = false;
-  }
 }
 async function saveProfile() {
   if (!learning.state.user) return;
@@ -90,23 +75,6 @@ async function saveProfile() {
     );
   } finally {
     saving.value = false;
-  }
-}
-function sessionLabel(session: SessionView) {
-  return session.channel === 'web' ? t('components.settings.sessionWeb') : 'Android';
-}
-async function revokeSession() {
-  if (!selectedSession.value) return;
-  revoking.value = true;
-  try {
-    await learning.post(`/me/sessions/${selectedSession.value.id}/revoke`, {});
-    learning.notify.success(t('components.settings.notifySessionRevoked'));
-    selectedSession.value = null;
-    await loadSessions();
-  } catch (reason) {
-    learning.notify.error(t('components.settings.notifySessionRevokeFailed'), errorMessage(reason));
-  } finally {
-    revoking.value = false;
   }
 }
 async function logout() {
@@ -157,13 +125,6 @@ async function switchServer() {
   }
 }
 
-watch(
-  isMobile,
-  (mobile) => {
-    if (!mobile && !sessionsRequested) void loadSessions();
-  },
-  { immediate: true },
-);
 onMounted(async () => {
   mobileQuery?.addEventListener('change', syncLayout);
   syncLayout();
@@ -258,9 +219,15 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <button v-if="isMobile" class="button" type="button" @click="cancelProfileEdit">
               {{ t('components.settings.cancel') }}
             </button>
-            <RouterLink v-else class="button" :to="{ name: 'change-password' }">
+            <button
+              v-else
+              ref="passwordTrigger"
+              class="button"
+              type="button"
+              @click="passwordOpen = true"
+            >
               {{ t('components.settings.changePassword') }}
-            </RouterLink>
+            </button>
             <button class="button button--primary" type="submit" :disabled="saving">
               <span v-if="saving" class="spinner" />{{
                 isMobile ? t('components.settings.save') : t('components.settings.saveProfile')
@@ -270,44 +237,12 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </form>
       </section>
 
-      <section class="card settings-card" aria-labelledby="security-title">
+      <section v-if="isMobile" class="card settings-card" aria-labelledby="security-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="lock" /></span>
-          <h2 id="security-title">
-            {{
-              isMobile
-                ? t('components.settings.securityTitleMobile')
-                : t('components.settings.securityTitleDesktop')
-            }}
-          </h2>
+          <h2 id="security-title">{{ t('components.settings.securityTitleMobile') }}</h2>
         </div>
-        <dl v-if="!isMobile" class="definition-list">
-          <div>
-            <dt>{{ t('components.settings.fieldUsername') }}</dt>
-            <dd>{{ learning.state.user?.username }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('components.settings.fieldRole') }}</dt>
-            <dd>
-              {{
-                learning.state.user?.role === 'admin'
-                  ? t('components.shell.roleAdmin')
-                  : t('components.shell.roleLearner')
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>{{ t('components.settings.fieldStatus') }}</dt>
-            <dd>
-              {{
-                learning.state.user?.status === 'active'
-                  ? t('components.settings.statusActive')
-                  : t('components.settings.statusDisabled')
-              }}
-            </dd>
-          </div>
-        </dl>
-        <div v-if="isMobile" class="mobile-setting-list">
+        <div class="mobile-setting-list">
           <button
             class="mobile-setting-link"
             type="button"
@@ -363,23 +298,7 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
             <AppIcon name="chevron" :size="17" />
           </button>
         </div>
-        <div v-else class="button-row settings-account-actions">
-          <RouterLink class="button" :to="{ name: 'token-usage' }">
-            <AppIcon name="usage" :size="16" />{{ t('components.shell.titles.tokenUsage') }}
-          </RouterLink>
-          <RouterLink class="button" :to="{ name: 'agent-tokens' }">
-            <AppIcon name="token" :size="16" />{{ t('components.shell.titles.agentTokens') }}
-          </RouterLink>
-          <button class="button button--danger" type="button" @click="logout">
-            <AppIcon name="logout" :size="16" />{{ t('components.shell.menuLogout') }}
-          </button>
-        </div>
-        <button
-          v-if="isMobile"
-          class="button button--danger mobile-logout"
-          type="button"
-          @click="logout"
-        >
+        <button class="button button--danger mobile-logout" type="button" @click="logout">
           <AppIcon name="logout" :size="17" />{{ t('components.shell.menuLogout') }}
         </button>
       </section>
@@ -444,57 +363,6 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
         </div>
       </section>
 
-      <section v-if="!isMobile" class="card settings-card" aria-labelledby="sessions-title">
-        <div class="settings-card__heading">
-          <span class="list-card__icon"><AppIcon name="history" /></span>
-          <h2 id="sessions-title">{{ t('components.settings.sessionsTitle') }}</h2>
-        </div>
-        <div v-if="loadingSessions" class="loading-block settings-loading">
-          <span class="spinner" />{{ t('components.settings.sessionsLoading') }}
-        </div>
-        <EmptyState
-          v-else-if="sessionsError"
-          compact
-          icon="alert"
-          :title="t('components.settings.sessionsErrorTitle')"
-          :description="t('components.settings.sessionsErrorDescription')"
-        >
-          <button class="button button--small" type="button" @click="loadSessions">
-            {{ t('components.settings.retry') }}
-          </button>
-        </EmptyState>
-        <div v-else-if="sessions.length" class="list-stack">
-          <article
-            v-for="session in sessions"
-            :key="session.id"
-            class="task-row settings-session-row"
-          >
-            <div class="task-row__body">
-              <strong>
-                {{ sessionLabel(session) }}
-                <span v-if="session.current" class="badge badge--green">{{
-                  t('components.settings.sessionCurrent')
-                }}</span>
-              </strong>
-              <span>{{
-                t('components.settings.sessionCreated', {
-                  date: formatDate(session.createdAt),
-                })
-              }}</span>
-            </div>
-            <button
-              class="button button--small button--danger"
-              type="button"
-              :disabled="session.current"
-              @click="selectedSession = session"
-            >
-              {{ t('components.settings.sessionRevoke') }}
-            </button>
-          </article>
-        </div>
-        <p v-else class="muted small">{{ t('components.settings.sessionsEmpty') }}</p>
-      </section>
-
       <section v-if="!isMobile" class="card settings-card" aria-labelledby="server-title">
         <div class="settings-card__heading">
           <span class="list-card__icon"><AppIcon name="server" /></span>
@@ -521,17 +389,17 @@ onBeforeUnmount(() => mobileQuery?.removeEventListener('change', syncLayout));
       </section>
     </div>
 
-    <ConfirmDialog
-      v-if="!isMobile"
-      :open="Boolean(selectedSession)"
-      :title="t('components.settings.revokeTitle')"
-      :description="t('components.settings.revokeDescription')"
-      :confirm-label="t('components.settings.revokeConfirm')"
-      danger
-      :busy="revoking"
-      @update:open="!$event && (selectedSession = null)"
-      @confirm="revokeSession"
-    />
+    <AppDialog
+      v-if="passwordOpen"
+      v-model:open="passwordOpen"
+      class="dialog-content"
+      :title="t('management.password.title')"
+      :description="t('management.password.description')"
+      :busy="changingPassword"
+      @close-auto-focus.prevent="passwordTrigger?.focus()"
+    >
+      <ChangePasswordForm v-model:busy="changingPassword" />
+    </AppDialog>
     <ConfirmDialog
       v-model:open="switchOpen"
       :title="t('components.settings.switchTitle')"
