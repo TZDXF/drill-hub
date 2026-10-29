@@ -58,6 +58,54 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
+describe('assistant model loading', () => {
+  it('loads available models when opening the panel outside the assistant page', async () => {
+    const { store, get } = await setup();
+    const models = [{ id: 'model-1', displayName: '测试模型' }];
+    get.mockImplementation(async (path) => {
+      if (path === '/me/assistant/status') return { modelConfigured: true };
+      if (path === '/me/assistant/models') return models;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    store.openPanel();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(get).toHaveBeenCalledWith('/me/assistant/models');
+    expect(store.state.models).toEqual(models);
+  });
+
+  it('retries loading models on reopen after a failure and preserves a valid selection', async () => {
+    const { store, get } = await setup();
+    const models = [{ id: 'model-1', displayName: '测试模型' }];
+    let unavailable = true;
+    get.mockImplementation(async (path) => {
+      if (path === '/me/assistant/status') return { modelConfigured: true };
+      if (path === '/me/assistant/models') {
+        if (unavailable) throw new Error('offline');
+        return models;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    store.openPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.state.models).toEqual([]);
+
+    unavailable = false;
+    store.closePanel();
+    store.openPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.state.models).toEqual(models);
+
+    store.selectModel('model-1');
+    store.closePanel();
+    store.openPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.state.selectedModelId).toBe('model-1');
+  });
+});
+
 describe('assistant SSE transport', () => {
   it('reconnects SSE after EOF and failure with the last cursor, without polling or repeating actions', async () => {
     const { store, get, stream, streams, push, emit } = await setup();

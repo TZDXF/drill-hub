@@ -10,7 +10,6 @@ const assistant = useAssistant();
 onMounted(() => {
   assistant.setLayout('split');
   assistant.openPanel();
-  void assistant.refreshStatus();
 });
 </script>
 

@@ -604,6 +604,7 @@ function bindVisibility(): void {
 function openPanel(): void {
   state.open = true;
   bindVisibility();
+  void refreshStatus();
   if (state.activeTurnId && !reconnectTimer) connectStream();
   if (!state.currentThreadId && !openingPromise) {
     openingPromise = loadThreads()
