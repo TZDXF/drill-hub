@@ -449,7 +449,7 @@
     "modelDeleted": "Model deleted",
     "modelDeleteFailed": "Could not delete the model",
     "deleteModelTitle": "Delete model",
-    "deleteModelDesc": "Delete \"{name}\"? Models referenced by a grading profile cannot be deleted.",
+    "deleteModelDesc": "Delete \"{name}\"? The default grading model or a model with queued/running grading jobs cannot be deleted.",
     "profileModelError": "Could not load the grading models",
     "profileSaved": "Grading profile saved",
     "profileSavedDesc": "Existing grading tasks stay bound to their profile; the default profile only applies to new tasks.",

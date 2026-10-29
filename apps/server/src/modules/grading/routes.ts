@@ -291,12 +291,7 @@ async function retryJob(
   admin: boolean,
   input: JsonObject,
 ): Promise<GradingJob> {
-  keys(
-    input,
-    admin
-      ? ['expectedRevision', 'reason', 'useDefaultProfile', 'rebindToDefault']
-      : ['expectedRevision'],
-  );
+  keys(input, ['expectedRevision']);
   return ctx.db.transaction(async (tx) => {
     const job = await tx.get('gradingJobs', jobId);
     assert(job && (admin || job.ownerId === actor.userId), 'NOT_FOUND', '评分任务不存在', 404);
@@ -315,15 +310,8 @@ async function retryJob(
         409,
       );
     }
-    const rebind = admin && (input.useDefaultProfile === true || input.rebindToDefault === true);
-    let reason: string | undefined;
-    if (rebind) reason = requiredText(input.reason, 'reason', 4_000);
-    else assert(input.reason === undefined, 'REASON_NOT_ALLOWED', '未改绑配置时不需要原因', 422);
-    let profileId = job.profileId;
-    if (rebind || profileId === null) {
-      const settings = await tx.get('settings', 'global');
-      profileId = settings?.defaultGradingProfileId ?? null;
-    }
+    const settings = await tx.get('settings', 'global');
+    const profileId = settings?.defaultGradingProfileId ?? null;
     assert(profileId, 'DEFAULT_PROFILE_NOT_CONFIGURED', '尚未配置默认评分模型', 422);
     assert(
       await tx.get('gradingProfiles', profileId),
@@ -354,7 +342,6 @@ async function retryJob(
       'gradingJob',
       job.id,
       {
-        ...(reason ? { reason } : {}),
         profileId,
         generation: job.generation,
       },
@@ -831,10 +818,19 @@ export async function registerGradingRoutes(app: FastifyInstance, ctx: AppContex
         '数据已发生变化，请刷新后重试',
         409,
       );
+      const profiles = await tx.list('gradingProfiles', { providerModelId: current.id });
+      const profileIds = new Set(profiles.map((profile) => profile.id));
+      const jobs = profileIds.size ? await tx.list('gradingJobs') : [];
+      const hasActiveWork = jobs.some(
+        (job) =>
+          job.profileId !== null &&
+          profileIds.has(job.profileId) &&
+          (job.status === 'queued' || job.status === 'running'),
+      );
       assert(
-        !(await tx.findOne('gradingProfiles', { providerModelId: current.id })),
+        !profiles.some((profile) => profile.isDefault) && !hasActiveWork,
         'MODEL_IN_USE',
-        '该模型已被评分配置引用，不能删除',
+        '该模型仍被默认评分配置或排队、运行中的评分任务引用，不能删除',
         409,
       );
       await tx.delete('providerModels', current.id);

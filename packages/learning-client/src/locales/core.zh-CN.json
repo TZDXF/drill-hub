@@ -257,7 +257,7 @@
     "MODEL_CONNECTION_NOT_FOUND": "模型连接不存在",
     "MODEL_DISABLED": "模型已停用",
     "MODEL_HTTP_ERROR": "模型供应商返回错误",
-    "MODEL_IN_USE": "该模型已被评分配置引用，不能删除",
+    "MODEL_IN_USE": "该模型仍被默认评分配置或排队、运行中的评分任务引用，不能删除",
     "MODEL_INCOMPLETE": "模型响应不完整",
     "MODEL_INVALID_FINISH": "模型未完整返回结果",
     "MODEL_INVALID_GRADE_SHAPE": "模型返回的评分结构无效",

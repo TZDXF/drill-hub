@@ -348,10 +348,30 @@ describe('grading administration and persistent model workflow', () => {
     expect(
       (await app.ctx.db.list('gradingJobs', { attemptId: newerAttempt.id }))[0].profileId,
     ).toBe(replacement.id);
+    const pendingDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${configured.model.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.model.revision },
+    });
+    expect(pendingDelete.statusCode).toBe(409);
+    expect(pendingDelete.json().error.code).toBe('MODEL_IN_USE');
     await app.ctx.grading.runOnce();
     expect(calls.sort()).toEqual(['configured-model', 'replacement-model']);
     for (const attempt of [originalAttempt, newerAttempt])
       expect((await currentAttempt(app, attempt.id)).items[0].gradingStatus).toBe('completed');
+    const historicalDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${configured.model.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.model.revision },
+    });
+    expect(historicalDelete.statusCode).toBe(200);
+    expect(await app.ctx.db.get('providerModels', configured.model.id)).toBeUndefined();
+    expect(await app.ctx.db.get('gradingProfiles', configured.profile.id)).toMatchObject({
+      providerModelId: configured.model.id,
+      isDefault: false,
+    });
     const listed = await app.inject({ url: '/api/v1/admin/grading-profiles', headers: admin });
     expect(listed.json().data.every((profile: object) => !('promptVersion' in profile))).toBe(true);
     const adapters = await app.inject({ url: '/api/v1/admin/model-adapters', headers: admin });
@@ -821,7 +841,7 @@ describe('grading administration and persistent model workflow', () => {
     async (purpose) => {
       const { app, admin, ownerId } = await setupApp();
       let actualCalls = 0;
-      installProvider(() => {
+      const provider = installProvider(() => {
         actualCalls += 1;
         if (actualCalls === 1)
           return new Response('{"providerSecret":"do-not-store"}', { status: 500 });
@@ -840,7 +860,7 @@ describe('grading administration and persistent model workflow', () => {
           },
         ]);
       });
-      await configureModel(app, admin, { maxRetries: 0 });
+      const configured = await configureModel(app, admin, { maxRetries: 0 });
       const attempt = await lockedAttempt(
         app,
         ownerId,
@@ -856,6 +876,29 @@ describe('grading administration and persistent model workflow', () => {
       expect(job).toMatchObject({ status: 'failed', lastErrorCode: 'MODEL_PROVIDER_UNAVAILABLE' });
       expect(current.items[0]).toMatchObject({ gradingStatus: 'failed', grade: null });
       expect(current.status).toBe('pending_grading');
+      const added = await app.inject({
+        method: 'POST',
+        url: `/api/v1/admin/model-connections/${configured.connection.id}/models`,
+        headers: admin,
+        payload: { modelKey: 'replacement-model' },
+      });
+      const replacementProfile = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+        headers: admin,
+        payload: {
+          expectedRevision: configured.profile.revision,
+          providerModelId: added.json().data.id,
+        },
+      });
+      expect(replacementProfile.statusCode).toBe(200);
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/admin/provider-models/${configured.model.id}`,
+        headers: admin,
+        payload: { expectedRevision: configured.model.revision },
+      });
+      expect(deleted.statusCode).toBe(200);
       const agent = await agentHeaders(app, admin);
       const jobs = await app.inject({ url: '/api/v1/agent/grading-jobs', headers: agent });
       expect(jobs.statusCode).toBe(200);
@@ -871,7 +914,14 @@ describe('grading administration and persistent model workflow', () => {
       await app.ctx.grading.runOnce();
       current = await currentAttempt(app, attempt.id);
       job = (await app.ctx.db.get('gradingJobs', job.id))!;
-      expect(job.status).toBe('succeeded');
+      expect(job).toMatchObject({
+        status: 'succeeded',
+        profileId: replacementProfile.json().data.id,
+      });
+      expect(provider.chatRequests.map((request) => request.model)).toEqual([
+        'configured-model',
+        'replacement-model',
+      ]);
       expect(current.items[0].grade?.score).toBe('10.00');
       expect(current.status).toBe('completed');
     },
@@ -1026,17 +1076,48 @@ describe('grading administration and persistent model workflow', () => {
         }),
       );
     });
-    await configureModel(app, admin);
+    const configured = await configureModel(app, admin);
     const attempt = await lockedAttempt(app, ownerId, modelDefinition(), {
       text: '事务全部成功或全部回滚；转账一起完成。',
     });
     await app.ctx.grading.runOnce();
     const job = (await app.ctx.db.list('gradingJobs', { attemptId: attempt.id }))[0]!;
     expect(job.status).toBe('retry_wait');
+    const added = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/model-connections/${configured.connection.id}/models`,
+      headers: admin,
+      payload: { modelKey: 'replacement-model' },
+    });
+    const replacementProfile = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/admin/grading-profiles/${configured.profile.id}`,
+      headers: admin,
+      payload: {
+        expectedRevision: configured.profile.revision,
+        providerModelId: added.json().data.id,
+      },
+    });
+    expect(replacementProfile.statusCode).toBe(200);
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/provider-models/${configured.model.id}`,
+      headers: admin,
+      payload: { expectedRevision: configured.model.revision },
+    });
+    expect(deleted.statusCode).toBe(200);
     await app.ctx.db.update('gradingJobs', job.id, job.revision, { nextRunAt: now() });
     await app.ctx.grading.runOnce();
     expect((await currentAttempt(app, attempt.id)).items[0].gradingStatus).toBe('completed');
+    expect(await app.ctx.db.get('gradingJobs', job.id)).toMatchObject({
+      status: 'succeeded',
+      profileId: replacementProfile.json().data.id,
+    });
     const records = await app.ctx.db.list('modelUsage');
+    expect(records.map((record) => record.modelKey).sort()).toEqual([
+      'configured-model',
+      'replacement-model',
+    ]);
     expect(records).toHaveLength(2);
     expect(records.every((record) => record.purpose === 'grading')).toBe(true);
     expect(
@@ -1574,7 +1655,7 @@ describe('system blank grades and voided-attempt protection', () => {
         method: 'POST',
         url: `/api/v1/${role}/grading-jobs/${job.id}/retry`,
         headers: role === 'agent' ? agent : admin,
-        payload: role === 'admin' ? { useDefaultProfile: true, reason: '不能复活作废任务' } : {},
+        payload: {},
       });
       expect(result.statusCode).toBe(409);
       expect(result.json().error.code).toBe('ATTEMPT_VOIDED');

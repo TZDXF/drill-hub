@@ -449,7 +449,7 @@
     "modelDeleted": "模型已删除",
     "modelDeleteFailed": "删除模型失败",
     "deleteModelTitle": "删除模型",
-    "deleteModelDesc": "确定删除「{name}」？已被评分配置引用的模型不能删除。",
+    "deleteModelDesc": "确定删除「{name}」？当前默认评分模型或仍有排队、运行中评分任务的模型不能删除。",
     "profileModelError": "评分模型读取失败",
     "profileSaved": "评分配置已保存",
     "profileSavedDesc": "既有评分任务仍绑定原配置，默认配置只应用于新任务。",

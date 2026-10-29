@@ -283,8 +283,7 @@ export class GradingServiceImpl implements GradingService {
             item.definition.gradingMode !== 'model_rubric'
           )
             return;
-          const profileId =
-            job.profileId ?? (await tx.get('settings', 'global'))?.defaultGradingProfileId ?? null;
+          const profileId = (await tx.get('settings', 'global'))?.defaultGradingProfileId ?? null;
           try {
             await this.resolveConfig(profileId, tx);
           } catch (error) {
@@ -347,17 +346,20 @@ export class GradingServiceImpl implements GradingService {
           });
           continue;
         }
-        const profile = candidate.profileId
-          ? await tx.get('gradingProfiles', candidate.profileId)
-          : undefined;
+        const profileId =
+          candidate.status === 'retry_wait'
+            ? ((await tx.get('settings', 'global'))?.defaultGradingProfileId ?? null)
+            : candidate.profileId;
+        const profile = profileId ? await tx.get('gradingProfiles', profileId) : undefined;
         // PostgreSQL 多实例：认领用 SKIP LOCKED 行锁，计数前锁 profile 行，
         // 保证同一 profile 的并发上限不被多个实例同时越过。
-        if (candidate.profileId) await tx.lockRowForUpdate('gradingProfiles', candidate.profileId);
+        if (profileId) await tx.lockRowForUpdate('gradingProfiles', profileId);
         // Claims are serialized in the DB transaction; no model call holds the lock.
-        const runningCount = await tx.countRunningGradingJobs(candidate.profileId);
+        const runningCount = await tx.countRunningGradingJobs(profileId);
         if (runningCount >= (profile?.concurrency ?? 2)) continue;
         const leaseDuration = Math.max(this.leaseMs, (profile?.timeoutMs ?? 0) + 10_000);
         const claimedJob = await tx.update('gradingJobs', candidate.id, candidate.revision, {
+          profileId,
           status: 'running',
           attemptCount: candidate.attemptCount + 1,
           leaseExpiresAt: new Date(Date.now() + leaseDuration).toISOString(),
@@ -367,7 +369,7 @@ export class GradingServiceImpl implements GradingService {
         item.gradingStatus = 'running';
         await refreshAttempt(tx, attempt);
         return {
-          job: candidate,
+          job: { ...candidate, profileId },
           leaseRevision: claimedJob.revision,
           item: structuredClone(item),
           baseGradeVersion,
