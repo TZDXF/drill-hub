@@ -437,6 +437,55 @@
     }
   }
 
+  /* 专注阅读与沉浸答题没有导航侧栏，助手占用两栏中的一栏。 */
+  .assistant-launcher--focused {
+    right: auto;
+    left: calc(24px + env(safe-area-inset-left));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 781px) {
+    .app-layout--focused.app-layout--assistant {
+      grid-template-columns: var(--assistant-width, 400px) minmax(0, 1fr);
+    }
+    .app-layout--focused.app-layout--assistant-right {
+      grid-template-columns: minmax(0, 1fr) var(--assistant-width, 400px);
+    }
+    .app-layout--focused.app-layout--assistant-right > .assistant-pane {
+      grid-column: 2;
+    }
+    .app-layout--focused.app-layout--assistant-right > .app-main {
+      grid-column: 1;
+    }
+    .app-layout--focused.app-layout--assistant.app-layout--assistant-chat {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .app-layout--focused.app-layout--assistant-chat > .assistant-pane {
+      grid-column: 1;
+    }
+  }
+  @media (min-width: 781px) and (max-width: 1200px) {
+    .app-layout--focused.app-layout--assistant .focus-layout--plan,
+    .app-layout--focused.app-layout--assistant .attempt-container,
+    .app-layout--focused.app-layout--assistant .report-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .app-layout--focused.app-layout--assistant .plan-outline-nav--desktop,
+    .app-layout--focused.app-layout--assistant .attempt-question-nav--desktop {
+      display: none;
+    }
+    .app-layout--focused.app-layout--assistant .attempt-aside {
+      display: contents;
+    }
+    .app-layout--focused.app-layout--assistant .plan-outline-fab,
+    .app-layout--focused.app-layout--assistant .question-nav-fab {
+      display: flex;
+    }
+    .app-layout--focused.app-layout--assistant-right .plan-outline-fab,
+    .app-layout--focused.app-layout--assistant-right .question-nav-fab {
+      right: calc(var(--assistant-width, 400px) + 20px + env(safe-area-inset-right));
+    }
+  }
+
   /* PiX-style conversation surface: stable live tail, reading-first scroll lock and dense turn metadata. */
   .assistant-conversation {
     position: relative;

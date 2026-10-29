@@ -91,13 +91,12 @@ function resizeSidebarWithKeyboard(event: KeyboardEvent) {
 }
 
 const immersive = computed(() => Boolean(route.meta.immersive));
-const focused = computed(() => Boolean(route.meta.focus));
+const focused = computed(() => Boolean(route.meta.focus || route.meta.immersive));
 const assistantAvailable = computed(() => Boolean(route.meta.assistantPanel));
 const assistantActive = computed(
   () =>
     assistant.state.open &&
     assistantAvailable.value &&
-    !immersive.value &&
     Boolean(learning.state.user) &&
     assistant.state.layoutMode !== 'content',
 );
@@ -105,23 +104,25 @@ const assistantDocked = computed(
   () => assistantActive.value && assistant.state.position !== 'floating',
 );
 const assistantFloating = computed(
-  () => assistantActive.value && assistant.state.position === 'floating' && !focused.value,
+  () => assistantActive.value && assistant.state.position === 'floating',
 );
 const viewportWidth = ref(window.innerWidth);
 const assistantMinWidth = 320;
 const assistantMaxWidth = computed(() =>
   Math.max(
     assistantMinWidth,
-    Math.min(560, viewportWidth.value - (sidebarCollapsed.value ? 72 : sidebarWidth.value) - 240),
+    Math.min(
+      560,
+      viewportWidth.value -
+        (focused.value ? 0 : sidebarCollapsed.value ? 72 : sidebarWidth.value) -
+        (focused.value ? 440 : 240),
+    ),
   ),
 );
 const assistantWidth = computed(() => Math.min(assistant.state.chatWidth, assistantMaxWidth.value));
 const assistantResizable = computed(
   () =>
-    assistantDocked.value &&
-    !focused.value &&
-    assistant.state.layoutMode === 'split' &&
-    viewportWidth.value > 780,
+    assistantDocked.value && assistant.state.layoutMode === 'split' && viewportWidth.value > 780,
 );
 const assistantDrag = ref<{
   pointerId: number;
@@ -179,12 +180,22 @@ watch([assistantResizable, () => assistant.state.position], () => (assistantDrag
 const assistantLauncherVisible = computed(
   () =>
     assistantAvailable.value &&
-    assistant.state.position === 'floating' &&
+    (assistant.state.position === 'floating' || focused.value) &&
     !assistantActive.value &&
-    !immersive.value &&
-    !focused.value &&
     Boolean(learning.state.user),
 );
+const assistantLauncherLabel = computed(() =>
+  t(
+    assistant.state.position === 'floating'
+      ? 'components.assistant.openFloating'
+      : 'components.assistant.open',
+  ),
+);
+
+function openAssistant() {
+  if (assistant.state.layoutMode === 'content') assistant.setLayout('split');
+  assistant.openPanel();
+}
 
 function defaultFloatingRect(): AssistantFloatingRect {
   const width = Math.max(320, Math.min(420, window.innerWidth - 48));
@@ -397,19 +408,15 @@ async function logout() {
 </script>
 
 <template>
-  <RouterView v-if="immersive" />
   <div
-    v-else
     class="app-layout"
     :class="{
       'app-layout--focused': focused,
       'app-layout--sidebar-resizing': sidebarDrag !== null,
       'app-layout--assistant-resizing': assistantDrag !== null,
-      'app-layout--assistant': assistantDocked && !focused,
-      'app-layout--assistant-right':
-        assistantDocked && !focused && assistant.state.position === 'right',
-      'app-layout--assistant-chat':
-        assistantDocked && !focused && assistant.state.layoutMode === 'chat',
+      'app-layout--assistant': assistantDocked,
+      'app-layout--assistant-right': assistantDocked && assistant.state.position === 'right',
+      'app-layout--assistant-chat': assistantDocked && assistant.state.layoutMode === 'chat',
     }"
     :style="{
       '--sidebar-width': `${sidebarCollapsed ? 72 : sidebarWidth}px`,
@@ -568,24 +575,29 @@ async function logout() {
       <AssistantPanel @floating-drag-start="startFloatingDrag" />
     </aside>
 
-    <AppTooltip v-if="assistantLauncherVisible" :label="t('components.assistant.openFloating')">
+    <AppTooltip v-if="assistantLauncherVisible" :label="assistantLauncherLabel">
       <button
         class="assistant-launcher"
+        :class="{ 'assistant-launcher--focused': focused }"
         type="button"
-        data-testid="assistant-floating-launcher"
-        :aria-label="t('components.assistant.openFloating')"
-        @click="assistant.openPanel()"
+        :data-testid="
+          assistant.state.position === 'floating'
+            ? 'assistant-floating-launcher'
+            : 'assistant-launcher'
+        "
+        :aria-label="assistantLauncherLabel"
+        @click="openAssistant"
       >
         <AppIcon name="assistant" :size="24" />
       </button>
     </AppTooltip>
 
     <div class="app-main">
-      <header class="topbar">
+      <header v-if="!immersive" class="topbar">
         <h2>{{ title }}</h2>
         <div class="flex items-center gap-3.5">
           <AppTooltip
-            v-if="assistantAvailable && assistant.state.position !== 'floating'"
+            v-if="assistantAvailable && !focused && assistant.state.position !== 'floating'"
             :label="t('components.assistant.open')"
           >
             <button
@@ -678,7 +690,8 @@ async function logout() {
           </DropdownMenuRoot>
         </div>
       </header>
-      <main id="main-content" class="page-container" tabindex="-1"><RouterView /></main>
+      <div v-if="immersive" id="main-content" tabindex="-1"><RouterView /></div>
+      <main v-else id="main-content" class="page-container" tabindex="-1"><RouterView /></main>
     </div>
 
     <nav v-if="!focused" class="bottom-nav" :aria-label="t('components.shell.mobileNav')">
