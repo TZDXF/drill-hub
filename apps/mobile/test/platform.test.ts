@@ -271,3 +271,29 @@ describe('mobile platform language preferences', () => {
     expect(() => platform.setLocale('en')).not.toThrow();
   });
 });
+
+describe('mobile platform assistant panel preferences', () => {
+  it('restores panel preferences after restart', async () => {
+    const platform = await loadPlatform();
+    expect(platform.getAssistantPanelPreferences()).toBeNull();
+    const preferences = JSON.stringify({ position: 'right', chatWidth: 460, floatingRect: null });
+    platform.setAssistantPanelPreferences(preferences);
+    vi.resetModules();
+    const restarted = await loadPlatform();
+    expect(restarted.getAssistantPanelPreferences()).toBe(preferences);
+  });
+
+  it('keeps panel controls available when storage is blocked', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem() {
+        throw new Error('storage blocked');
+      },
+      setItem() {
+        throw new Error('storage blocked');
+      },
+    });
+    const platform = await loadPlatform();
+    expect(platform.getAssistantPanelPreferences()).toBeNull();
+    expect(() => platform.setAssistantPanelPreferences('{"position":"floating"}')).not.toThrow();
+  });
+});

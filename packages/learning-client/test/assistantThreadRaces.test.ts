@@ -23,7 +23,17 @@ describe('assistant thread races', () => {
         ? []
         : { turns: [], messages: [], events: [], activeTurn: null },
     );
-    initAssistantStore({ get, post } as unknown as LearningContext, {} as Router);
+    initAssistantStore(
+      {
+        get,
+        post,
+        platform: {
+          getAssistantPanelPreferences: () => null,
+          setAssistantPanelPreferences: (_value: string) => undefined,
+        },
+      } as unknown as LearningContext,
+      {} as Router,
+    );
     const store = useAssistant();
     await store.selectThread('a');
     const fork = store.forkThread('turn', 'through');

@@ -20,6 +20,11 @@ import type {
 } from '@drill-hub/contracts';
 import type { LearningContext } from '#learning-client/context';
 import { errorMessage } from '#learning-client/utils';
+import type { AssistantFloatingRect } from '#learning-client/assistant/floating';
+import {
+  parseAssistantPanelPreferences,
+  type AssistantPanelPosition,
+} from '#learning-client/assistant/preferences';
 
 const ROUTE_TO_ASSISTANT: Record<string, { route: AssistantRouteName; params: string[] }> = {
   home: { route: 'home', params: [] },
@@ -50,7 +55,7 @@ const ASSISTANT_TO_ROUTE: Record<AssistantRouteName, string> = {
   archive: 'archive',
 };
 
-export type AssistantPanelPosition = 'left' | 'right' | 'floating';
+export type { AssistantPanelPosition } from '#learning-client/assistant/preferences';
 
 export interface AssistantState {
   status: AssistantStatus | null;
@@ -58,6 +63,7 @@ export interface AssistantState {
   position: AssistantPanelPosition;
   layoutMode: AssistantLayoutMode;
   chatWidth: number;
+  floatingRect: AssistantFloatingRect | null;
   threads: AssistantThread[];
   currentThreadId: string | null;
   turns: AssistantTurnView[];
@@ -93,6 +99,7 @@ const state = reactive<AssistantState>({
   position: 'left',
   layoutMode: 'split',
   chatWidth: 400,
+  floatingRect: null,
   threads: [],
   currentThreadId: null,
   turns: [],
@@ -536,7 +543,7 @@ function handleStreamEvent(payload: { event?: string; data: string; id?: string 
 function executeUiAction(action: AssistantUiAction): void {
   if (action.type === 'set_layout') {
     state.layoutMode = action.mode;
-    if (action.chatWidth) state.chatWidth = Math.min(560, Math.max(320, action.chatWidth));
+    if (action.chatWidth) setChatWidth(action.chatWidth);
     if (action.mode !== 'content') state.open = true;
     return;
   }
@@ -625,13 +632,29 @@ function closePanel(): void {
 function setPosition(position: AssistantPanelPosition): void {
   state.position = position;
   state.open = true;
+  savePanelPreferences();
 }
 function setLayout(mode: AssistantLayoutMode): void {
   state.layoutMode = mode;
   state.open = mode !== 'content';
 }
 function setChatWidth(width: number): void {
+  if (!Number.isFinite(width)) return;
   state.chatWidth = Math.min(560, Math.max(320, Math.round(width)));
+  savePanelPreferences();
+}
+function setFloatingRect(rect: AssistantFloatingRect): void {
+  state.floatingRect = { ...rect };
+  savePanelPreferences();
+}
+function savePanelPreferences(): void {
+  learning().platform.setAssistantPanelPreferences(
+    JSON.stringify({
+      position: state.position,
+      chatWidth: state.chatWidth,
+      floatingRect: state.floatingRect,
+    }),
+  );
 }
 
 export interface AssistantStore {
@@ -656,6 +679,7 @@ export interface AssistantStore {
   setPosition(position: AssistantPanelPosition): void;
   setLayout(mode: AssistantLayoutMode): void;
   setChatWidth(width: number): void;
+  setFloatingRect(rect: AssistantFloatingRect): void;
   loadOlder(): Promise<void>;
   revealTurn(turnId: string): Promise<string | null>;
   forkThread(turnId: string, mode: 'before' | 'through'): Promise<AssistantThread>;
@@ -667,6 +691,10 @@ export interface AssistantStore {
 export function initAssistantStore(instance: LearningContext, routerInstance: Router): void {
   learningRef = instance;
   routerRef = routerInstance;
+  Object.assign(
+    state,
+    parseAssistantPanelPreferences(instance.platform.getAssistantPanelPreferences()),
+  );
 }
 export function useAssistant(): AssistantStore {
   return {
@@ -688,6 +716,7 @@ export function useAssistant(): AssistantStore {
     setPosition,
     setLayout,
     setChatWidth,
+    setFloatingRect,
     loadOlder,
     revealTurn,
     forkThread,

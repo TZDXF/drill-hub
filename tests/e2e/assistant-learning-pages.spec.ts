@@ -63,7 +63,7 @@ test('阅读、练习入口、做题和报告均可打开并收起学习助手',
     await page.goto(route.path);
     await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
     await expect(page.locator('.sidebar, .bottom-nav')).toHaveCount(0);
-    const launcher = page.getByTestId('assistant-launcher');
+    const launcher = page.getByTestId(/^(assistant-launcher|assistant-floating-launcher)$/);
     await launcher.click();
     const panel = page.getByTestId('assistant-panel');
     const pane = page.getByTestId('assistant-pane');
@@ -74,6 +74,9 @@ test('阅读、练习入口、做题和报告均可打开并收起学习助手',
       expect(bounds!.x).toBe(0);
       expect(bounds!.width).toBe(page.viewportSize()!.width);
     } else {
+      // 上一个页面选择的悬浮位置会保留；显式切回左侧验证各布局。
+      await page.getByTestId('assistant-position-trigger').click();
+      await page.getByTestId('assistant-position-left').click();
       const main = page.locator('.app-main');
       const left = await pane.boundingBox();
       const contentBounds = await main.boundingBox();

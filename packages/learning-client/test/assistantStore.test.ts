@@ -27,7 +27,17 @@ async function setup() {
       }),
   );
   const push = vi.fn<(target: unknown) => void>();
-  initAssistantStore({ get, stream } as unknown as LearningContext, { push } as unknown as Router);
+  initAssistantStore(
+    {
+      get,
+      stream,
+      platform: {
+        getAssistantPanelPreferences: () => null,
+        setAssistantPanelPreferences: (_value: string) => undefined,
+      },
+    } as unknown as LearningContext,
+    { push } as unknown as Router,
+  );
   const store = useAssistant();
   await store.selectThread('thread-1');
   const emit = (seq: number, type: string, payload: Record<string, unknown>) => {

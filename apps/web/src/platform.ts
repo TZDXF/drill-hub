@@ -11,6 +11,20 @@ const connection: ServerConnection = {
 export const webPlatform: ClientPlatform = {
   kind: 'web',
   sessionPersistence: 'memory',
+  getAssistantPanelPreferences() {
+    try {
+      return globalThis.localStorage.getItem('drill-hub.assistant-panel');
+    } catch {
+      return null;
+    }
+  },
+  setAssistantPanelPreferences(value) {
+    try {
+      globalThis.localStorage.setItem('drill-hub.assistant-panel', value);
+    } catch {
+      // Panel controls remain available when preference storage is blocked.
+    }
+  },
   getLocale() {
     try {
       return globalThis.localStorage.getItem('drill-hub.locale');

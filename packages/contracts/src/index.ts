@@ -439,6 +439,8 @@ export interface ClientPlatform {
   sessionPersistence: 'memory' | 'secure';
   getLocale(): string | null;
   setLocale(locale: ClientLocale): void;
+  getAssistantPanelPreferences(): string | null;
+  setAssistantPanelPreferences(value: string): void;
   getConnection(): Promise<ServerConnection | null>;
   setConnection(value: ServerConnection | null): Promise<void>;
   getSession(connection: ServerConnection): Promise<StoredMobileSession | null>;

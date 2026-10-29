@@ -56,6 +56,8 @@ function makePlatform(kind: 'web' | 'android') {
     kind,
     sessionPersistence: 'memory',
     getLocale: () => null,
+    getAssistantPanelPreferences: () => null,
+    setAssistantPanelPreferences: () => undefined,
     setLocale() {},
     async getConnection() {
       return { ...connection };

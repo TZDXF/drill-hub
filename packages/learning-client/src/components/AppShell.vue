@@ -202,7 +202,13 @@ function defaultFloatingRect(): AssistantFloatingRect {
   const height = Math.max(360, Math.min(640, window.innerHeight - 48));
   return { x: window.innerWidth - width - 24, y: window.innerHeight - height - 24, width, height };
 }
-const floatingRect = ref<AssistantFloatingRect>(defaultFloatingRect());
+const floatingRect = ref<AssistantFloatingRect>(
+  clampFloatingRect(
+    assistant.state.floatingRect ?? defaultFloatingRect(),
+    window.innerWidth,
+    window.innerHeight,
+  ),
+);
 const floatingStyle = computed(() => ({
   left: `${floatingRect.value.x}px`,
   top: `${floatingRect.value.y}px`,
@@ -242,6 +248,7 @@ function trackPointer(
     window.removeEventListener('pointerup', stop);
     window.removeEventListener('pointercancel', stop);
     document.body.style.userSelect = previousUserSelect;
+    assistant.setFloatingRect(floatingRect.value);
     if (stopPointerInteraction === stop) stopPointerInteraction = null;
   };
   stopPointerInteraction = stop;
@@ -281,6 +288,7 @@ function resizeWithKeyboard(event: KeyboardEvent, direction: AssistantResizeDire
     window.innerWidth,
     window.innerHeight,
   );
+  assistant.setFloatingRect(floatingRect.value);
 }
 
 function handleFloatingViewportResize() {

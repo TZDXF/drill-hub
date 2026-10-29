@@ -25,6 +25,8 @@ function platform(stored: string | null = null): ClientPlatform {
     kind: 'web',
     sessionPersistence: 'memory',
     getLocale: () => stored,
+    getAssistantPanelPreferences: () => null,
+    setAssistantPanelPreferences: () => undefined,
     setLocale: vi.fn<(locale: ClientLocale) => void>(),
     getConnection: async () => null,
     setConnection: async () => {},
