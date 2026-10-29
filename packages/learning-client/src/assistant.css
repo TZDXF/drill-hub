@@ -50,6 +50,34 @@
     border-radius: 10px;
     box-shadow: var(--dialog-shadow);
   }
+  .assistant-dock-resize-handle {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 6px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 20;
+  }
+  .app-layout--assistant-right .assistant-dock-resize-handle {
+    inset: 0 auto 0 0;
+  }
+  .assistant-dock-resize-handle::after {
+    content: '';
+    position: absolute;
+    inset: 0 2px;
+    background: transparent;
+  }
+  .assistant-dock-resize-handle:hover::after,
+  .assistant-dock-resize-handle:focus-visible::after,
+  .app-layout--assistant-resizing .assistant-dock-resize-handle::after {
+    background: var(--teal);
+  }
+  .app-layout--assistant-resizing,
+  .app-layout--assistant-resizing * {
+    cursor: col-resize !important;
+    user-select: none;
+    -webkit-user-select: none;
+  }
   .assistant-pane--floating > .assistant-panel {
     height: 100%;
     overflow: hidden;
@@ -377,12 +405,6 @@
     margin: 0 auto;
   }
 
-  /* 平板：助手面板固定窄栏，内容区保持可见 */
-  @media (min-width: 781px) and (max-width: 1100px) {
-    .app-layout--assistant {
-      grid-template-columns: var(--sidebar-width) minmax(300px, 340px) minmax(0, 1fr);
-    }
-  }
   /* 手机：助手面板全屏覆盖，ui_action 导航自动收起后经顶栏按钮返回 */
   @media (max-width: 780px) {
     .assistant-pane {

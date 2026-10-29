@@ -277,6 +277,7 @@
     "positionRight": "右侧栏",
     "positionFloating": "浮窗",
     "openFloating": "打开学习助手",
+    "resizeWidth": "调整学习助手宽度",
     "resize": {
       "left": "从左侧调整助手浮窗大小",
       "top": "从顶部调整助手浮窗大小",

@@ -606,6 +606,72 @@ test.describe('内置学习助手', () => {
     await expect(toggle).toHaveAttribute('aria-label', '专注对话布局');
   });
 
+  for (const position of ['left', 'right'] as const) {
+    test(`助手${position === 'left' ? '左' : '右'}侧栏支持拖拽调宽并限制范围`, async ({
+      page,
+      isMobile,
+    }) => {
+      test.skip(isMobile, '手机端助手始终全屏覆盖');
+      await login(page);
+      await page.goto('/assistant');
+      await page.getByTestId('assistant-position-trigger').click();
+      await page.getByTestId(`assistant-position-${position}`).click();
+      const pane = page.getByTestId('assistant-pane');
+      const handle = page.getByTestId('assistant-dock-resize');
+      const direction = position === 'right' ? -1 : 1;
+      const initial = (await pane.boundingBox())!;
+
+      async function dragBy(delta: number) {
+        const box = (await handle.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 + delta, box.y + box.height / 2, {
+          steps: 5,
+        });
+        await page.mouse.up();
+      }
+
+      await dragBy(80 * direction);
+      let resized = (await pane.boundingBox())!;
+      expect(resized.width).toBeCloseTo(initial.width + 80, 0);
+      if (position === 'left') expect(resized.x).toBeCloseTo(initial.x, 0);
+      else expect(resized.x + resized.width).toBeCloseTo(initial.x + initial.width, 0);
+      await dragBy(-120 * direction);
+      expect((await pane.boundingBox())!.width).toBeCloseTo(initial.width - 40, 0);
+      await expect(page.locator('.app-layout')).not.toHaveClass(/app-layout--assistant-resizing/);
+
+      await handle.press('Home');
+      await expect(handle).toHaveAttribute('aria-valuenow', '320');
+      await dragBy(-100 * direction);
+      expect((await pane.boundingBox())!.width).toBeCloseTo(320, 0);
+      await handle.press(position === 'right' ? 'ArrowLeft' : 'ArrowRight');
+      await expect(handle).toHaveAttribute('aria-valuenow', '330');
+      await handle.press('End');
+      await expect(handle).toHaveAttribute('aria-valuenow', '560');
+      await dragBy(100 * direction);
+      expect((await pane.boundingBox())!.width).toBeCloseTo(560, 0);
+
+      await page.getByTestId('assistant-layout-toggle').click();
+      await expect(handle).toHaveCount(0);
+      await page.getByTestId('assistant-layout-toggle').click();
+      expect((await pane.boundingBox())!.width).toBeCloseTo(560, 0);
+
+      await page.setViewportSize({ width: 1000, height: 800 });
+      await expect(handle).toHaveAttribute('aria-valuemax', '516');
+      expect((await pane.boundingBox())!.width).toBeCloseTo(516, 0);
+      await dragBy(-100 * direction);
+      resized = (await pane.boundingBox())!;
+      expect(resized.width).toBeCloseTo(416, 0);
+      expect((await page.locator('.app-main').boundingBox())!.width).toBeGreaterThanOrEqual(240);
+      expect(resized.x).toBeGreaterThanOrEqual(0);
+      expect(resized.x + resized.width).toBeLessThanOrEqual(1000);
+
+      await page.setViewportSize({ width: 390, height: 800 });
+      await expect(handle).toHaveCount(0);
+      expect((await pane.boundingBox())!.width).toBeCloseTo(390, 0);
+    });
+  }
+
   test('助手支持左右侧栏和可拖动缩放的浮窗', async ({ page, isMobile }) => {
     test.skip(isMobile, '手机端助手始终全屏覆盖');
     await login(page);
@@ -624,6 +690,7 @@ test.describe('内置学习助手', () => {
     await page.getByTestId('assistant-position-floating').click();
     await expect(layout).not.toHaveClass(/app-layout--assistant(?:\s|$)/);
     await expect(pane).toHaveClass(/assistant-pane--floating/);
+    await expect(page.getByTestId('assistant-dock-resize')).toHaveCount(0);
     await expect(page.locator('.app-main')).toBeVisible();
 
     await page.getByTestId('assistant-close').click();

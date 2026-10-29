@@ -107,6 +107,75 @@ const assistantDocked = computed(
 const assistantFloating = computed(
   () => assistantActive.value && assistant.state.position === 'floating' && !focused.value,
 );
+const viewportWidth = ref(window.innerWidth);
+const assistantMinWidth = 320;
+const assistantMaxWidth = computed(() =>
+  Math.max(
+    assistantMinWidth,
+    Math.min(560, viewportWidth.value - (sidebarCollapsed.value ? 72 : sidebarWidth.value) - 240),
+  ),
+);
+const assistantWidth = computed(() => Math.min(assistant.state.chatWidth, assistantMaxWidth.value));
+const assistantResizable = computed(
+  () =>
+    assistantDocked.value &&
+    !focused.value &&
+    assistant.state.layoutMode === 'split' &&
+    viewportWidth.value > 780,
+);
+const assistantDrag = ref<{
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  direction: number;
+} | null>(null);
+
+function setAssistantWidth(width: number) {
+  assistant.setChatWidth(Math.min(assistantMaxWidth.value, width));
+}
+
+function startAssistantResize(event: PointerEvent) {
+  if (event.button !== 0 || !event.isPrimary || !assistantResizable.value) return;
+  const handle = event.currentTarget as HTMLElement;
+  handle.focus();
+  handle.setPointerCapture(event.pointerId);
+  assistantDrag.value = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: assistantWidth.value,
+    direction: assistant.state.position === 'right' ? -1 : 1,
+  };
+  event.preventDefault();
+}
+
+function resizeAssistant(event: PointerEvent) {
+  const drag = assistantDrag.value;
+  if (drag?.pointerId !== event.pointerId) return;
+  setAssistantWidth(drag.startWidth + (event.clientX - drag.startX) * drag.direction);
+}
+
+function stopAssistantResize(event: PointerEvent) {
+  if (assistantDrag.value?.pointerId !== event.pointerId) return;
+  assistantDrag.value = null;
+  const handle = event.currentTarget as HTMLElement;
+  if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+}
+
+function resizeAssistantWithKeyboard(event: KeyboardEvent) {
+  const direction = assistant.state.position === 'right' ? -1 : 1;
+  const widths: Record<string, number> = {
+    ArrowLeft: assistantWidth.value - 10 * direction,
+    ArrowRight: assistantWidth.value + 10 * direction,
+    Home: assistantMinWidth,
+    End: assistantMaxWidth.value,
+  };
+  const width = widths[event.key];
+  if (width === undefined) return;
+  event.preventDefault();
+  setAssistantWidth(width);
+}
+
+watch([assistantResizable, () => assistant.state.position], () => (assistantDrag.value = null));
 const assistantLauncherVisible = computed(
   () =>
     assistantAvailable.value &&
@@ -204,6 +273,7 @@ function resizeWithKeyboard(event: KeyboardEvent, direction: AssistantResizeDire
 }
 
 function handleFloatingViewportResize() {
+  viewportWidth.value = window.innerWidth;
   floatingRect.value = clampFloatingRect(floatingRect.value, window.innerWidth, window.innerHeight);
 }
 
@@ -334,6 +404,7 @@ async function logout() {
     :class="{
       'app-layout--focused': focused,
       'app-layout--sidebar-resizing': sidebarDrag !== null,
+      'app-layout--assistant-resizing': assistantDrag !== null,
       'app-layout--assistant': assistantDocked && !focused,
       'app-layout--assistant-right':
         assistantDocked && !focused && assistant.state.position === 'right',
@@ -342,7 +413,7 @@ async function logout() {
     }"
     :style="{
       '--sidebar-width': `${sidebarCollapsed ? 72 : sidebarWidth}px`,
-      '--assistant-width': assistantDocked ? `${assistant.state.chatWidth}px` : undefined,
+      '--assistant-width': assistantDocked ? `${assistantWidth}px` : undefined,
     }"
   >
     <a class="skip-link" href="#main-content">{{ t('components.shell.skipToContent') }}</a>
@@ -454,12 +525,32 @@ async function logout() {
 
     <aside
       v-if="assistantActive"
+      id="assistant-pane"
       class="assistant-pane"
       :class="{ 'assistant-pane--floating': assistantFloating }"
       :style="assistantFloating ? floatingStyle : undefined"
       data-testid="assistant-pane"
       :aria-label="t('components.assistant.title')"
     >
+      <div
+        v-if="assistantResizable"
+        class="assistant-dock-resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        aria-controls="assistant-pane"
+        :aria-label="t('components.assistant.resizeWidth')"
+        :aria-valuemin="assistantMinWidth"
+        :aria-valuemax="assistantMaxWidth"
+        :aria-valuenow="assistantWidth"
+        data-testid="assistant-dock-resize"
+        @pointerdown="startAssistantResize"
+        @pointermove="resizeAssistant"
+        @pointerup="stopAssistantResize"
+        @pointercancel="stopAssistantResize"
+        @lostpointercapture="stopAssistantResize"
+        @keydown="resizeAssistantWithKeyboard"
+      />
       <template v-if="assistantFloating">
         <button
           v-for="direction in ['top-left', 'top', 'left'] as const"
