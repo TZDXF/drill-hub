@@ -552,7 +552,11 @@ onBeforeUnmount(() => {
       data-testid="assistant-floating-drag-handle"
       @pointerdown="state.position === 'floating' && emit('floatingDragStart', $event)"
     >
-      <div class="assistant-panel__title" :title="currentThread?.title ?? ''">
+      <div
+        class="assistant-panel__title"
+        :title="currentThread?.title ?? ''"
+        @dblclick="requestRenameThread"
+      >
         <AppIcon name="assistant" :size="17" /><strong>{{
           currentThread?.title || t('components.assistant.title')
         }}</strong>
