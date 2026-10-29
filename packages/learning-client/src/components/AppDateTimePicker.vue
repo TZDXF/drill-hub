@@ -133,7 +133,6 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
           </DatePickerGridBody>
         </DatePickerGrid>
       </DatePickerCalendar>
-      <p class="field-hint">{{ t('components.dateTime.hint') }}</p>
     </DatePickerContent>
   </DatePickerRoot>
 </template>
@@ -241,9 +240,5 @@ const placeholder = new CalendarDateTime(now.getFullYear(), now.getMonth() + 1, 
 .date-time-picker-day[data-selected] {
   background: var(--teal);
   color: white;
-}
-.date-time-picker-content .field-hint {
-  margin-top: 8px;
-  max-width: 238px;
 }
 </style>

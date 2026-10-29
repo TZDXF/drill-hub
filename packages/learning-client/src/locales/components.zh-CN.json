@@ -181,8 +181,7 @@
     "clearLabel": "清空日期时间",
     "previousMonth": "上个月",
     "nextMonth": "下个月",
-    "calendarLabel": "选择日期时间",
-    "hint": "时间可在输入框中调整，使用当前设备时区。"
+    "calendarLabel": "选择日期时间"
   },
   "gradeFeedback": {
     "grading": "正在评分",

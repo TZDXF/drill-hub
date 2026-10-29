@@ -209,8 +209,7 @@
     "clearLabel": "Clear date and time",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
-    "calendarLabel": "Choose date and time",
-    "hint": "Adjust the time in the input fields. Your device's time zone is used."
+    "calendarLabel": "Choose date and time"
   },
   "attemptNav": {
     "fabLabel": "Open answer sheet",
