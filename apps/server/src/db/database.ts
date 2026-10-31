@@ -18,6 +18,7 @@ import {
   MigrateAssistantToDurable1793000000002,
   AddRateLimits1793100000000,
   DropSessionCsrfHash1793100000001,
+  AddAssistantThreadArchive1793404800000,
 } from '#server/db/schema.js';
 import type {
   AuditLogView,
@@ -81,6 +82,7 @@ export class Database {
         MigrateAssistantToDurable1793000000002,
         AddRateLimits1793100000000,
         DropSessionCsrfHash1793100000001,
+        AddAssistantThreadArchive1793404800000,
       ],
       synchronize: false,
       logging: false,
