@@ -38,6 +38,7 @@ import type { AppContext } from '#server/core/context.js';
 import type { AssistantThreadRecord, McpServerRecord } from '#server/db/records.js';
 import { createAssistantTools } from '#server/modules/assistant/tools.js';
 import { requestAssistantTitle } from '#server/modules/assistant/title.js';
+import { renderAgentPersona } from '#server/modules/assistant/learning-agents.js';
 
 export const ASSISTANT_SYSTEM_PROMPT = [
   '你是 Drill Hub 学习工作台的内置学习助手，通过对话帮助用户规划学习、讲解知识点、练习与复盘。',
@@ -388,7 +389,23 @@ export class DurableAssistantRuntime {
     const state = await this.open();
     await this.models(state.models);
     const conversation = await this.bind(thread);
-    const model = await this.resolveModel(turn.providerModelId);
+    // 智能体默认模型仅在用户未显式选择时生效；该模型被停用后回退自动选择，不让对话失败。
+    const agent = thread.agentId ? await this.ctx.db.get('learningAgents', thread.agentId) : null;
+    const agentDefaultModelId =
+      agent && agent.ownerId === thread.ownerId ? agent.defaultProviderModelId : null;
+    let model: ResolvedAssistantModel;
+    try {
+      model = await this.resolveModel(turn.providerModelId ?? agentDefaultModelId);
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === 'INVALID_MODEL' &&
+        !turn.providerModelId &&
+        agentDefaultModelId
+      )
+        model = await this.resolveModel(null);
+      else throw error;
+    }
     this.events.onModel(turn.id, model);
     await conversation.commit(
       async (tx) =>
@@ -398,7 +415,9 @@ export class DurableAssistantRuntime {
       BACKGROUND_CONTEXT,
     );
     await this.watch(thread, [turn.id]);
+    const persona = agent ? renderAgentPersona(agent) : null;
     const content = [
+      ...(persona ? [{ type: 'text' as const, text: persona }] : []),
       ...(turn.promptContext ? [{ type: 'text' as const, text: turn.promptContext }] : []),
       { type: 'text' as const, text: turn.content },
       ...turn.images.map((image) => ({

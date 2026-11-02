@@ -307,7 +307,16 @@
   .assistant-composer__toolbar {
     display: flex;
     align-items: center;
+    gap: 6px;
     margin-bottom: 6px;
+  }
+  .assistant-agent-select__icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+  .assistant-agent-menu__manage {
+    color: var(--teal-dark);
+    font-weight: 600;
   }
   .assistant-model-select {
     display: inline-flex;

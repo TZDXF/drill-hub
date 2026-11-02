@@ -27,6 +27,7 @@ import AdminAuditPage from '#learning-client/pages/AdminAuditPage.vue';
 import AdminAssistantPage from '#learning-client/pages/AdminAssistantPage.vue';
 import AssistantPage from '#learning-client/pages/AssistantPage.vue';
 import AssistantArchivePage from '#learning-client/pages/AssistantArchivePage.vue';
+import LearningAgentsPage from '#learning-client/pages/LearningAgentsPage.vue';
 
 export function createLearningRouter(context: LearningContext, ready: Promise<void>): Router {
   const router = createRouter({
@@ -68,6 +69,12 @@ export function createLearningRouter(context: LearningContext, ready: Promise<vo
             path: 'assistant',
             name: 'assistant',
             component: AssistantPage,
+            meta: { assistantPanel: true },
+          },
+          {
+            path: 'agents',
+            name: 'learning-agents',
+            component: LearningAgentsPage,
             meta: { assistantPanel: true },
           },
           { path: 'topics', name: 'topics', component: TopicsPage, meta: { assistantPanel: true } },

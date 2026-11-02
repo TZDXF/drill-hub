@@ -158,6 +158,7 @@
     "EVIDENCE_NOT_IN_ANSWER": "得分项的证据不是绑定答案原文",
     "FORK_ACTIVE_TURN": "进行中的对话轮次无法分叉",
     "THREAD_NOT_ARCHIVED": "请先归档对话再删除",
+    "AGENT_NOT_ARCHIVED": "请先归档学习智能体再删除",
     "THREAD_BUSY": "对话仍在生成回复，请稍后再删除",
     "FORK_TURN_NOT_FOUND": "要分叉的对话轮次不存在",
     "GRADE_VERSION_CONFLICT": "评分版本已变化，请刷新后重试",

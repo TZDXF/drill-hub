@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '#server/db/database.js';
 import { DataSource } from 'typeorm';
-import { InitialSchema1792195200000, AddAnswerLinks1792195200001 } from '#server/db/schema.js';
+import {
+  InitialSchema1792195200000,
+  AddAnswerLinks1792195200001,
+} from '#server/db/migrations/index.js';
 import { baseRecord } from '#server/core/ids.js';
 describe('SQLite storage and migrations', () => {
   it('opens via the options form with an explicit sqlite driver', async () => {

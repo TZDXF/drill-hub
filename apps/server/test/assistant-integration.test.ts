@@ -316,6 +316,7 @@ describe('assistant conversation archives', () => {
       lastMessageAt: new Date().toISOString(),
       archivedAt: new Date().toISOString(),
       durableConversationId: null,
+      agentId: null,
     };
     await app.ctx.db.insert('assistantThreads', thread);
     for (const action of ['archive', 'restore', 'delete']) {

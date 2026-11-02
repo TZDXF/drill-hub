@@ -621,6 +621,10 @@
       "assistantSkillUpdate": "修改助手 Skill",
       "assistantSkillDelete": "删除助手 Skill",
       "assistantThreadFork": "分叉助手对话",
+      "learningAgentCreate": "创建学习智能体",
+      "learningAgentUpdate": "修改学习智能体",
+      "learningAgentDelete": "删除学习智能体",
+      "learningAgentGenerate": "AI 生成学习智能体草稿",
       "answerLinkRevoked": "吊销答题链接",
       "topicPurged": "永久删除主题"
     }

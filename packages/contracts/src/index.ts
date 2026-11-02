@@ -644,6 +644,8 @@ export interface AssistantThread extends BaseRecord {
   title: string;
   lastMessageAt: string;
   archivedAt: string | null;
+  /** 绑定的学习智能体；null 表示使用内置默认助手。 */
+  agentId: string | null;
 }
 export type AssistantMessageStatus = 'complete' | 'streaming' | 'failed' | 'interrupted';
 export interface AssistantImageAttachment {
@@ -696,8 +698,15 @@ export interface AssistantTurnView extends BaseRecord {
   /** 本轮使用的助手模型；null 表示由服务端自动选择。 */
   providerModelId: string | null;
 }
+/** 助手线程绑定的学习智能体摘要。 */
+export interface LearningAgentSummary {
+  id: string;
+  name: string;
+  icon: string | null;
+}
 export interface AssistantThreadDetail {
   thread: AssistantThread;
+  agent: LearningAgentSummary | null;
   turns: AssistantTurnView[];
   messages: AssistantMessageView[];
   events: AssistantEventView[];
@@ -755,4 +764,56 @@ export interface AssistantSkillView extends BaseRecord {
   name: string;
   description: string;
   enabled: boolean;
+}
+/** 学习智能体的教学方式标签，取值基于循证学习科学（检索练习、间隔重复、交叉学习等）。 */
+export type LearningApproachTag =
+  | 'active_recall'
+  | 'spaced_review'
+  | 'feynman'
+  | 'socratic'
+  | 'example_driven'
+  | 'step_by_step'
+  | 'mistake_focused'
+  | 'exam_practice'
+  | 'interleaving'
+  | 'self_check';
+export const LEARNING_APPROACH_TAGS: LearningApproachTag[] = [
+  'active_recall',
+  'spaced_review',
+  'feynman',
+  'socratic',
+  'example_driven',
+  'step_by_step',
+  'mistake_focused',
+  'exam_practice',
+  'interleaving',
+  'self_check',
+];
+export type LearningAgentTone = 'encouraging' | 'rigorous' | 'concise' | 'humorous';
+export type LearningDetailLevel = 'brief' | 'balanced' | 'deep';
+/** 用户自定义学习智能体：作用于内置助手对话的人设 + 可选默认模型。 */
+export interface LearningAgentView extends BaseRecord {
+  ownerId: string;
+  name: string;
+  description: string | null;
+  /** 展示用 emoji；null 表示前端回退默认图标。 */
+  icon: string | null;
+  approachTags: LearningApproachTag[];
+  tone: LearningAgentTone;
+  detailLevel: LearningDetailLevel;
+  /** 用户自由补充的教学指令，原样渲染进人设提示词。 */
+  instructions: string | null;
+  /** 未显式选择模型时的默认助手模型；null 表示由服务端自动选择。 */
+  defaultProviderModelId: string | null;
+  archivedAt: string | null;
+}
+/** AI 生成草稿：智能体待保存的表单值，不含 id/revision。 */
+export interface LearningAgentDraft {
+  name: string;
+  description: string | null;
+  icon: string | null;
+  approachTags: LearningApproachTag[];
+  tone: LearningAgentTone;
+  detailLevel: LearningDetailLevel;
+  instructions: string | null;
 }

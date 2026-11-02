@@ -1,12 +1,13 @@
 # 07 · 内置学习助手（Built-in Assistant）
 
-基线：v0.3。内置对话助手已实现（首版），基于 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)（`@earendil-works/pi-durable` + `@earendil-works/pi-ai`）作为服务端持久 Agent 运行时，MCP 使用独立的 `@earendil-works/pi-mcp` 客户端。本文描述当前实际行为与安全边界。
+基线：v0.4。内置对话助手已实现（首版），基于 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)（`@earendil-works/pi-durable` + `@earendil-works/pi-ai`）作为服务端持久 Agent 运行时，MCP 使用独立的 `@earendil-works/pi-mcp` 客户端。本文描述当前实际行为与安全边界。
 
 ## 1. 定位与职责
 
 - 内置助手是**交互式用户功能**：登录用户在应用内对话，不是外部 Agent API，不消耗也不接受 `dhk.` 令牌。
 - 助手以**当前用户身份**通过真实 API 端点读写本人学习数据；没有独立的数据通道，权限与学习者接口一致。
 - 服务端独占编排：Pi 会话、工具执行、MCP 连接与模型密钥只在服务端进程内存在，不进入浏览器或 Android 包。
+- 用户可创建多个**自定义学习智能体**（见第 11 节），作为不同人设作用于助手对话；工具集与权限对所有智能体一致。
 
 ## 2. 架构与一轮对话的生命周期
 
@@ -113,3 +114,16 @@ PATCH/DELETE /me/assistant/queued-messages/:id（编辑或移除待发送消息�
 - Durable 使用追加式检查点历史，不提供逐 Conversation 物理擦除。删除线程会删除应用消息、事件与索引，但对应检查点只能随整个 `durable.sqlite` 的生命周期处理。
 - Pi Durable 当前仍标记为 experimental，升级时必须核对 API、扩展与持久化检查点行为。
 - 评分适配器与助手模型共用供应商连接，但不共用评分配置；`GET /me/assistant/models` 仅返回模型与所属连接均已启用的模型。
+
+## 11. 用户自定义学习智能体
+
+学习智能体是**用户级人设实体**（`learningAgents` 表，带 `ownerId`），为助手对话注入个性化教学风格；它不是独立的运行时，也不改变工具集、白名单与权限。
+
+- 数据形状：`name`（≤64）、`description?`、`icon?`（emoji）、`approachTags`（固定词表：主动回忆/间隔复习/费曼讲解/苏格拉底追问/例题驱动/循序渐进/错题深挖/考试演练/交叉练习/自我检测）、`tone`（encouraging/rigorous/concise/humorous）、`detailLevel`（brief/balanced/deep）、`instructions?`（自由指令，≤8000）、`defaultProviderModelId?`、`archivedAt?`。
+- API（全部 `requireUser`，仅本人资源）：`GET/POST /me/learning-agents`、`GET/PATCH/DELETE /me/learning-agents/:id`（PATCH 带 `expectedRevision`；DELETE 须先归档，事务内把引用线程的 `agentId` 置空，消息历史保留）、`POST /:id/archive|/restore`、`POST /me/learning-agents/generate-draft`。
+- AI 生成草稿：用户描述学习需求 → 服务端以固定 meta-prompt 调非流式 Chat Completions（复用 `providerRequest`，`max_completion_tokens=1200`）→ 输出 JSON 收敛到合法枚举后返回 `LearningAgentDraft`，不落库；限流 10/分钟，用量记 `modelUsage` purpose=`learning_agent_generate`，写审计 `learning-agent.generate`。
+- 线程绑定：`assistantThreads.agentId`（可空 = 默认助手）；创建线程与 PATCH 线程均可指定（校验归属，404 防止探测）；分叉复制绑定。
+- 人设注入：提交 turn 时若线程绑定智能体，将渲染后的中文人设段（`renderAgentPersona`）作为本轮输入的第一个文本块前置（与 `promptContext` 同机制）。注意持久会话会回放历史，切换智能体后旧人设块仍存在于历史中，但每轮只注入当前绑定智能体的新人设块，以最新指令为准。
+- 默认模型：智能体可设 `defaultProviderModelId`，仅在该轮未显式选择模型时生效；该模型被停用后自动回退"自动选择"，不让对话失败。
+- 前端：`/agents` 管理页（创建三入口：手动表单 / 6 个循证学习法预设回填 / AI 草稿回填）、助手输入框上方智能体选择器（新会话默认 + 已开会话切换，下一条消息生效）、移动端"我的"页入口。
+- 边界：智能体不改变工具白名单、不叠加管理员 Skills、无跨用户共享；`instructions` 只进当轮模型请求（消息记录中不含），但会随持久会话检查点留存；删除智能体不删除其历史对话。

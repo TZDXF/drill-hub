@@ -79,7 +79,7 @@ test('我的页面按用途分组，窄屏触控区域足够且没有横向溢�
   const tools = page.getByRole('region', { name: '学习工具', exact: true });
   const preferences = page.getByRole('region', { name: '偏好设置', exact: true });
   const security = page.getByRole('region', { name: '账号与安全', exact: true });
-  await expect(tools.getByRole('link')).toHaveCount(2);
+  await expect(tools.getByRole('link')).toHaveCount(3);
   await expect(preferences.getByRole('button')).toHaveCount(2);
   await expect(security.getByRole('link')).toHaveCount(2);
   await expect(page.getByRole('heading', { name: '数据备份与导出' })).toHaveCount(0);
@@ -101,6 +101,9 @@ test('我的页面按用途分组，窄屏触控区域足够且没有横向溢�
 
   await tools.getByRole('link', { name: '站内搜索', exact: true }).click();
   await expect(page).toHaveURL(/\/search$/);
+  await page.goBack();
+  await tools.getByRole('link', { name: '学习智能体', exact: true }).click();
+  await expect(page).toHaveURL(/\/agents$/);
   await page.goBack();
   await tools.getByRole('link', { name: 'Token 用量', exact: true }).click();
   await expect(page).toHaveURL(/\/token-usage$/);

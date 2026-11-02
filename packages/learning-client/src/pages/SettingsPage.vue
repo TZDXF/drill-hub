@@ -255,6 +255,10 @@ onMounted(async () => {
             <span class="list-card__icon"><AppIcon name="search" /></span>
             <span>{{ t('components.shell.titles.search') }}</span>
           </RouterLink>
+          <RouterLink class="settings-tool" :to="{ name: 'learning-agents' }">
+            <span class="list-card__icon"><AppIcon name="bot" /></span>
+            <span>{{ t('components.shell.titles.learningAgents') }}</span>
+          </RouterLink>
           <RouterLink class="settings-tool" :to="{ name: 'token-usage' }">
             <span class="list-card__icon"><AppIcon name="usage" /></span>
             <span>{{ t('components.shell.titles.tokenUsage') }}</span>

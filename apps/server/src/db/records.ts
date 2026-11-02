@@ -23,6 +23,7 @@ import type {
   AssistantTurnView,
   McpServerView,
   AssistantSkillView,
+  LearningAgentView,
 } from '@drill-hub/contracts';
 export interface UserRecord extends UserView {
   passwordHash: string;
@@ -98,7 +99,7 @@ export interface ModelUsageRecord extends BaseRecord {
   connectionId: string;
   modelKey: string;
   /** model_test 仅用于保留已发生的评分测试用量。 */
-  purpose: 'grading' | 'model_test' | 'assistant' | 'assistant_title';
+  purpose: 'grading' | 'model_test' | 'assistant' | 'assistant_title' | 'learning_agent_generate';
   jobId: string | null;
   status: 'succeeded' | 'failed';
   usage: ModelTokenUsage | null;
@@ -169,6 +170,7 @@ export interface McpServerRecord extends BaseRecord {
 export interface AssistantSkillRecord extends Omit<AssistantSkillView, never> {
   content: string;
 }
+export interface LearningAgentRecord extends LearningAgentView {}
 export interface RateLimitRecord extends BaseRecord {
   count: number;
   resetAt: string;
@@ -205,6 +207,7 @@ export interface DatabaseTables {
   searchProviders: SearchProviderRecord;
   mcpServers: McpServerRecord;
   assistantSkills: AssistantSkillRecord;
+  learningAgents: LearningAgentRecord;
   /** 限流桶；id 即桶键，经原子 SQL 自增，可多实例共享。 */
   rateLimits: RateLimitRecord;
 }

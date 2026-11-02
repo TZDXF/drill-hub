@@ -621,6 +621,10 @@
       "assistantSkillUpdate": "Update assistant skill",
       "assistantSkillDelete": "Delete assistant skill",
       "assistantThreadFork": "Fork assistant conversation",
+      "learningAgentCreate": "Create learning agent",
+      "learningAgentUpdate": "Update learning agent",
+      "learningAgentDelete": "Delete learning agent",
+      "learningAgentGenerate": "Generate learning agent draft with AI",
       "answerLinkRevoked": "Answer link revoked",
       "topicPurged": "Topic permanently deleted"
     }

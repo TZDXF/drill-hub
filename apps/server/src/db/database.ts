@@ -4,22 +4,9 @@ import { dirname } from 'node:path';
 import { DataSource } from 'typeorm';
 import type { EntityManager, FindOptionsWhere } from 'typeorm';
 import type { DatabaseTables, TableName } from '#server/db/records.js';
-import {
-  schemas,
-  definitions,
-  InitialSchema1792195200000,
-  AddAnswerLinks1792195200001,
-  AddModelUsage1792368000000,
-  AddAccessLogs1792368000001,
-  AddAssistantTables1792448000000,
-  ReworkAssistantConfig1792450000000,
-  ExpandAssistantConversation1793000000000,
-  OrderAssistantQueue1793000000001,
-  MigrateAssistantToDurable1793000000002,
-  AddRateLimits1793100000000,
-  DropSessionCsrfHash1793100000001,
-  AddAssistantThreadArchive1793404800000,
-} from '#server/db/schema.js';
+import { migrations } from '#server/db/migrations/index.js';
+import { buildDataSourceOptions, type DatabaseDriver } from '#server/db/options.js';
+import { definitions } from '#server/db/schema.js';
 import type {
   AuditLogView,
   ApiLogView,
@@ -33,7 +20,7 @@ import { AppError } from '#server/core/errors.js';
 interface Queue {
   tail: Promise<void>;
 }
-export type DatabaseDriver = 'sqlite' | 'postgres';
+export type { DatabaseDriver };
 export interface DatabaseOpenOptions {
   driver?: DatabaseDriver;
   /** SQLite 文件路径或 ':memory:'；driver 为 postgres 时忽略。 */
@@ -57,40 +44,16 @@ export class Database {
       throw new Error('Postgres 数据库需要提供 DATABASE_URL');
     if (driver === 'sqlite' && (options.database ?? ':memory:') !== ':memory:')
       await mkdir(dirname(options.database!), { recursive: true });
-    const source = new DataSource({
-      ...(driver === 'postgres'
-        ? { type: 'postgres' as const, url: options.url! }
-        : {
-            type: 'better-sqlite3' as const,
-            database: options.database ?? ':memory:',
-            prepareDatabase(db: { pragma: (statement: string) => unknown }) {
-              db.pragma('foreign_keys = ON');
-              db.pragma('busy_timeout = 5000');
-              if (options.database !== ':memory:') db.pragma('journal_mode = WAL');
-            },
-          }),
-      entities: schemas,
-      migrations: [
-        InitialSchema1792195200000,
-        AddAnswerLinks1792195200001,
-        AddModelUsage1792368000000,
-        AddAccessLogs1792368000001,
-        AddAssistantTables1792448000000,
-        ReworkAssistantConfig1792450000000,
-        ExpandAssistantConversation1793000000000,
-        OrderAssistantQueue1793000000001,
-        MigrateAssistantToDurable1793000000002,
-        AddRateLimits1793100000000,
-        DropSessionCsrfHash1793100000001,
-        AddAssistantThreadArchive1793404800000,
-      ],
-      synchronize: false,
-      logging: false,
-      invalidWhereValuesBehavior: { null: 'sql-null', undefined: 'throw' },
-    });
+    const source = new DataSource(
+      buildDataSourceOptions({ driver, database: options.database, url: options.url }, migrations),
+    );
     await source.initialize();
     await source.runMigrations();
     return new Database(source, source.manager, { tail: Promise.resolve() }, driver);
+  }
+  /** 计算实体元数据与当前库结构的差异；非空表示实体与 migration 漂移。 */
+  schemaDiff() {
+    return this.source.driver.createSchemaBuilder().log();
   }
   private async locked<T>(fn: () => Promise<T>): Promise<T> {
     if (this.inTransaction) return fn();

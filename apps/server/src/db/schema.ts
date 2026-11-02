@@ -1,8 +1,7 @@
-import { EntitySchema, Table, TableColumn, TableIndex } from 'typeorm';
-import type { MigrationInterface, QueryRunner } from 'typeorm';
+import { EntitySchema } from 'typeorm';
 import type { TableName } from '#server/db/records.js';
 type Field = 'text' | 'integer' | 'boolean' | 'json' | 'text?' | 'integer?' | 'json?';
-const common: Record<string, Field> = {
+export const common: Record<string, Field> = {
   id: 'text',
   createdAt: 'text',
   updatedAt: 'text',
@@ -201,6 +200,7 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     lastMessageAt: 'text',
     archivedAt: 'text?',
     durableConversationId: 'integer?',
+    agentId: 'text?',
   },
   assistantMessages: {
     ownerId: 'text',
@@ -270,12 +270,24 @@ export const definitions: Record<TableName, Record<string, Field>> = {
     content: 'text',
     enabled: 'boolean',
   },
+  learningAgents: {
+    ownerId: 'text',
+    name: 'text',
+    description: 'text?',
+    icon: 'text?',
+    approachTags: 'json',
+    tone: 'text',
+    detailLevel: 'text',
+    instructions: 'text?',
+    defaultProviderModelId: 'text?',
+    archivedAt: 'text?',
+  },
   rateLimits: {
     count: 'integer',
     resetAt: 'text',
   },
 };
-const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
+export const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
   users: [['username']],
   sessions: [['secretHash']],
   agentTokens: [['secretHash']],
@@ -288,6 +300,40 @@ const uniqueIndexes: Partial<Record<TableName, string[][]>> = {
   assistantEvents: [['threadId', 'seq']],
   mcpServers: [['name']],
   assistantSkills: [['name']],
+};
+/** 建有 `ix_<表>_owner` 次要索引的表；必须与 migration 中实际创建的索引一致。 */
+const ownerIndexed: TableName[] = [
+  'agentTokens',
+  'answerLinks',
+  'topics',
+  'contents',
+  'plans',
+  'questions',
+  'questionVersions',
+  'assessments',
+  'attempts',
+  'wrongQuestions',
+  'gradingJobs',
+  'auditLogs',
+  'idempotency',
+  'assistantThreads',
+  'assistantMessages',
+  'assistantEvents',
+  'assistantTurns',
+  'learningAgents',
+];
+/** 除唯一索引与 owner 索引外的其余命名索引；schema 漂移测试以此为准。 */
+const secondaryIndices: Partial<Record<TableName, { name: string; columns: string[] }[]>> = {
+  modelUsage: [
+    { name: 'ix_modelUsage_owner_date', columns: ['ownerId', 'createdAt'] },
+    { name: 'ix_modelUsage_date', columns: ['createdAt'] },
+  ],
+  sessions: [{ name: 'ix_session_refresh', columns: ['refreshHash'] }],
+  gradingJobs: [{ name: 'ix_jobs_status', columns: ['status', 'nextRunAt'] }],
+  assistantTurns: [{ name: 'ix_assistantTurns_thread_status', columns: ['threadId', 'status'] }],
+  assistantQueuedMessages: [
+    { name: 'ix_assistant_queue_thread_created', columns: ['threadId', 'createdAt', 'id'] },
+  ],
 };
 export const schemas = Object.entries(definitions).map(
   ([name, fields]) =>
@@ -305,441 +351,18 @@ export const schemas = Object.entries(definitions).map(
         ]),
       ) as never,
       indices: [
-        ...(uniqueIndexes[name as TableName] ?? []).map((columns) => ({ columns, unique: true })),
+        ...(uniqueIndexes[name as TableName] ?? []).map((columns, i) => ({
+          name: 'uq_' + name + '_' + i,
+          columns,
+          unique: true,
+        })),
         ...(['auditLogs', 'apiLogs', 'loginLogs'].includes(name)
           ? [{ name: 'ix_' + name + '_date_id', columns: ['createdAt', 'id'] }]
           : []),
+        ...(ownerIndexed.includes(name as TableName)
+          ? [{ name: 'ix_' + name + '_owner', columns: ['ownerId'] }]
+          : []),
+        ...(secondaryIndices[name as TableName] ?? []),
       ],
     }),
 );
-export class InitialSchema1792195200000 implements MigrationInterface {
-  name = 'InitialSchema1792195200000';
-  async up(runner: QueryRunner) {
-    for (const [name, fields] of Object.entries(definitions).filter(
-      ([name]) =>
-        ![
-          'modelUsage',
-          'apiLogs',
-          'loginLogs',
-          'assistantThreads',
-          'assistantMessages',
-          'assistantEvents',
-          'assistantTurns',
-          'assistantQueuedMessages',
-          'searchProviders',
-          'mcpServers',
-          'assistantSkills',
-          'rateLimits',
-        ].includes(name),
-    )) {
-      const all = { ...common, ...fields };
-      await runner.createTable(
-        new Table({
-          name,
-          columns: Object.entries(all).map(([key, field]) => ({
-            name: key,
-            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
-            isPrimary: key === 'id',
-            isNullable: field.endsWith('?'),
-          })),
-        }),
-      );
-      for (const [i, columns] of (uniqueIndexes[name as TableName] ?? []).entries())
-        await runner.createIndex(
-          name,
-          new TableIndex({ name: 'uq_' + name + '_' + i, columnNames: columns, isUnique: true }),
-        );
-      if ('ownerId' in fields)
-        await runner.createIndex(
-          name,
-          new TableIndex({ name: 'ix_' + name + '_owner', columnNames: ['ownerId'] }),
-        );
-    }
-    await runner.createIndex(
-      'gradingJobs',
-      new TableIndex({ name: 'ix_jobs_status', columnNames: ['status', 'nextRunAt'] }),
-    );
-    await runner.createIndex(
-      'sessions',
-      new TableIndex({ name: 'ix_session_refresh', columnNames: ['refreshHash'] }),
-    );
-  }
-  async down(runner: QueryRunner) {
-    for (const name of Object.keys(definitions)
-      .filter(
-        (name) =>
-          ![
-            'modelUsage',
-            'apiLogs',
-            'loginLogs',
-            'assistantThreads',
-            'assistantMessages',
-            'assistantEvents',
-            'assistantTurns',
-            'assistantQueuedMessages',
-            'searchProviders',
-            'mcpServers',
-            'assistantSkills',
-            'rateLimits',
-          ].includes(name),
-      )
-      .reverse())
-      await runner.dropTable(name);
-  }
-}
-
-/** Adds temporary public answer links without requiring existing development data to be rebuilt. */
-export class AddAnswerLinks1792195200001 implements MigrationInterface {
-  name = 'AddAnswerLinks1792195200001';
-  async up(runner: QueryRunner) {
-    if (!(await runner.hasTable('answerLinks'))) {
-      const fields = definitions.answerLinks;
-      const all = { ...common, ...fields };
-      await runner.createTable(
-        new Table({
-          name: 'answerLinks',
-          columns: Object.entries(all).map(([key, field]) => ({
-            name: key,
-            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
-            isPrimary: key === 'id',
-            isNullable: field.endsWith('?'),
-          })),
-        }),
-      );
-      await runner.createIndex(
-        'answerLinks',
-        new TableIndex({ name: 'uq_answerLinks_0', columnNames: ['secretHash'], isUnique: true }),
-      );
-      await runner.createIndex(
-        'answerLinks',
-        new TableIndex({ name: 'ix_answerLinks_owner', columnNames: ['ownerId'] }),
-      );
-    }
-    const attempts = await runner.getTable('attempts');
-    if (attempts && !attempts.findColumnByName('answerLinkId')) {
-      await runner.addColumn(
-        'attempts',
-        new TableColumn({ name: 'answerLinkId', type: 'text', isNullable: true }),
-      );
-    }
-  }
-  async down(runner: QueryRunner) {
-    const attempts = await runner.getTable('attempts');
-    if (attempts?.findColumnByName('answerLinkId')) {
-      await runner.dropColumn('attempts', 'answerLinkId');
-    }
-    if (await runner.hasTable('answerLinks')) await runner.dropTable('answerLinks');
-  }
-}
-
-export class AddModelUsage1792368000000 implements MigrationInterface {
-  name = 'AddModelUsage1792368000000';
-  async up(runner: QueryRunner) {
-    await runner.createTable(
-      new Table({
-        name: 'modelUsage',
-        columns: Object.entries({ ...common, ...definitions.modelUsage }).map(([name, field]) => ({
-          name,
-          type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
-          isPrimary: name === 'id',
-          isNullable: field.endsWith('?'),
-        })),
-      }),
-    );
-    await runner.createIndex(
-      'modelUsage',
-      new TableIndex({
-        name: 'ix_modelUsage_owner_date',
-        columnNames: ['ownerId', 'createdAt'],
-      }),
-    );
-    await runner.createIndex(
-      'modelUsage',
-      new TableIndex({
-        name: 'ix_modelUsage_date',
-        columnNames: ['createdAt'],
-      }),
-    );
-  }
-  async down(runner: QueryRunner) {
-    await runner.dropTable('modelUsage');
-  }
-}
-
-export class AddAccessLogs1792368000001 implements MigrationInterface {
-  name = 'AddAccessLogs1792368000001';
-  async up(runner: QueryRunner) {
-    for (const name of ['apiLogs', 'loginLogs'] as const) {
-      await runner.createTable(
-        new Table({
-          name,
-          columns: Object.entries({ ...common, ...definitions[name] }).map(([key, field]) => ({
-            name: key,
-            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
-            isPrimary: key === 'id',
-            isNullable: field.endsWith('?'),
-          })),
-        }),
-      );
-    }
-    for (const name of ['auditLogs', 'apiLogs', 'loginLogs']) {
-      await runner.createIndex(
-        name,
-        new TableIndex({
-          name: 'ix_' + name + '_date_id',
-          columnNames: ['createdAt', 'id'],
-        }),
-      );
-    }
-  }
-  async down(runner: QueryRunner) {
-    await runner.dropIndex('auditLogs', 'ix_auditLogs_date_id');
-    await runner.dropTable('loginLogs');
-    await runner.dropTable('apiLogs');
-  }
-}
-
-const assistantTableNames = [
-  'assistantThreads',
-  'assistantMessages',
-  'assistantEvents',
-  'assistantTurns',
-  'searchProviders',
-  'mcpServers',
-  'assistantSkills',
-] as const;
-
-/** 内置对话助手、搜索提供方、MCP 与 Skills 配置表；均为新增，无需迁移已有数据。 */
-export class AddAssistantTables1792448000000 implements MigrationInterface {
-  name = 'AddAssistantTables1792448000000';
-  async up(runner: QueryRunner) {
-    for (const name of assistantTableNames) {
-      await runner.createTable(
-        new Table({
-          name,
-          columns: Object.entries({ ...common, ...definitions[name] }).map(([key, field]) => ({
-            name: key,
-            type: field.replace('?', '') === 'json' ? 'text' : field.replace('?', ''),
-            isPrimary: key === 'id',
-            isNullable: field.endsWith('?'),
-          })),
-        }),
-      );
-      for (const [i, columns] of (uniqueIndexes[name] ?? []).entries())
-        await runner.createIndex(
-          name,
-          new TableIndex({ name: 'uq_' + name + '_' + i, columnNames: columns, isUnique: true }),
-        );
-      if ('ownerId' in definitions[name])
-        await runner.createIndex(
-          name,
-          new TableIndex({ name: 'ix_' + name + '_owner', columnNames: ['ownerId'] }),
-        );
-    }
-    await runner.createIndex(
-      'assistantTurns',
-      new TableIndex({
-        name: 'ix_assistantTurns_thread_status',
-        columnNames: ['threadId', 'status'],
-      }),
-    );
-  }
-  async down(runner: QueryRunner) {
-    await runner.dropIndex('assistantTurns', 'ix_assistantTurns_thread_status');
-    for (const name of [...assistantTableNames].reverse()) {
-      for (const [i, _columns] of (uniqueIndexes[name] ?? []).entries())
-        await runner.dropIndex(name, 'uq_' + name + '_' + i);
-      if ('ownerId' in definitions[name]) await runner.dropIndex(name, 'ix_' + name + '_owner');
-      await runner.dropTable(name);
-    }
-  }
-}
-
-/** 助手配置重构：移除全局助手设置表（上限/超时/默认模型），对话改为按轮选择模型；模型支持默认参数与价格。 */
-export class ReworkAssistantConfig1792450000000 implements MigrationInterface {
-  name = 'ReworkAssistantConfig1792450000000';
-  async up(runner: QueryRunner) {
-    if (await runner.hasTable('assistantSettings')) await runner.dropTable('assistantSettings');
-    const modelColumns: TableColumn[] = [
-      new TableColumn({ name: 'contextWindow', type: 'integer', isNullable: true }),
-      new TableColumn({ name: 'maxTokens', type: 'integer', isNullable: true }),
-      new TableColumn({ name: 'reasoning', type: 'boolean', default: false }),
-      new TableColumn({ name: 'input', type: 'text', isNullable: true }),
-      new TableColumn({ name: 'costPerMillion', type: 'text', isNullable: true }),
-    ];
-    for (const column of modelColumns) {
-      const table = await runner.getTable('providerModels');
-      if (table && !table.findColumnByName(column.name))
-        await runner.addColumn('providerModels', column);
-    }
-    const turns = await runner.getTable('assistantTurns');
-    if (turns && !turns.findColumnByName('providerModelId'))
-      await runner.addColumn(
-        'assistantTurns',
-        new TableColumn({ name: 'providerModelId', type: 'text', isNullable: true }),
-      );
-  }
-  async down(runner: QueryRunner) {
-    const turns = await runner.getTable('assistantTurns');
-    if (turns?.findColumnByName('providerModelId'))
-      await runner.dropColumn('assistantTurns', 'providerModelId');
-    for (const name of ['contextWindow', 'maxTokens', 'reasoning', 'input', 'costPerMillion']) {
-      const table = await runner.getTable('providerModels');
-      if (table?.findColumnByName(name)) await runner.dropColumn('providerModels', name);
-    }
-  }
-}
-
-/** Streaming reasoning, image input, persistent follow-up queues and conversation forking. */
-export class ExpandAssistantConversation1793000000000 implements MigrationInterface {
-  name = 'ExpandAssistantConversation1793000000000';
-  async up(runner: QueryRunner) {
-    const messages = await runner.getTable('assistantMessages');
-    if (messages && !messages.findColumnByName('reasoning'))
-      await runner.addColumn(
-        'assistantMessages',
-        new TableColumn({ name: 'reasoning', type: 'text', isNullable: true }),
-      );
-    if (messages && !messages.findColumnByName('images'))
-      await runner.addColumn(
-        'assistantMessages',
-        new TableColumn({ name: 'images', type: 'text', isNullable: false, default: "'[]'" }),
-      );
-    if (!(await runner.hasTable('assistantQueuedMessages'))) {
-      await runner.createTable(
-        new Table({
-          name: 'assistantQueuedMessages',
-          columns: Object.entries({ ...common, ...definitions.assistantQueuedMessages }).map(
-            ([key, field]) => ({
-              name: key,
-              type: field === 'json' ? 'text' : field.replace('?', ''),
-              isPrimary: key === 'id',
-              isNullable: field.endsWith('?'),
-            }),
-          ),
-        }),
-      );
-      await runner.createIndex(
-        'assistantQueuedMessages',
-        new TableIndex({
-          name: 'ix_assistant_queue_thread_created',
-          columnNames: ['threadId', 'createdAt', 'id'],
-        }),
-      );
-    }
-  }
-  async down(runner: QueryRunner) {
-    if (await runner.hasTable('assistantQueuedMessages'))
-      await runner.dropTable('assistantQueuedMessages');
-    const messages = await runner.getTable('assistantMessages');
-    if (messages?.findColumnByName('images'))
-      await runner.dropColumn('assistantMessages', 'images');
-    if (messages?.findColumnByName('reasoning'))
-      await runner.dropColumn('assistantMessages', 'reasoning');
-  }
-}
-
-/** 持久化助手待发送队列的人工排序。 */
-export class OrderAssistantQueue1793000000001 implements MigrationInterface {
-  name = 'OrderAssistantQueue1793000000001';
-  async up(runner: QueryRunner) {
-    const queue = await runner.getTable('assistantQueuedMessages');
-    if (queue && !queue.findColumnByName('position'))
-      await runner.addColumn(
-        'assistantQueuedMessages',
-        new TableColumn({ name: 'position', type: 'integer', isNullable: false, default: 0 }),
-      );
-  }
-  async down(runner: QueryRunner) {
-    const queue = await runner.getTable('assistantQueuedMessages');
-    if (queue?.findColumnByName('position'))
-      await runner.dropColumn('assistantQueuedMessages', 'position');
-  }
-}
-
-/** Pi Durable 持久会话绑定与跨重启可追踪的工具调用用量。 */
-export class MigrateAssistantToDurable1793000000002 implements MigrationInterface {
-  name = 'MigrateAssistantToDurable1793000000002';
-  async up(runner: QueryRunner) {
-    const threads = await runner.getTable('assistantThreads');
-    if (threads && !threads.findColumnByName('durableConversationId'))
-      await runner.addColumn(
-        'assistantThreads',
-        new TableColumn({ name: 'durableConversationId', type: 'integer', isNullable: true }),
-      );
-    const turns = await runner.getTable('assistantTurns');
-    for (const name of ['apiCalls', 'writeCalls']) {
-      if (turns && !turns.findColumnByName(name))
-        await runner.addColumn(
-          'assistantTurns',
-          new TableColumn({ name, type: 'integer', isNullable: false, default: 0 }),
-        );
-    }
-  }
-  async down(runner: QueryRunner) {
-    const threads = await runner.getTable('assistantThreads');
-    if (threads?.findColumnByName('durableConversationId'))
-      await runner.dropColumn('assistantThreads', 'durableConversationId');
-    const turns = await runner.getTable('assistantTurns');
-    for (const name of ['apiCalls', 'writeCalls']) {
-      if (turns?.findColumnByName(name)) await runner.dropColumn('assistantTurns', name);
-    }
-  }
-}
-
-/** 多实例共享的限流桶；id 即桶键。 */
-export class AddRateLimits1793100000000 implements MigrationInterface {
-  name = 'AddRateLimits1793100000000';
-  async up(runner: QueryRunner) {
-    if (await runner.hasTable('rateLimits')) return;
-    await runner.createTable(
-      new Table({
-        name: 'rateLimits',
-        columns: Object.entries({ ...common, ...definitions.rateLimits }).map(([name, field]) => ({
-          name,
-          type: field.replace('?', ''),
-          isPrimary: name === 'id',
-          isNullable: field.endsWith('?'),
-        })),
-      }),
-    );
-  }
-  async down(runner: QueryRunner) {
-    if (await runner.hasTable('rateLimits')) await runner.dropTable('rateLimits');
-  }
-}
-
-/** CSRF 令牌改为时间窗派生，不再落库。 */
-export class DropSessionCsrfHash1793100000001 implements MigrationInterface {
-  name = 'DropSessionCsrfHash1793100000001';
-  async up(runner: QueryRunner) {
-    const sessions = await runner.getTable('sessions');
-    if (sessions?.findColumnByName('csrfHash')) await runner.dropColumn('sessions', 'csrfHash');
-  }
-  async down(runner: QueryRunner) {
-    const sessions = await runner.getTable('sessions');
-    if (sessions && !sessions.findColumnByName('csrfHash'))
-      await runner.addColumn(
-        'sessions',
-        new TableColumn({ name: 'csrfHash', type: 'text', isNullable: true }),
-      );
-  }
-}
-
-/** 助手对话归档：线程补齐归档时间列（旧库建表时无该列）。 */
-export class AddAssistantThreadArchive1793404800000 implements MigrationInterface {
-  name = 'AddAssistantThreadArchive1793404800000';
-  async up(runner: QueryRunner) {
-    const threads = await runner.getTable('assistantThreads');
-    if (threads && !threads.findColumnByName('archivedAt'))
-      await runner.addColumn(
-        'assistantThreads',
-        new TableColumn({ name: 'archivedAt', type: 'text', isNullable: true }),
-      );
-  }
-  async down(runner: QueryRunner) {
-    const threads = await runner.getTable('assistantThreads');
-    if (threads?.findColumnByName('archivedAt'))
-      await runner.dropColumn('assistantThreads', 'archivedAt');
-  }
-}

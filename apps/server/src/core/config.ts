@@ -4,18 +4,35 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { workspaceRoot } from '#server/core/paths.js';
 import type { ServerConfig } from '#server/core/context.js';
-export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise<ServerConfig> {
-  const production = overrides.production ?? process.env.NODE_ENV === 'production';
-  const databaseDriver =
+export interface DatabaseEnv {
+  driver: 'sqlite' | 'postgres';
+  /** SQLite 文件路径；driver 为 postgres 时仅为默认路径，调用方可忽略。 */
+  path: string;
+  url?: string;
+}
+/** 从环境变量解析数据库连接配置，无副作用；loadConfig 与 CLI 数据源共用。 */
+export function resolveDatabaseEnv(
+  overrides: Pick<Partial<ServerConfig>, 'databaseDriver' | 'databasePath' | 'databaseUrl'> = {},
+): DatabaseEnv {
+  const driver =
     overrides.databaseDriver ?? (process.env.DATABASE_DRIVER ?? 'sqlite').trim().toLowerCase();
-  if (databaseDriver !== 'sqlite' && databaseDriver !== 'postgres')
+  if (driver !== 'sqlite' && driver !== 'postgres')
     throw new Error("Invalid DATABASE_DRIVER: expected 'sqlite' or 'postgres'");
-  const databaseUrl = overrides.databaseUrl ?? process.env.DATABASE_URL;
-  if (databaseDriver === 'postgres' && !databaseUrl)
+  const url = overrides.databaseUrl ?? process.env.DATABASE_URL;
+  if (driver === 'postgres' && !url)
     throw new Error('DATABASE_DRIVER=postgres requires DATABASE_URL');
-  const databasePath =
+  const path =
     overrides.databasePath ??
     resolve(workspaceRoot, process.env.DATABASE_PATH ?? '.data/drill-hub.sqlite');
+  return { driver, path, url };
+}
+export async function loadConfig(overrides: Partial<ServerConfig> = {}): Promise<ServerConfig> {
+  const production = overrides.production ?? process.env.NODE_ENV === 'production';
+  const {
+    driver: databaseDriver,
+    path: databasePath,
+    url: databaseUrl,
+  } = resolveDatabaseEnv(overrides);
   let encryptionKey = overrides.encryptionKey ?? process.env.DRILL_HUB_ENCRYPTION_KEY ?? '';
   if (!encryptionKey) {
     if (production) throw new Error('Production requires DRILL_HUB_ENCRYPTION_KEY');

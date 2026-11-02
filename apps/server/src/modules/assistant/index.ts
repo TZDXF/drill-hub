@@ -202,6 +202,11 @@ export function registerAssistantRoutes(
   app.post(`${API_PREFIX}/me/assistant/threads`, async (request, reply) => {
     const actor = await ctx.requireUser(request);
     const input = body(request, true);
+    const agentId =
+      input.agentId === undefined || input.agentId === null
+        ? null
+        : requiredString(input, 'agentId', 128);
+    if (agentId) await owned(ctx.db, 'learningAgents', agentId, actor.userId);
     const thread = {
       ...baseRecord(),
       ownerId: actor.userId,
@@ -209,6 +214,7 @@ export function registerAssistantRoutes(
       lastMessageAt: now(),
       archivedAt: null,
       durableConversationId: null,
+      agentId,
     };
     await ctx.db.insert('assistantThreads', thread);
     reply.code(201);
@@ -278,8 +284,17 @@ export function registerAssistantRoutes(
     const revision = expectedRevision(input);
     const thread = await ctx.db.get('assistantThreads', params(request).id);
     assert(thread && thread.ownerId === actor.userId, 'NOT_FOUND', '资源不存在', 404);
+    const agentId =
+      input.agentId === undefined
+        ? thread.agentId
+        : input.agentId === null
+          ? null
+          : requiredString(input, 'agentId', 128);
+    if (agentId && agentId !== thread.agentId)
+      await owned(ctx.db, 'learningAgents', agentId, actor.userId);
     const updated = await ctx.db.update('assistantThreads', thread.id, revision, {
       title: optionalString(input, 'title', thread.title, 200),
+      agentId,
     });
     return { data: threadView(updated) };
   });

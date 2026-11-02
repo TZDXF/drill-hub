@@ -25,6 +25,7 @@
       "archive": "Archive",
       "assistant": "Assistant",
       "adminAssistant": "Assistant Settings",
+      "learningAgents": "Learning agents",
       "search": "Search"
     },
     "nav": {
@@ -337,6 +338,9 @@
     "selectModel": "Select model",
     "autoModel": "Auto",
     "noModels": "No assistant models configured yet",
+    "selectAgent": "Choose learning agent",
+    "defaultAgent": "Default assistant",
+    "manageAgents": "Manage learning agents",
     "reasoning": "Reasoning",
     "responseProcess": "View response process",
     "thinkingSeconds": "Thinking… {seconds}s",

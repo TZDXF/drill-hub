@@ -7,6 +7,7 @@ import { useAssistant } from '#learning-client/assistant/store';
 import AppIcon from '#learning-client/components/AppIcon.vue';
 import AppTextarea from '#learning-client/components/AppTextarea.vue';
 import AppTooltip from '#learning-client/components/AppTooltip.vue';
+import AssistantAgentSelect from '#learning-client/components/assistant/AssistantAgentSelect.vue';
 import AssistantModelSelect from '#learning-client/components/assistant/AssistantModelSelect.vue';
 import AssistantSelectionSummary from '#learning-client/components/assistant/AssistantSelectionSummary.vue';
 const text = defineModel<string>('text', { default: '' });
@@ -98,6 +99,7 @@ defineExpose({ clear, images });
 <template>
   <footer class="assistant-panel__footer" @drop="onDrop" @dragover.prevent>
     <div class="assistant-composer__toolbar">
+      <AssistantAgentSelect />
       <AssistantModelSelect />
     </div>
     <div v-if="quotes.length" class="assistant-composer-quotes">

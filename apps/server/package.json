@@ -17,7 +17,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "pnpm --workspace-root exec node --env-file-if-exists=.env apps/server/dist/index.js",
     "test": "vitest run",
-    "admin:create": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/src/cli.ts"
+    "admin:create": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/src/cli.ts",
+    "db:generate": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/node_modules/typeorm/cli.js migration:generate -d apps/server/src/db/data-source.ts",
+    "db:migrate": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/node_modules/typeorm/cli.js migration:run -d apps/server/src/db/data-source.ts",
+    "db:revert": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/node_modules/typeorm/cli.js migration:revert -d apps/server/src/db/data-source.ts",
+    "db:check": "pnpm --workspace-root exec tsx --conditions=development --env-file-if-exists=.env apps/server/node_modules/typeorm/cli.js migration:generate --check -d apps/server/src/db/data-source.ts apps/server/src/db/migrations/PendingChanges"
   },
   "dependencies": {
     "@drill-hub/contracts": "workspace:*",

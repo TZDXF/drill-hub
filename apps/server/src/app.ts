@@ -22,6 +22,7 @@ import {
   createAssistantService,
   registerAssistantRoutes,
 } from '#server/modules/assistant/index.js';
+import { registerLearningAgentRoutes } from '#server/modules/assistant/learning-agents.js';
 declare module 'fastify' {
   interface FastifyInstance {
     ctx: AppContext;
@@ -182,6 +183,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   await registerLearningRoutes(app, ctx);
   await registerGradingRoutes(app, ctx);
   registerAssistantRoutes(app, ctx, assistant);
+  registerLearningAgentRoutes(app, ctx);
   const bootstrap =
     options.bootstrapAdmin ??
     (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD

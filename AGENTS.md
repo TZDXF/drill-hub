@@ -60,6 +60,16 @@ pnpm lint                # Oxlint
 pnpm format              # Oxfmt 写入
 pnpm format:check        # 只检查格式
 pnpm test:e2e            # Playwright；自动构建并启动内存数据库服务
+pnpm db:generate         # TypeORM CLI migration:generate（其余见下方迁移工作流）
+```
+
+数据库迁移命令（在仓库根目录运行，读取 `.env` 与 `DATABASE_PATH` 等环境变量）：
+
+```powershell
+pnpm db:migrate          # migration:run，把数据库执行到最新 migration
+pnpm db:revert           # migration:revert，回滚最近一个 migration
+pnpm db:check            # 校验实体与库结构无漂移，有差异时以退出码 1 报告
+pnpm db:generate <Name>  # 依据实体与库结构的差异生成 src/db/migrations/<时间戳>-<Name>.ts
 ```
 
 首次运行 E2E 前安装 Chromium：
@@ -74,9 +84,9 @@ pnpm exec playwright install chromium
 
 ## 服务端架构
 
-- 入口：`apps/server/src/app.ts`；数据库封装：`apps/server/src/db/database.ts`；表定义：`apps/server/src/db/schema.ts`。
+- 入口：`apps/server/src/app.ts`；数据库封装：`apps/server/src/db/database.ts`；表定义：`apps/server/src/db/schema.ts`；migration 位于 `apps/server/src/db/migrations/`，统一在 `migrations/index.ts` 的 `migrations` 数组注册。
 - 业务模块位于 `apps/server/src/modules/auth`、`learning`、`grading`。
-- TypeORM 使用 `synchronize: false` 和显式 migration。修改表结构时必须同时保证实体定义与当前 migration/初始化路径一致。
+- TypeORM 使用 `synchronize: false` 和显式 migration。修改表结构的工作流：先用 `pnpm db:migrate` 把临时库执行到最新 → 修改 `schema.ts` 的实体定义（`definitions`、`uniqueIndexes`、索引映射）→ `DATABASE_PATH=.data/migration-scratch.sqlite pnpm db:migrate` 后执行 `pnpm db:generate <Name>` 生成 migration → 人工审查生成文件（数据迁移仍需手写）、注册进 `migrations/index.ts` 并运行 `pnpm format`（CLI 模板不符合本仓库格式）→ 再 `pnpm db:migrate` 应用。`pnpm db:check` 与 `apps/server/test/migrations.test.ts` 会同时拦截实体与 migration 的漂移。
 - SQLite 默认单实例、单文件部署；`DATABASE_DRIVER=postgres` 加 `DATABASE_URL` 可切换 PostgreSQL（`docker-compose.yml` 与 `docker-compose.dev.yml` 均包含全部配置并默认启用 SQLite，PostgreSQL 配置以注释形式内置，需要时解除注释）。模型调用不得持有数据库长事务。
 - 服务端是答案、评分、考试截止时间、分数、所有权和归档状态的唯一事实来源；客户端提交的 `score`、`maxScore`、`correct`、`submittedAt` 等事实字段必须拒绝。
 - 修改操作通常使用 `revision` / `expectedRevision` 做乐观并发控制；版本冲突返回 409，禁止静默覆盖。

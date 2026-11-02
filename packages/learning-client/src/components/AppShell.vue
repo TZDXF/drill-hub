@@ -308,6 +308,7 @@ const title = computed(() => {
   const names: Record<string, string> = {
     home: t('components.shell.titles.home'),
     assistant: t('components.shell.titles.assistant'),
+    'learning-agents': t('components.shell.titles.learningAgents'),
     topics: t('components.shell.titles.topics'),
     'topic-detail': t('components.shell.titles.topicDetail'),
     plan: t('components.shell.titles.plan'),
@@ -342,6 +343,11 @@ const primaryNav = computed(() => [
 ]);
 const secondaryNav = computed(() => [
   { name: 'search', label: t('components.shell.titles.search'), icon: 'search' },
+  {
+    name: 'learning-agents',
+    label: t('components.shell.titles.learningAgents'),
+    icon: 'bot',
+  },
   { name: 'token-usage', label: t('components.shell.titles.tokenUsage'), icon: 'usage' },
   { name: 'archive', label: t('components.shell.nav.archive'), icon: 'archive' },
   { name: 'settings', label: t('components.shell.titles.settings'), icon: 'settings' },

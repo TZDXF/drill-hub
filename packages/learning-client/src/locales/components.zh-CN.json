@@ -34,6 +34,7 @@
       "adminAudit": "审计日志",
       "assistant": "学习助手",
       "adminAssistant": "助手设置",
+      "learningAgents": "学习智能体",
       "search": "站内搜索"
     },
     "nav": {
@@ -337,6 +338,9 @@
     "selectModel": "选择模型",
     "autoModel": "自动选择",
     "noModels": "管理员尚未配置可用的助手模型",
+    "selectAgent": "选择学习智能体",
+    "defaultAgent": "默认助手",
+    "manageAgents": "管理学习智能体",
     "reasoning": "思考过程",
     "responseProcess": "查看回复过程",
     "thinkingSeconds": "正在思考… {seconds} 秒",

@@ -17,6 +17,7 @@ async function setup() {
     title: id,
     revision: 1,
     archivedAt: null,
+    agentId: null,
     lastMessageAt: '2026-10-29T00:00:00Z',
     createdAt: '2026-10-29T00:00:00Z',
     updatedAt: '2026-10-29T00:00:00Z',

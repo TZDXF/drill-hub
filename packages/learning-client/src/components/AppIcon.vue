@@ -60,6 +60,7 @@ import arrowUp from '@iconify-icons/lucide/arrow-up';
 import gripVertical from '@iconify-icons/lucide/grip-vertical';
 import list from '@iconify-icons/lucide/list';
 import brain from '@iconify-icons/lucide/brain';
+import bot from '@iconify-icons/lucide/bot';
 
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 });
 
@@ -124,6 +125,7 @@ const icons: Record<string, IconifyIcon> = {
   grip: gripVertical,
   list,
   brain,
+  bot,
 };
 
 const icon = computed(() => icons[props.name] ?? icons.book);

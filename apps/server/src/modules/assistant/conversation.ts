@@ -85,8 +85,13 @@ export async function readAssistantThread(
   const turnIds = new Set(turns.map((turn) => turn.id));
   const messageById = new Map(allMessages.map((message) => [message.id, message]));
   const { durableConversationId: _durableConversationId, ...threadView } = thread;
+  const agent = thread.agentId ? await ctx.db.get('learningAgents', thread.agentId) : null;
   return {
     thread: threadView,
+    agent:
+      agent && agent.ownerId === thread.ownerId
+        ? { id: agent.id, name: agent.name, icon: agent.icon }
+        : null,
     messages: messages.map(assistantMessageView),
     turns: turns.map(assistantTurnView),
     events: assistantEventViews(
@@ -136,6 +141,7 @@ export async function forkAssistantThread(
     lastMessageAt: keptTurns.at(-1)?.updatedAt ?? source.createdAt,
     archivedAt: null,
     durableConversationId: null,
+    agentId: source.agentId,
   };
   await ctx.db.transaction(async (tx) => {
     await tx.insert('assistantThreads', branch);

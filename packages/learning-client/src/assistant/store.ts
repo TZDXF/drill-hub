@@ -17,6 +17,7 @@ import type {
   AssistantTimelineTurn,
   AssistantTurnView,
   AssistantUiAction,
+  LearningAgentView,
 } from '@drill-hub/contracts';
 import type { LearningContext } from '#learning-client/context';
 import { errorMessage } from '#learning-client/utils';
@@ -77,6 +78,9 @@ export interface AssistantState {
   error: string;
   models: AssistantModelOption[];
   selectedModelId: string;
+  agents: LearningAgentView[];
+  /** 新会话使用的学习智能体；空字符串表示内置默认助手。 */
+  selectedAgentId: string;
   queued: AssistantQueuedMessage[];
   timeline: AssistantTimelineTurn[];
   hasOlder: boolean;
@@ -113,6 +117,8 @@ const state = reactive<AssistantState>({
   error: '',
   models: [],
   selectedModelId: '',
+  agents: [],
+  selectedAgentId: '',
   queued: [],
   timeline: [],
   hasOlder: false,
@@ -204,6 +210,7 @@ async function refreshStatus(): Promise<void> {
     state.status = null;
   }
   await loadModels();
+  await loadAgents();
 }
 async function loadModels(): Promise<void> {
   try {
@@ -213,6 +220,56 @@ async function loadModels(): Promise<void> {
   }
   if (state.selectedModelId && !state.models.some((model) => model.id === state.selectedModelId))
     state.selectedModelId = '';
+}
+async function loadAgents(): Promise<void> {
+  try {
+    state.agents = await learning().get<LearningAgentView[]>('/me/learning-agents');
+  } catch {
+    state.agents = [];
+  }
+  if (state.selectedAgentId && !state.agents.some((agent) => agent.id === state.selectedAgentId))
+    state.selectedAgentId = '';
+}
+function selectAgent(agentId: string): void {
+  state.selectedAgentId = agentId;
+}
+/** 已打开会话时切换其绑定智能体（下一条消息生效）；否则仅影响新会话。 */
+async function applyAgentToCurrentThread(agentId: string): Promise<void> {
+  const thread = state.threads.find((item) => item.id === state.currentThreadId);
+  if (!thread || (thread.agentId ?? '') === agentId) return;
+  const previous = thread.agentId ?? '';
+  try {
+    const updated = await learning().patch<AssistantThread>(`/me/assistant/threads/${thread.id}`, {
+      agentId: agentId || null,
+      expectedRevision: thread.revision,
+    });
+    state.threads = state.threads.map((item) => (item.id === updated.id ? updated : item));
+  } catch (reason) {
+    state.selectedAgentId = previous;
+    state.error = errorMessage(reason);
+  }
+}
+async function selectThreadAgent(agentId: string): Promise<void> {
+  state.selectedAgentId = agentId;
+  await applyAgentToCurrentThread(agentId);
+}
+/** 从学习智能体管理页发起对话：优先复用当前已绑定该智能体的会话，否则新建。 */
+async function startAgentThread(agentId: string): Promise<void> {
+  state.selectedAgentId = agentId;
+  openPanel();
+  if (openingPromise) await openingPromise;
+  const current = state.threads.find((item) => item.id === state.currentThreadId);
+  if (current && current.agentId === agentId) return;
+  try {
+    const thread = await learning().post<AssistantThread>('/me/assistant/threads', {
+      agentId,
+    });
+    await loadThreads();
+    clearThread();
+    await selectThread(thread.id);
+  } catch (reason) {
+    state.error = errorMessage(reason);
+  }
 }
 function selectModel(modelId: string): void {
   state.selectedModelId = modelId;
@@ -247,7 +304,9 @@ async function selectThread(threadId: string, preserveStream = false): Promise<v
   if (state.activeTurnId) connectStream();
 }
 async function newThread(): Promise<AssistantThread> {
-  const thread = await learning().post<AssistantThread>('/me/assistant/threads', {});
+  const thread = await learning().post<AssistantThread>('/me/assistant/threads', {
+    ...(state.selectedAgentId ? { agentId: state.selectedAgentId } : {}),
+  });
   await loadThreads();
   clearThread();
   await selectThread(thread.id);
@@ -662,6 +721,10 @@ export interface AssistantStore {
   refreshStatus(): Promise<void>;
   loadModels(): Promise<void>;
   selectModel(modelId: string): void;
+  loadAgents(): Promise<void>;
+  selectAgent(agentId: string): void;
+  selectThreadAgent(agentId: string): Promise<void>;
+  startAgentThread(agentId: string): Promise<void>;
   loadThreads(): Promise<void>;
   selectThread(threadId: string): Promise<void>;
   newThread(): Promise<AssistantThread>;
@@ -702,6 +765,10 @@ export function useAssistant(): AssistantStore {
     refreshStatus,
     loadModels,
     selectModel,
+    loadAgents,
+    selectAgent,
+    selectThreadAgent,
+    startAgentThread,
     loadThreads,
     selectThread,
     newThread,
